@@ -32,7 +32,7 @@
 - Log raw frames, normalized observations, actor output, proposed motor targets,
   safety margins, loop jitter, and state age.
 - Replay every log deterministically offline.
-- Replay every recorded 50 Hz policy tick through the packaged ONNX actor and
+- [x] Replay every recorded 50 Hz policy tick through the packaged ONNX actor and
   expand each output through ten 500 Hz zero-order-held safety ticks. This is a
   no-transmit software check; live state frames are still required for Gate 3.
 - Demonstrate that stale state, stale command, policy overrun, and an open
@@ -44,8 +44,11 @@
   cannot certify the Raspberry Pi 5 or Jetson Orin Nano.
 
 The deterministic safety scenarios and a no-load 500 Hz probe pass on the 234
-development PC. This does not complete Gate 3: live motor/IMU frames, USB-CAN
-load, full logging, and the selected SBC are still required.
+development PC. A 60-second MuJoCo trace also passed 2,998 ONNX policy ticks
+and 29,980 synthetic 500 Hz safety ticks with zero action/hold error and zero
+permitted hardware transmissions. This does not complete Gate 3: live
+motor/IMU frames, USB-CAN load, full logging, and the selected SBC are still
+required.
 
 ## Gate 4: protected actuation
 
