@@ -11,6 +11,15 @@ Before shadow mode, fill every policy joint entry in `motor_map` with:
 - rated/peak torque, speed, current, and temperature limits
 - MIT protocol ranges and quantization for position, velocity, Kp, Kd, torque
 
+At every 500 Hz state tick, the runtime must reject missing/extra motor frames,
+non-finite values, hard-position-limit violations, excessive speed, peak torque,
+peak current, temperature, or torque-speed-envelope violations. Any such event
+locks `motor_limit` and requires a separate healthy check plus explicit clear.
+Until a measured `torque_speed_envelope` is supplied for a motor, the runtime
+uses a conservative nameplate polyline from peak torque at zero speed, through
+rated torque at rated speed, to zero torque at maximum speed. This is a safety
+bound, not a motor thermal model; sustained-load qualification remains required.
+
 Generate the measurement worksheet from the frozen policy order instead of
 typing joint names manually:
 

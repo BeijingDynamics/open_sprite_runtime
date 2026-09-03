@@ -22,6 +22,7 @@ class SafetyState:
     imu_valid: bool = False
     estop_healthy: bool = False
     state_fresh: bool = False
+    motor_telemetry_healthy: bool = False
 
     def blockers(self) -> list[str]:
         checks = {
@@ -32,6 +33,7 @@ class SafetyState:
             "imu_valid": self.imu_valid,
             "estop_healthy": self.estop_healthy,
             "state_fresh": self.state_fresh,
+            "motor_telemetry_healthy": self.motor_telemetry_healthy,
         }
         return [name for name, ready in checks.items() if not ready]
 
@@ -69,6 +71,7 @@ class SafetyInputs:
     right_ankle_calibrated: bool
     imu_valid: bool
     estop_healthy: bool
+    motor_telemetry_healthy: bool = True
 
 
 @dataclass(frozen=True)
@@ -85,7 +88,9 @@ class SafetyDecision:
 class SafetySupervisor:
     """Fail-closed runtime gate independent of the future CAN backend."""
 
-    _LATCHING_FAULTS = frozenset(("estop_unhealthy", "state_stale", "policy_overrun"))
+    _LATCHING_FAULTS = frozenset(
+        ("estop_unhealthy", "state_stale", "policy_overrun", "motor_limit")
+    )
 
     def __init__(self, mode: RuntimeMode, limits: SafetyLimits):
         limits.validate()
@@ -114,6 +119,7 @@ class SafetySupervisor:
             ("right_ankle_calibrated", inputs.right_ankle_calibrated),
             ("imu_invalid", inputs.imu_valid),
             ("estop_unhealthy", inputs.estop_healthy),
+            ("motor_limit", inputs.motor_telemetry_healthy),
             ("state_stale", state_age_ms <= self.limits.maximum_state_age_ms),
             ("command_stale", command_age_ms <= self.limits.maximum_command_age_ms),
             (

@@ -70,6 +70,21 @@
       "policy_overrun"
     ]
   },
+  "motor_limit": {
+    "hardware_tx_permitted": false,
+    "safe_hold_required": true,
+    "blockers": [
+      "allow_hardware_tx",
+      "hardware_configured",
+      "left_ankle_calibrated",
+      "mode_shadow_no_tx",
+      "motor_limit",
+      "right_ankle_calibrated"
+    ],
+    "latched_faults": [
+      "motor_limit"
+    ]
+  },
   "latch_sequence": {
     "stale": {
       "hardware_tx_permitted": false,

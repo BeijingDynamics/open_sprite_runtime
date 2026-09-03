@@ -21,6 +21,11 @@ from .safety import (
 )
 from .shadow import replay_mujoco_trace, replay_multirate_mujoco_trace
 from .timing import run_host_timing_probe
+from .telemetry import (
+    MotorTelemetry,
+    evaluate_motor_bank,
+    limits_from_hardware_record,
+)
 
 
 def load_json(path: str | Path) -> dict:
@@ -87,6 +92,7 @@ def inspect(args: argparse.Namespace) -> None:
         imu_valid=False,
         estop_healthy=False,
         state_fresh=False,
+        motor_telemetry_healthy=False,
     )
     report = {
         "mode": "inspection_only_no_can_backend",
@@ -183,6 +189,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
             "right_ankle_calibrated": False,
             "imu_valid": True,
             "estop_healthy": True,
+            "motor_telemetry_healthy": True,
         }
         values.update(overrides)
         decision = supervisor.evaluate(SafetyInputs(**values))  # type: ignore[arg-type]
@@ -206,6 +213,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
         "stale_command": evaluate(fresh(), command_timestamp_ns=now - 200_000_000),
         "estop_open": evaluate(fresh(), estop_healthy=False),
         "policy_overrun": evaluate(fresh(), policy_overrun_ms=3.0),
+        "motor_limit": evaluate(fresh(), motor_telemetry_healthy=False),
         "latch_sequence": {
             "stale": stale_latched,
             "healthy_input_still_latched": recovered_but_latched,
@@ -218,10 +226,61 @@ def safety_self_test(args: argparse.Namespace) -> None:
         report["stale_command"],
         report["estop_open"],
         report["policy_overrun"],
+        report["motor_limit"],
     )
     if any(case["hardware_tx_permitted"] for case in independent_cases):
         raise RuntimeError("shadow self-test unexpectedly permitted hardware TX")
     print(json.dumps(report, indent=2))
+
+
+def telemetry_self_test(args: argparse.Namespace) -> None:
+    hardware = load_json(args.hardware_config)
+    motor_map = hardware.get("motor_map", {})
+    if not isinstance(motor_map, dict) or not motor_map:
+        raise ValueError("hardware motor_map is missing or empty")
+    limits = {
+        name: limits_from_hardware_record(record)
+        for name, record in motor_map.items()
+    }
+    samples = {
+        name: MotorTelemetry(
+            position_rad=0.5 * sum(limit.hard_position_rad),
+            velocity_rad_s=0.0,
+            torque_nm=0.0,
+            current_a=0.0,
+            temperature_c=20.0,
+        )
+        for name, limit in limits.items()
+    }
+    healthy = evaluate_motor_bank(samples, limits, motor_map)
+    first = next(iter(samples))
+    bad_samples = dict(samples)
+    bad_samples[first] = MotorTelemetry(
+        position_rad=samples[first].position_rad,
+        velocity_rad_s=0.0,
+        torque_nm=limits[first].peak_torque_nm + 1.0,
+        current_a=0.0,
+        temperature_c=20.0,
+    )
+    over_torque = evaluate_motor_bank(bad_samples, limits, motor_map)
+    missing = evaluate_motor_bank(
+        {name: sample for name, sample in samples.items() if name != first},
+        limits,
+        motor_map,
+    )
+    passed = bool(healthy["healthy"] and not over_torque["healthy"] and not missing["healthy"])
+    report = {
+        "mode": "motor_telemetry_self_test_no_hardware_tx",
+        "motor_count": len(motor_map),
+        "healthy_bank_passes": healthy["healthy"],
+        "over_torque_motor": first,
+        "over_torque_blocked": not over_torque["healthy"],
+        "missing_motor_blocked": not missing["healthy"],
+        "passed": passed,
+    }
+    print(json.dumps(report, indent=2))
+    if not passed:
+        raise RuntimeError("motor telemetry self-test failed")
 
 
 def replay_trace(args: argparse.Namespace) -> None:
@@ -292,6 +351,12 @@ def main() -> None:
     )
     safety_parser.add_argument("--runtime-config", required=True)
     safety_parser.set_defaults(handler=safety_self_test)
+    telemetry_parser = subparsers.add_parser(
+        "telemetry-self-test",
+        help="exercise physical motor limit and exact-inventory gates without CAN",
+    )
+    telemetry_parser.add_argument("--hardware-config", required=True)
+    telemetry_parser.set_defaults(handler=telemetry_self_test)
     replay_parser = subparsers.add_parser(
         "replay-trace", help="replay recorded observations through ONNX without CAN"
     )

@@ -39,6 +39,9 @@
   emergency-stop input all force a no-transmit safe hold. State, overrun, and
   emergency-stop faults remain latched until explicitly cleared after a
   separate healthy check.
+- [x] Implement exact 31-motor telemetry checks for finite state, hard position,
+  speed, torque, current, temperature, and torque-speed envelope. Any violation
+  latches the no-transmit `motor_limit` fault. Live frames are still required.
 - Measure 500 Hz loop jitter on the selected SBC under representative USB-CAN,
   logging, and inference load. A desktop timing probe is diagnostic only and
   cannot certify the Raspberry Pi 5 or Jetson Orin Nano.
