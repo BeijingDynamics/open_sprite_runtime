@@ -7,6 +7,7 @@
   "policy_target_semantics": "zero_order_hold_for_20ms",
   "state_layer_role": "feedback_safety_ankle_cross_coupling_and_held_target_refresh",
   "maximum_state_age_ms": 6.0,
+  "maximum_command_age_ms": 100.0,
   "maximum_policy_overrun_ms": 2.0,
   "allow_hardware_tx": false,
   "can_backend": "disabled",

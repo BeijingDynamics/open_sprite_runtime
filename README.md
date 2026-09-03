@@ -1,9 +1,10 @@
 # Open Sprite Runtime
 
-Safety-gated Sim2Real runtime work for Sprite0825. The initial reference policy
-is the qualified `model1050` release from
-[`BeijingDynamics/open_sprite_rl`](https://github.com/BeijingDynamics/open_sprite_rl),
-but that 100 Hz actor is a teacher and comparison baseline only.
+Safety-gated Sim2Real runtime work for Sprite0825. The current deployment
+candidate is the native-50 Hz G60 `model3450`; its ONNX actor, contract, and
+compact Isaac/MuJoCo qualification evidence are under
+`artifacts/g60_model3450`. The qualified 100 Hz `model1050` release remains a
+teacher and comparison baseline only.
 
 This repository is intentionally **not hardware-ready yet**. The initial code
 can inspect a policy contract and validate differential-ankle math, but it has
@@ -23,9 +24,9 @@ invent intermediate policy targets. It may refresh the held target and add the
 measured differential-ankle cross-coupling feed-forward term.
 
 The qualified `model1050` actor remains a 100 Hz teacher/baseline and is not the
-hardware deployment policy. The deployment actor will be trained natively at
-50 Hz with an approximately 160 ms observation window. Contract validation
-must reject a 100 Hz actor when the runtime is configured for 50 Hz.
+hardware deployment policy. G60 `model3450` is trained natively at 50 Hz with
+a 160 ms observation window. Contract validation rejects a 100 Hz actor when
+the runtime is configured for 50 Hz.
 
 ## Development setup
 
@@ -36,19 +37,37 @@ pip install -e '.[dev]'
 python -m unittest discover -s tests -v
 ```
 
-Inspect the qualified 100 Hz teacher contract without touching hardware. The
-report is expected to show a 50/100 Hz deployment mismatch until the new policy
-is qualified:
+Inspect the native-50 Hz candidate contract without touching hardware:
 
 ```bash
 sprite-runtime inspect \
-  --contract ../open_sprite_rl/baselines/sprite0825_stage2_g58f_model1050_stage2_qualified/deploy/contract.json \
+  --contract artifacts/g60_model3450/deploy/contract.json \
   --runtime-config config/runtime.example.json \
   --hardware-config config/hardware.example.json
 ```
 
+For a native 50 Hz candidate, run the fail-closed safety scenarios and a host
+scheduling probe before any CAN hardware is connected:
+
+```bash
+sprite-runtime safety-self-test --runtime-config config/runtime.example.json
+sprite-runtime timing-probe --duration 10 --state-hz 500
+```
+
+Replay a MuJoCo observation trace through the exported ONNX actor. This mode
+never opens a CAN interface and checks that runtime inference reproduces the
+actions recorded by the qualified simulator:
+
+```bash
+sprite-runtime replay-trace \
+  --contract <candidate>/deploy/contract.json \
+  --trace <candidate>/evaluation/mujoco_matrix/straight_60s_trace.json \
+  --sample-stride 10
+```
+
 See [Sim2Real plan](docs/SIM2REAL_PLAN.md), [timing](docs/TIMING.md), and
-[hardware contract](docs/HARDWARE_CONTRACT.md).
+[hardware contract](docs/HARDWARE_CONTRACT.md). The candidate evidence and
+remaining blockers are summarized in [G60 model3450](docs/G60_MODEL3450.md).
 
 ## License
 

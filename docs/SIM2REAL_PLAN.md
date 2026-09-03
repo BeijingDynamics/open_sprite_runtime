@@ -2,10 +2,11 @@
 
 ## Gate 0: frozen software contract
 
-- Pin `model1050` as the qualified 100 Hz teacher/baseline.
-- Train and pin a native 50 Hz deployment actor with approximately 160 ms history.
-- Reproduce deployment observations from recorded MuJoCo traces.
-- No horizontal base velocity in actor observations.
+- [x] Pin `model1050` as the qualified 100 Hz teacher/baseline.
+- [x] Train and pin G60 `model3450`, a native 50 Hz deployment actor with 160 ms history.
+- [x] Reproduce 299 sampled MuJoCo policy actions from recorded observations
+  through the packaged ONNX actor with zero numerical difference.
+- [x] Exclude horizontal base velocity, global position, and global yaw from actor observations.
 
 ## Gate 1: hardware inventory
 
@@ -25,6 +26,17 @@
 - Log raw frames, normalized observations, actor output, proposed motor targets,
   safety margins, loop jitter, and state age.
 - Replay every log deterministically offline.
+- Demonstrate that stale state, stale command, policy overrun, and an open
+  emergency-stop input all force a no-transmit safe hold. State, overrun, and
+  emergency-stop faults remain latched until explicitly cleared after a
+  separate healthy check.
+- Measure 500 Hz loop jitter on the selected SBC under representative USB-CAN,
+  logging, and inference load. A desktop timing probe is diagnostic only and
+  cannot certify the Raspberry Pi 5 or Jetson Orin Nano.
+
+The deterministic safety scenarios and a no-load 500 Hz probe pass on the 234
+development PC. This does not complete Gate 3: live motor/IMU frames, USB-CAN
+load, full logging, and the selected SBC are still required.
 
 ## Gate 4: protected actuation
 
