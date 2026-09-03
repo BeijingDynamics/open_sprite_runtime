@@ -5,7 +5,7 @@ Before shadow mode, fill every policy joint entry in `motor_map` with:
 - Damiao model and firmware version
 - USB-CAN FD channel and CAN ID
 - mechanical zero and encoder zero
-- positive policy direction versus positive motor direction
+- raw encoder sign; for direct joints, positive policy direction versus positive motor direction
 - reduction ratio and any linkage ratio
 - soft limit and independently measured hard limit
 - rated/peak torque, speed, current, and temperature limits
@@ -13,6 +13,28 @@ Before shadow mode, fill every policy joint entry in `motor_map` with:
 
 The runtime must reorder feedback into the exact 31-joint policy order from the
 qualified contract. It must never use CAN enumeration order as policy order.
+
+Run `open-sprite-runtime inspect` after filling the hardware file. The
+`hardware_inventory` report is fail-closed: it requires 27 one-to-one joint
+motors plus two coupled motors for each differential ankle, exactly 31 physical
+motors in total, unique `(can_channel, can_id)` endpoints, complete MIT ranges,
+finite zeros, nested soft/hard limits, a measured IMU configuration, an
+independent e-stop chain, and separate left/right ankle calibrations. A passing
+inventory check validates configuration consistency only; it does not enable
+CAN transmission.
+
+For direct joints, record `encoder_sign` and `policy_to_motor_sign` separately.
+For each coupled ankle motor, record only `encoder_sign`; the relationship from
+the two calibrated motor coordinates to pitch/roll belongs in that side's
+measured 2x2 `joint_to_motor_matrix`. Assigning a single ankle motor sign to one
+policy joint would be physically incorrect.
+
+The inventory validator also pins the known leg nameplate data: hip/knee motors
+are DM-J4340P-2EC with 14/40 Nm rated/peak torque, about 3.8 rad/s rated speed,
+and a 9-10 rad/s operating maximum at approximately 38 V. The four ankle
+motors are DM-J4310P-2EC with 3.5/12.5 Nm and 12.56/47.1 rad/s rated/no-load
+maximum values. Current and temperature limits remain hardware/firmware
+measurements and must be entered before qualification.
 
 ## IMU and heading
 

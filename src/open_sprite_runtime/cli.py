@@ -11,6 +11,7 @@ import numpy as np
 from .ankle import DifferentialAnkle
 from .contracts import PolicyContract, RuntimeTiming
 from .heading import HeadingCommandController, HeadingControllerConfig
+from .hardware import validate_hardware_inventory
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -51,6 +52,9 @@ def inspect(args: argparse.Namespace) -> None:
         policy_target_semantics=str(runtime.get("policy_target_semantics", "")),
     )
     contract = PolicyContract.load(args.contract)
+    hardware_inventory = validate_hardware_inventory(
+        hardware, contract.data["joint_names"]
+    )
     deployment_validation_error = None
     try:
         contract.validate_for_hardware(timing)
@@ -105,6 +109,7 @@ def inspect(args: argparse.Namespace) -> None:
             "actor_receives_global_yaw": False,
         },
         "ankles": ankle_report,
+        "hardware_inventory": hardware_inventory.to_dict(),
         "hardware_arm_blockers": safety.blockers(),
     }
     print(json.dumps(report, indent=2))
