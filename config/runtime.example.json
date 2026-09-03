@@ -9,6 +9,14 @@
   "maximum_state_age_ms": 6.0,
   "maximum_command_age_ms": 100.0,
   "maximum_policy_overrun_ms": 2.0,
+  "heading_controller": {
+    "source": "IsaacLab UniformVelocityCommand PM01 heading mode",
+    "stiffness": 0.5,
+    "yaw_rate_limit_rad_s": 0.2,
+    "manual_yaw_deadband_rad_s": 0.01,
+    "stand_resets_heading": true,
+    "actor_receives_global_yaw": false
+  },
   "allow_hardware_tx": false,
   "can_backend": "disabled",
   "notes": "Do not enable hardware TX in the example configuration."

@@ -33,3 +33,9 @@ The motor's internal 1 kHz loop does not make a USB host loop deterministic.
 If the four-channel USB-CAN FD bridge cannot meet the measured state-age and
 watchdog requirements, add a dedicated real-time CAN gateway rather than
 changing the qualified policy timing after training.
+
+The 500 Hz state layer timestamps and validates gyro samples and maintains the
+integrated yaw estimate. The PM01-style heading controller runs once per 50 Hz
+policy tick and writes only the existing yaw-rate command observation. Standing
+may reset the heading reference, but must not reset policy history or fabricate
+joint/IMU samples.

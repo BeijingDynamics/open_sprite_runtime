@@ -7,12 +7,18 @@
 - [x] Reproduce 299 sampled MuJoCo policy actions from recorded observations
   through the packaged ONNX actor with zero numerical difference.
 - [x] Exclude horizontal base velocity, global position, and global yaw from actor observations.
+- [x] Implement and unit-test the PM01-style integrated-IMU-yaw outer command
+  controller without adding global yaw to the actor.
+- [ ] Qualify the outer heading controller under the same Isaac robust pushes
+  and randomization used for the open-loop G60 stress matrix.
 
 ## Gate 1: hardware inventory
 
 - Complete all 31 motor mappings, limits, and MIT ranges.
 - Measure four-channel USB-CAN FD latency and sustained bus utilization.
 - Establish a hardware emergency-stop chain independent of the SBC process.
+- Measure and record pelvis IMU mounting transform, axes, timestamps, update
+  rate, gyro bias, and short-term integrated-yaw drift.
 
 ## Gate 2: ankle calibration
 

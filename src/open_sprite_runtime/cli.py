@@ -10,6 +10,7 @@ import numpy as np
 
 from .ankle import DifferentialAnkle
 from .contracts import PolicyContract, RuntimeTiming
+from .heading import HeadingCommandController, HeadingControllerConfig
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -25,6 +26,21 @@ def load_json(path: str | Path) -> dict:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
+def load_heading_config(runtime: dict) -> HeadingControllerConfig:
+    raw = runtime["heading_controller"]
+    if raw.get("actor_receives_global_yaw") is not False:
+        raise ValueError("global yaw must remain outside the actor")
+    if raw.get("stand_resets_heading") is not True:
+        raise ValueError("standing must reset the integrated-yaw heading reference")
+    config = HeadingControllerConfig(
+        stiffness=float(raw["stiffness"]),
+        yaw_rate_limit_rad_s=float(raw["yaw_rate_limit_rad_s"]),
+        manual_yaw_deadband_rad_s=float(raw["manual_yaw_deadband_rad_s"]),
+    )
+    config.validate()
+    return config
+
+
 def inspect(args: argparse.Namespace) -> None:
     runtime = load_json(args.runtime_config)
     hardware = load_json(args.hardware_config)
@@ -38,8 +54,10 @@ def inspect(args: argparse.Namespace) -> None:
     deployment_validation_error = None
     try:
         contract.validate_for_hardware(timing)
-    except ValueError as exc:
+        heading = load_heading_config(runtime)
+    except (KeyError, TypeError, ValueError) as exc:
         deployment_validation_error = str(exc)
+        heading = None
 
     ankle_report = {}
     for side, ankle_config in hardware["ankles"].items():
@@ -78,6 +96,14 @@ def inspect(args: argparse.Namespace) -> None:
             "state_updates_per_policy": timing.state_updates_per_policy,
             "policy_target_semantics": timing.policy_target_semantics,
         },
+        "heading_controller": {
+            "valid": heading is not None,
+            "stiffness": heading.stiffness if heading is not None else None,
+            "yaw_rate_limit_rad_s": (
+                heading.yaw_rate_limit_rad_s if heading is not None else None
+            ),
+            "actor_receives_global_yaw": False,
+        },
         "ankles": ankle_report,
         "hardware_arm_blockers": safety.blockers(),
     }
@@ -86,6 +112,49 @@ def inspect(args: argparse.Namespace) -> None:
 
 def timing_probe(args: argparse.Namespace) -> None:
     print(json.dumps(run_host_timing_probe(args.duration, args.state_hz), indent=2))
+
+
+def heading_self_test(args: argparse.Namespace) -> None:
+    runtime = load_json(args.runtime_config)
+    config = load_heading_config(runtime)
+    controller = HeadingCommandController(config)
+    rows = []
+    for name, yaw, requested, standing in (
+        ("stand_zero", 1.0, 0.0, True),
+        ("hold_small_error", 1.2, 0.0, False),
+        ("hold_saturated", 2.0, 0.0, False),
+        ("manual_right", 1.4, 0.15, False),
+        ("release_and_hold", 1.4, 0.0, False),
+    ):
+        command = controller.update(yaw, requested, standing=standing)
+        rows.append(
+            {
+                "case": name,
+                "measured_yaw_rad": yaw,
+                "operator_yaw_rate_rad_s": requested,
+                "actor_yaw_rate_command_rad_s": command,
+                "hold_target_yaw_rad": controller.target_yaw,
+            }
+        )
+    expected = [0.0, -0.1, -0.2, 0.15, 0.0]
+    mismatches = (
+        abs(row["actor_yaw_rate_command_rad_s"] - target) > 1.0e-12
+        for row, target in zip(rows, expected, strict=True)
+    )
+    if any(mismatches):
+        raise RuntimeError("heading controller self-test mismatch")
+    print(
+        json.dumps(
+            {
+                "mode": "heading_self_test_no_hardware_tx",
+                "actor_receives_global_yaw": False,
+                "formula": "clip(stiffness * wrap(target_yaw - imu_yaw), yaw_rate_limit)",
+                "rows": rows,
+                "passed": True,
+            },
+            indent=2,
+        )
+    )
 
 
 def safety_self_test(args: argparse.Namespace) -> None:
@@ -171,6 +240,11 @@ def main() -> None:
     timing_parser.add_argument("--duration", type=float, default=5.0)
     timing_parser.add_argument("--state-hz", type=int, default=500)
     timing_parser.set_defaults(handler=timing_probe)
+    heading_parser = subparsers.add_parser(
+        "heading-self-test", help="exercise IMU-yaw outer command control without CAN"
+    )
+    heading_parser.add_argument("--runtime-config", required=True)
+    heading_parser.set_defaults(handler=heading_self_test)
     safety_parser = subparsers.add_parser(
         "safety-self-test", help="exercise stale-data, timeout, overrun, and e-stop gates"
     )

@@ -51,8 +51,15 @@ scheduling probe before any CAN hardware is connected:
 
 ```bash
 sprite-runtime safety-self-test --runtime-config config/runtime.example.json
+sprite-runtime heading-self-test --runtime-config config/runtime.example.json
 sprite-runtime timing-probe --duration 10 --state-hz 500
 ```
+
+The heading controller follows Isaac Lab's PM01 command interface: while
+walking straight it computes `wz = clip(0.5 * wrap(target_yaw - imu_yaw),
+-0.2, 0.2)`. Standing resets the target to the current integrated IMU yaw;
+manual yaw-rate commands are passed through and the new heading is held when
+the operator releases the turn command. Global yaw remains outside the actor.
 
 Replay a MuJoCo observation trace through the exported ONNX actor. This mode
 never opens a CAN interface and checks that runtime inference reproduces the

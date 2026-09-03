@@ -2,6 +2,12 @@
 
 from .ankle import DifferentialAnkle
 from .contracts import PolicyContract, RuntimeTiming
+from .heading import HeadingCommandController, HeadingControllerConfig
 
-__all__ = ["DifferentialAnkle", "PolicyContract", "RuntimeTiming"]
-
+__all__ = [
+    "DifferentialAnkle",
+    "HeadingCommandController",
+    "HeadingControllerConfig",
+    "PolicyContract",
+    "RuntimeTiming",
+]
