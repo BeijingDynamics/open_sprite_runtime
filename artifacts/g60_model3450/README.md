@@ -16,3 +16,8 @@ sprite-runtime inspect \
 The full checkpoint, source snapshots, logs, and MuJoCo trace are retained in
 the separately hashed G60 candidate packages on the 4090 persistent disk, the
 234 machine, and the Windows project backup.
+
+`reports/isaac_robust_summary.json` covers repeated pushes, randomization,
+20-cycle start/stop, direct yaw, contact, tracking, and motor envelopes.
+`reports/isaac_robust_heading_hold_summary.json` compares the same three seeds
+with and without the PM01-style outer heading controller.

@@ -74,7 +74,8 @@ sprite-runtime replay-trace \
 
 See [Sim2Real plan](docs/SIM2REAL_PLAN.md), [timing](docs/TIMING.md), and
 [hardware contract](docs/HARDWARE_CONTRACT.md). The candidate evidence and
-remaining blockers are summarized in [G60 model3450](docs/G60_MODEL3450.md).
+remaining blockers are summarized in [G60 model3450](docs/G60_MODEL3450.md),
+including the [robust heading audit](docs/G60_ROBUST_HEADING_AUDIT.md).
 
 ## License
 

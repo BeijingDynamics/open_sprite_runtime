@@ -9,7 +9,7 @@
 - [x] Exclude horizontal base velocity, global position, and global yaw from actor observations.
 - [x] Implement and unit-test the PM01-style integrated-IMU-yaw outer command
   controller without adding global yaw to the actor.
-- [ ] Qualify the outer heading controller under the same Isaac robust pushes
+- [x] Qualify the outer heading controller under the same Isaac robust pushes
   and randomization used for the open-loop G60 stress matrix.
 
 ## Gate 1: hardware inventory
