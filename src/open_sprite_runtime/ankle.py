@@ -1,4 +1,4 @@
-"""Differential-ankle kinematics and power-consistent torque transforms."""
+"""Differential-ankle calibration and power-consistent transforms."""
 
 from __future__ import annotations
 
@@ -10,6 +10,57 @@ from numpy.typing import ArrayLike, NDArray
 
 Vector2 = NDArray[np.float64]
 Matrix2 = NDArray[np.float64]
+
+
+def fit_differential_ankle(
+    joint_positions_rad: ArrayLike,
+    motor_positions_rad: ArrayLike,
+    *,
+    maximum_rms_residual_rad: float = 0.01,
+    maximum_condition_number: float = 100.0,
+) -> dict[str, object]:
+    """Fit ``q_motor = A @ q_joint + zero`` from unloaded measurements."""
+    joints = np.asarray(joint_positions_rad, dtype=np.float64)
+    motors = np.asarray(motor_positions_rad, dtype=np.float64)
+    if joints.ndim != 2 or joints.shape[1] != 2 or motors.shape != joints.shape:
+        raise ValueError("joint and motor samples must both have shape [N, 2]")
+    if joints.shape[0] < 6:
+        raise ValueError("at least six ankle calibration samples are required")
+    if not np.isfinite(joints).all() or not np.isfinite(motors).all():
+        raise ValueError("ankle calibration samples must be finite")
+    design = np.column_stack((joints, np.ones(joints.shape[0])))
+    if int(np.linalg.matrix_rank(design)) != 3:
+        raise ValueError("ankle calibration samples do not independently excite pitch and roll")
+    excitation_condition = float(np.linalg.cond(design))
+    coefficients, _, _, _ = np.linalg.lstsq(design, motors, rcond=None)
+    matrix = coefficients[:2, :].T
+    zero = coefficients[2, :]
+    determinant = float(np.linalg.det(matrix))
+    if abs(determinant) < 1.0e-6:
+        raise ValueError("fitted ankle matrix is singular")
+    predicted = joints @ matrix.T + zero
+    residual = motors - predicted
+    rms = np.sqrt(np.mean(np.square(residual), axis=0))
+    maximum = np.max(np.abs(residual), axis=0)
+    fitted_condition = float(np.linalg.cond(matrix))
+    passed = bool(
+        excitation_condition <= maximum_condition_number
+        and fitted_condition <= maximum_condition_number
+        and float(np.max(rms)) <= maximum_rms_residual_rad
+    )
+    return {
+        "joint_to_motor_matrix": matrix.tolist(),
+        "motor_zero_rad": zero.tolist(),
+        "determinant": determinant,
+        "excitation_condition_number": excitation_condition,
+        "matrix_condition_number": fitted_condition,
+        "rms_residual_rad": rms.tolist(),
+        "max_abs_residual_rad": maximum.tolist(),
+        "sample_count": joints.shape[0],
+        "maximum_rms_residual_rad": maximum_rms_residual_rad,
+        "maximum_condition_number": maximum_condition_number,
+        "passed": passed,
+    }
 
 
 def _vector2(value: ArrayLike, name: str) -> Vector2:

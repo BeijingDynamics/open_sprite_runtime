@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from open_sprite_runtime.ankle import DifferentialAnkle
+from open_sprite_runtime.ankle import DifferentialAnkle, fit_differential_ankle
 
 
 class DifferentialAnkleTests(unittest.TestCase):
@@ -42,6 +42,30 @@ class DifferentialAnkleTests(unittest.TestCase):
     def test_unequal_joint_gains_require_cross_coupling(self) -> None:
         with self.assertRaisesRegex(ValueError, "cross-coupled"):
             self.ankle.diagonal_motor_gains([14.0, 8.0])
+
+    def test_calibration_recovers_affine_map(self) -> None:
+        joints = np.asarray(
+            [
+                [-0.2, -0.1],
+                [-0.2, 0.1],
+                [0.0, -0.1],
+                [0.0, 0.1],
+                [0.2, -0.1],
+                [0.2, 0.1],
+            ]
+        )
+        matrix = np.asarray([[1.02, 0.96], [0.98, -1.04]])
+        zero = np.asarray([0.03, -0.02])
+        motors = joints @ matrix.T + zero
+        report = fit_differential_ankle(joints, motors)
+        self.assertTrue(report["passed"])
+        np.testing.assert_allclose(report["joint_to_motor_matrix"], matrix, atol=1e-12)
+        np.testing.assert_allclose(report["motor_zero_rad"], zero, atol=1e-12)
+
+    def test_calibration_rejects_single_axis_excitation(self) -> None:
+        joints = np.asarray([[value, 0.0] for value in np.linspace(-0.2, 0.2, 6)])
+        with self.assertRaisesRegex(ValueError, "independently excite"):
+            fit_differential_ankle(joints, joints)
 
 
 if __name__ == "__main__":

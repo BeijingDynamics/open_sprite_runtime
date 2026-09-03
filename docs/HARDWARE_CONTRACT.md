@@ -108,3 +108,17 @@ cross terms. Independent motor PD alone then cannot reproduce the trained joint
 impedance; the 500 Hz layer must supply the cross-coupled correction through
 MIT feed-forward torque, or the policy must be requalified with the realizable
 impedance.
+
+Collect at least six unloaded poses per side spanning independent positive and
+negative pitch and roll. Record a CSV with
+`pitch_rad,roll_rad,motor_a_rad,motor_b_rad`, then fit each side separately:
+
+```bash
+open-sprite-runtime ankle-calibrate --side left \
+  --samples calibration/left_ankle.csv --output calibration/left_ankle_fit.json
+```
+
+The fitter reports the 2x2 matrix, both motor zeros, excitation and matrix
+condition numbers, and per-motor residuals. Its default gate requires RMS
+residual at most 0.01 rad and both condition numbers at most 100. A failed fit
+must not be copied into the hardware contract.

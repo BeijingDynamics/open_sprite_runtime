@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from pathlib import Path
 
 import numpy as np
 
-from .ankle import DifferentialAnkle
+from .ankle import DifferentialAnkle, fit_differential_ankle
 from .contracts import PolicyContract, RuntimeTiming
 from .heading import HeadingCommandController, HeadingControllerConfig
 from .hardware import make_hardware_template, validate_hardware_inventory
@@ -283,6 +284,39 @@ def telemetry_self_test(args: argparse.Namespace) -> None:
         raise RuntimeError("motor telemetry self-test failed")
 
 
+def ankle_calibrate(args: argparse.Namespace) -> None:
+    with Path(args.samples).open(encoding="utf-8", newline="") as stream:
+        rows = list(csv.DictReader(stream))
+    required = ("pitch_rad", "roll_rad", "motor_a_rad", "motor_b_rad")
+    missing = [name for name in required if not rows or name not in rows[0]]
+    if missing:
+        raise ValueError(f"ankle calibration CSV missing columns: {', '.join(missing)}")
+    joints = np.asarray(
+        [[row["pitch_rad"], row["roll_rad"]] for row in rows], dtype=float
+    )
+    motors = np.asarray(
+        [[row["motor_a_rad"], row["motor_b_rad"]] for row in rows], dtype=float
+    )
+    result = fit_differential_ankle(
+        joints,
+        motors,
+        maximum_rms_residual_rad=args.maximum_rms_residual_rad,
+        maximum_condition_number=args.maximum_condition_number,
+    )
+    report = {
+        "mode": "unloaded_differential_ankle_calibration_no_hardware_tx",
+        "side": args.side,
+        "source": str(Path(args.samples).resolve()),
+        **result,
+    }
+    output = json.dumps(report, indent=2) + "\n"
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+    print(output, end="")
+    if not report["passed"]:
+        raise SystemExit("ankle calibration quality gates failed")
+
+
 def replay_trace(args: argparse.Namespace) -> None:
     report = replay_mujoco_trace(args.contract, args.trace, args.sample_stride)
     print(json.dumps(report, indent=2))
@@ -357,6 +391,16 @@ def main() -> None:
     )
     telemetry_parser.add_argument("--hardware-config", required=True)
     telemetry_parser.set_defaults(handler=telemetry_self_test)
+    ankle_parser = subparsers.add_parser(
+        "ankle-calibrate",
+        help="fit one unloaded differential-ankle map from measured CSV samples",
+    )
+    ankle_parser.add_argument("--side", required=True, choices=("left", "right"))
+    ankle_parser.add_argument("--samples", required=True)
+    ankle_parser.add_argument("--output")
+    ankle_parser.add_argument("--maximum-rms-residual-rad", type=float, default=0.01)
+    ankle_parser.add_argument("--maximum-condition-number", type=float, default=100.0)
+    ankle_parser.set_defaults(handler=ankle_calibrate)
     replay_parser = subparsers.add_parser(
         "replay-trace", help="replay recorded observations through ONNX without CAN"
     )
