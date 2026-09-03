@@ -19,7 +19,7 @@ from .safety import (
     SafetyState,
     SafetySupervisor,
 )
-from .shadow import replay_mujoco_trace
+from .shadow import replay_mujoco_trace, replay_multirate_mujoco_trace
 from .timing import run_host_timing_probe
 
 
@@ -231,6 +231,22 @@ def replay_trace(args: argparse.Namespace) -> None:
         raise SystemExit("shadow replay parity failed")
 
 
+def replay_multirate_trace(args: argparse.Namespace) -> None:
+    runtime = load_json(args.runtime_config)
+    report = replay_multirate_mujoco_trace(
+        args.contract,
+        args.trace,
+        policy_hz=int(runtime["policy_hz"]),
+        state_hz=int(runtime["state_hz"]),
+        maximum_state_age_ms=float(runtime["maximum_state_age_ms"]),
+        maximum_command_age_ms=float(runtime["maximum_command_age_ms"]),
+        maximum_policy_overrun_ms=float(runtime["maximum_policy_overrun_ms"]),
+    )
+    print(json.dumps(report, indent=2))
+    if not report["passed"]:
+        raise SystemExit("multirate shadow replay failed")
+
+
 def hardware_template(args: argparse.Namespace) -> None:
     output = Path(args.output)
     if output.exists() and not args.force:
@@ -283,6 +299,14 @@ def main() -> None:
     replay_parser.add_argument("--trace", required=True)
     replay_parser.add_argument("--sample-stride", type=int, default=10)
     replay_parser.set_defaults(handler=replay_trace)
+    multirate_parser = subparsers.add_parser(
+        "multirate-replay",
+        help="replay every policy tick through a synthetic 500 Hz no-TX safety loop",
+    )
+    multirate_parser.add_argument("--contract", required=True)
+    multirate_parser.add_argument("--runtime-config", required=True)
+    multirate_parser.add_argument("--trace", required=True)
+    multirate_parser.set_defaults(handler=replay_multirate_trace)
     template_parser = subparsers.add_parser(
         "hardware-template", help="generate a non-armable 31-motor measurement worksheet"
     )

@@ -32,6 +32,9 @@
 - Log raw frames, normalized observations, actor output, proposed motor targets,
   safety margins, loop jitter, and state age.
 - Replay every log deterministically offline.
+- Replay every recorded 50 Hz policy tick through the packaged ONNX actor and
+  expand each output through ten 500 Hz zero-order-held safety ticks. This is a
+  no-transmit software check; live state frames are still required for Gate 3.
 - Demonstrate that stale state, stale command, policy overrun, and an open
   emergency-stop input all force a no-transmit safe hold. State, overrun, and
   emergency-stop faults remain latched until explicitly cleared after a
