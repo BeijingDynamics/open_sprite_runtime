@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "open-sprite-runtime"
+version = "0.1.0"
+description = "Safety-gated Sim2Real runtime for the Sprite humanoid"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "Beijing Dynamics" }]
+dependencies = [
+  "numpy>=1.26",
+  "onnxruntime>=1.17",
+]
+
+[project.optional-dependencies]
+can = ["python-can>=4.4"]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[project.scripts]
+sprite-runtime = "open_sprite_runtime.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+

@@ -1,0 +1,13 @@
+{
+  "schema": "sprite_runtime_timing_v1",
+  "policy_hz": 50,
+  "state_hz": 500,
+  "motor_internal_hz": 1000,
+  "pd_location": "damiao_mit_motor",
+  "command_interpolation": "linear_position_velocity_consistent",
+  "maximum_state_age_ms": 6.0,
+  "maximum_policy_overrun_ms": 2.0,
+  "allow_hardware_tx": false,
+  "can_backend": "disabled",
+  "notes": "Do not enable hardware TX in the example configuration."
+}

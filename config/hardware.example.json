@@ -1,0 +1,41 @@
+{
+  "schema": "sprite0825_hardware_contract_v1",
+  "configured": false,
+  "controller": {
+    "candidate": "jetson_orin_nano_or_raspberry_pi_5",
+    "usb_canfd_channels": 4,
+    "measured_round_trip_latency_required": true
+  },
+  "imu": {
+    "configured": false,
+    "mount_link": null,
+    "orientation": null,
+    "gyro_units": "rad_s",
+    "quaternion_order": null
+  },
+  "estop": {
+    "configured": false,
+    "hardware_chain": null,
+    "watchdog_timeout_ms": 20
+  },
+  "motor_map": {},
+  "ankles": {
+    "left": {
+      "calibrated": false,
+      "joint_order": ["left_ankle_pitch_joint", "left_ankle_roll_joint"],
+      "motor_order": ["left_ankle_motor_a", "left_ankle_motor_b"],
+      "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
+      "motor_zero_rad": [0.0, 0.0],
+      "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM"
+    },
+    "right": {
+      "calibrated": false,
+      "joint_order": ["right_ankle_pitch_joint", "right_ankle_roll_joint"],
+      "motor_order": ["right_ankle_motor_a", "right_ankle_motor_b"],
+      "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
+      "motor_zero_rad": [0.0, 0.0],
+      "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM"
+    }
+  }
+}
+
