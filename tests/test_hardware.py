@@ -1,7 +1,12 @@
 import copy
 import unittest
 
-from open_sprite_runtime.hardware import ANKLE_JOINTS, ANKLE_PAIRS, validate_hardware_inventory
+from open_sprite_runtime.hardware import (
+    ANKLE_JOINTS,
+    ANKLE_PAIRS,
+    make_hardware_template,
+    validate_hardware_inventory,
+)
 
 
 JOINTS = (
@@ -98,6 +103,19 @@ def complete_hardware() -> dict:
 
 
 class HardwareInventoryTest(unittest.TestCase):
+    def test_generated_template_has_physical_topology_and_known_leg_ratings(self) -> None:
+        template = make_hardware_template(JOINTS)
+        records = template["motor_map"]
+        self.assertEqual(len(records), 31)
+        self.assertFalse(template["configured"])
+        self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
+        self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
+        self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])
+        report = validate_hardware_inventory(template, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertFalse(report.missing_policy_joints)
+        self.assertLess(len(report.errors), 80)
+
     def test_complete_inventory_passes(self) -> None:
         report = validate_hardware_inventory(complete_hardware(), JOINTS)
         self.assertTrue(report.valid, report.errors)

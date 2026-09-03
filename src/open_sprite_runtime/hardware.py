@@ -93,10 +93,6 @@ def _validate_motor_record(
     if not isinstance(record, dict):
         errors.append(f"motor_map.{label} must be an object")
         return None, None, None
-    missing = [field for field in MOTOR_REQUIRED_FIELDS if field not in record]
-    if missing:
-        errors.append(f"motor_map.{label} missing fields: {', '.join(missing)}")
-
     direct = record.get("policy_joint")
     coupled_raw = record.get("coupled_joints")
     coupled = tuple(coupled_raw) if isinstance(coupled_raw, list) else None
@@ -107,28 +103,40 @@ def _validate_motor_record(
     if coupled is not None and coupled not in ANKLE_PAIRS.values():
         errors.append(f"motor_map.{label}.coupled_joints is not a physical ankle pair")
 
+    required = list(MOTOR_REQUIRED_FIELDS)
+    if direct is not None:
+        required.append("policy_to_motor_sign")
+    unset = [field for field in required if record.get(field) is None]
+    if unset:
+        errors.append(f"motor_map.{label} unset fields: {', '.join(unset)}")
+
     for field in ("model", "firmware"):
-        if not _nonempty(record.get(field)):
+        if record.get(field) is not None and not _nonempty(record.get(field)):
             errors.append(f"motor_map.{label}.{field} is empty or TODO")
     channel = record.get("can_channel")
     can_id = record.get("can_id")
     endpoint = None
-    if not isinstance(channel, int) or not 0 <= channel < 4:
+    if channel is not None and (not isinstance(channel, int) or not 0 <= channel < 4):
         errors.append(f"motor_map.{label}.can_channel must be an integer in [0, 3]")
-    if not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF:
+    if can_id is not None and (not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF):
         errors.append(f"motor_map.{label}.can_id must be an 11-bit integer")
     if isinstance(channel, int) and isinstance(can_id, int):
         endpoint = f"{channel}:{can_id}"
 
-    try:
-        zero = float(record["motor_zero_rad"])
-        if not np.isfinite(zero):
-            raise ValueError
-    except (KeyError, TypeError, ValueError):
-        errors.append(f"motor_map.{label}.motor_zero_rad must be finite")
-    if record.get("encoder_sign") not in (-1, 1):
+    if record.get("motor_zero_rad") is not None:
+        try:
+            zero = float(record["motor_zero_rad"])
+            if not np.isfinite(zero):
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append(f"motor_map.{label}.motor_zero_rad must be finite")
+    if record.get("encoder_sign") is not None and record.get("encoder_sign") not in (-1, 1):
         errors.append(f"motor_map.{label}.encoder_sign must be -1 or 1")
-    if direct is not None and record.get("policy_to_motor_sign") not in (-1, 1):
+    if (
+        direct is not None
+        and record.get("policy_to_motor_sign") is not None
+        and record.get("policy_to_motor_sign") not in (-1, 1)
+    ):
         errors.append(f"motor_map.{label}.policy_to_motor_sign must be -1 or 1")
     for field in (
         "reduction_ratio",
@@ -141,17 +149,36 @@ def _validate_motor_record(
         "peak_current_a",
         "temperature_limit_c",
     ):
-        _positive(record, field, f"motor_map.{label}", errors)
-    soft = _pair(record.get("soft_limit_rad"), f"motor_map.{label}.soft_limit_rad", errors)
-    hard = _pair(record.get("hard_limit_rad"), f"motor_map.{label}.hard_limit_rad", errors)
+        if record.get(field) is not None:
+            _positive(record, field, f"motor_map.{label}", errors)
+    soft = (
+        _pair(record["soft_limit_rad"], f"motor_map.{label}.soft_limit_rad", errors)
+        if record.get("soft_limit_rad") is not None
+        else None
+    )
+    hard = (
+        _pair(record["hard_limit_rad"], f"motor_map.{label}.hard_limit_rad", errors)
+        if record.get("hard_limit_rad") is not None
+        else None
+    )
     if soft is not None and hard is not None and not (hard[0] <= soft[0] < soft[1] <= hard[1]):
         errors.append(f"motor_map.{label} soft limit must lie inside hard limit")
     mit = record.get("mit_ranges")
-    if not isinstance(mit, dict):
+    if mit is not None and not isinstance(mit, dict):
         errors.append(f"motor_map.{label}.mit_ranges must be an object")
-    else:
+    elif isinstance(mit, dict):
+        unset_mit = [
+            field
+            for field in ("position_rad", "velocity_rad_s", "kp", "kd", "torque_nm")
+            if mit.get(field) is None
+        ]
+        if unset_mit:
+            errors.append(
+                f"motor_map.{label}.mit_ranges unset fields: {', '.join(unset_mit)}"
+            )
         for field in ("position_rad", "velocity_rad_s", "kp", "kd", "torque_nm"):
-            _pair(mit.get(field), f"motor_map.{label}.mit_ranges.{field}", errors)
+            if mit.get(field) is not None:
+                _pair(mit[field], f"motor_map.{label}.mit_ranges.{field}", errors)
     return direct if isinstance(direct, str) else None, coupled, endpoint
 
 
@@ -310,3 +337,111 @@ def validate_hardware_inventory(
         errors=tuple(errors),
         warnings=tuple(warnings),
     )
+
+
+def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
+    """Build a complete, non-armable 31-motor measurement worksheet."""
+    policy_order = tuple(policy_joint_names)
+    if len(policy_order) != 31 or len(set(policy_order)) != 31:
+        raise ValueError("frozen policy contract must contain 31 unique joints")
+
+    def base_record() -> dict[str, Any]:
+        return {
+            "model": None,
+            "firmware": None,
+            "can_channel": None,
+            "can_id": None,
+            "motor_zero_rad": None,
+            "encoder_sign": None,
+            "reduction_ratio": None,
+            "linkage_ratio": None,
+            "soft_limit_rad": None,
+            "hard_limit_rad": None,
+            "rated_torque_nm": None,
+            "peak_torque_nm": None,
+            "rated_speed_rad_s": None,
+            "max_speed_rad_s": None,
+            "rated_current_a": None,
+            "peak_current_a": None,
+            "temperature_limit_c": None,
+            "mit_ranges": {
+                "position_rad": None,
+                "velocity_rad_s": None,
+                "kp": None,
+                "kd": None,
+                "torque_nm": None,
+            },
+        }
+
+    motor_map: dict[str, dict[str, Any]] = {}
+    for joint in policy_order:
+        if joint in ANKLE_JOINTS:
+            continue
+        record = base_record()
+        record["policy_joint"] = joint
+        record["policy_to_motor_sign"] = None
+        if "_hip_" in joint or joint.endswith("_knee_joint"):
+            record.update(
+                {
+                    "model": "DM-J4340P-2EC",
+                    "rated_torque_nm": 14.0,
+                    "peak_torque_nm": 40.0,
+                    "rated_speed_rad_s": 3.8,
+                    "max_speed_rad_s": 10.0,
+                }
+            )
+        motor_map[joint.removesuffix("_joint") + "_motor"] = record
+
+    for side, pair in ANKLE_PAIRS.items():
+        for suffix in ("a", "b"):
+            record = base_record()
+            record.update(
+                {
+                    "model": "DM-J4310P-2EC",
+                    "rated_torque_nm": 3.5,
+                    "peak_torque_nm": 12.5,
+                    "rated_speed_rad_s": 12.56,
+                    "max_speed_rad_s": 47.1,
+                    "coupled_joints": list(pair),
+                }
+            )
+            motor_map[f"{side}_ankle_motor_{suffix}"] = record
+
+    if len(motor_map) != 31:
+        raise AssertionError("generated hardware template must contain 31 physical motors")
+    return {
+        "schema": "sprite0825_hardware_contract_v1",
+        "configured": False,
+        "controller": {
+            "candidate": "jetson_orin_nano_or_raspberry_pi_5",
+            "usb_canfd_channels": 4,
+            "measured_round_trip_latency_required": True,
+        },
+        "imu": {
+            "configured": False,
+            "mount_link": None,
+            "body_to_sensor_quaternion_wxyz": None,
+            "gyro_units": "rad_s",
+            "quaternion_order": None,
+            "update_hz": None,
+            "timestamp_source": None,
+            "measured_yaw_drift_deg_per_min": None,
+        },
+        "estop": {
+            "configured": False,
+            "hardware_chain": None,
+            "watchdog_timeout_ms": 20,
+        },
+        "motor_map": motor_map,
+        "ankles": {
+            side: {
+                "calibrated": False,
+                "joint_order": list(pair),
+                "motor_order": [f"{side}_ankle_motor_a", f"{side}_ankle_motor_b"],
+                "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
+                "motor_zero_rad": [0.0, 0.0],
+                "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM",
+            }
+            for side, pair in ANKLE_PAIRS.items()
+        },
+    }

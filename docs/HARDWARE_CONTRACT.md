@@ -11,6 +11,21 @@ Before shadow mode, fill every policy joint entry in `motor_map` with:
 - rated/peak torque, speed, current, and temperature limits
 - MIT protocol ranges and quantization for position, velocity, Kp, Kd, torque
 
+Generate the measurement worksheet from the frozen policy order instead of
+typing joint names manually:
+
+```bash
+open-sprite-runtime hardware-template \
+  --contract artifacts/g60_model3450/deploy/contract.json \
+  --output config/hardware.sprite0825.local.json
+```
+
+The generated file is deliberately non-armable. It pre-fills only the known
+leg motor nameplate values and physical ankle topology; every machine-specific
+CAN endpoint, firmware version, zero, sign, limit, current/temperature bound,
+MIT range, IMU transform, e-stop description, and measured ankle matrix remains
+unset until measured.
+
 The runtime must reorder feedback into the exact 31-joint policy order from the
 qualified contract. It must never use CAN enumeration order as policy order.
 

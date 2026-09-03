@@ -11,7 +11,7 @@ import numpy as np
 from .ankle import DifferentialAnkle
 from .contracts import PolicyContract, RuntimeTiming
 from .heading import HeadingCommandController, HeadingControllerConfig
-from .hardware import validate_hardware_inventory
+from .hardware import make_hardware_template, validate_hardware_inventory
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -231,6 +231,27 @@ def replay_trace(args: argparse.Namespace) -> None:
         raise SystemExit("shadow replay parity failed")
 
 
+def hardware_template(args: argparse.Namespace) -> None:
+    output = Path(args.output)
+    if output.exists() and not args.force:
+        raise FileExistsError(f"refusing to overwrite {output}; pass --force explicitly")
+    contract = PolicyContract.load(args.contract)
+    template = make_hardware_template(contract.data["joint_names"])
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(template, indent=2) + "\n", encoding="utf-8")
+    print(
+        json.dumps(
+            {
+                "mode": "hardware_measurement_template_no_hardware_tx",
+                "output": str(output.resolve()),
+                "physical_motor_count": len(template["motor_map"]),
+                "configured": False,
+            },
+            indent=2,
+        )
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(required=True)
@@ -262,6 +283,13 @@ def main() -> None:
     replay_parser.add_argument("--trace", required=True)
     replay_parser.add_argument("--sample-stride", type=int, default=10)
     replay_parser.set_defaults(handler=replay_trace)
+    template_parser = subparsers.add_parser(
+        "hardware-template", help="generate a non-armable 31-motor measurement worksheet"
+    )
+    template_parser.add_argument("--contract", required=True)
+    template_parser.add_argument("--output", required=True)
+    template_parser.add_argument("--force", action="store_true")
+    template_parser.set_defaults(handler=hardware_template)
     args = parser.parse_args()
     args.handler(args)
 
