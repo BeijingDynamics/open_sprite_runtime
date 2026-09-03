@@ -45,6 +45,7 @@ class RuntimeTiming:
     policy_hz: int
     state_hz: int
     motor_internal_hz: int
+    policy_target_semantics: str = "zero_order_hold_for_20ms"
 
     def validate(self) -> None:
         for name, value in (
@@ -58,10 +59,17 @@ class RuntimeTiming:
             raise ValueError("state_hz must be an integer multiple of policy_hz")
         if self.motor_internal_hz % self.state_hz:
             raise ValueError("motor_internal_hz must be an integer multiple of state_hz")
+        if self.policy_target_semantics != "zero_order_hold_for_20ms":
+            raise ValueError("policy target must use the qualified 20 ms zero-order hold")
+
+    @property
+    def state_updates_per_policy(self) -> int:
+        return self.state_hz // self.policy_hz
 
     @property
     def interpolation_steps(self) -> int:
-        return self.state_hz // self.policy_hz
+        """Backward-compatible alias; policy targets are not interpolated."""
+        return self.state_updates_per_policy
 
 
 @dataclass(frozen=True)

@@ -24,6 +24,7 @@ def inspect(args: argparse.Namespace) -> None:
         policy_hz=int(runtime["policy_hz"]),
         state_hz=int(runtime["state_hz"]),
         motor_internal_hz=int(runtime["motor_internal_hz"]),
+        policy_target_semantics=str(runtime.get("policy_target_semantics", "")),
     )
     contract = PolicyContract.load(args.contract)
     deployment_validation_error = None
@@ -66,7 +67,8 @@ def inspect(args: argparse.Namespace) -> None:
             "policy_hz": timing.policy_hz,
             "state_hz": timing.state_hz,
             "motor_internal_hz": timing.motor_internal_hz,
-            "interpolation_steps": timing.interpolation_steps,
+            "state_updates_per_policy": timing.state_updates_per_policy,
+            "policy_target_semantics": timing.policy_target_semantics,
         },
         "ankles": ankle_report,
         "hardware_arm_blockers": safety.blockers(),

@@ -5,11 +5,15 @@
 | Layer | Rate | Responsibility |
 |---|---:|---|
 | Damiao internal loop | 1 kHz | Motor current/MIT impedance loop |
-| SBC state and setpoint layer | 500 Hz | CAN RX aggregation, safety, ankle transform, interpolation |
+| SBC state and setpoint layer | 500 Hz | CAN RX aggregation, safety, ankle transform, held-target refresh |
 | Deployment policy | 50 Hz | Build deployment observation and run ONNX actor |
 
-Ten 500 Hz setpoint frames interpolate each 50 Hz policy target. The motor's
-1 kHz loop executes two internal cycles per SBC setpoint.
+Each 50 Hz policy target is held for ten 500 Hz state-layer ticks. This
+zero-order hold matches Isaac Lab and the qualified MuJoCo runtime. The 500 Hz
+layer must not linearly interpolate between policy targets. It may repeatedly
+send the held position/velocity/Kp/Kd target and calculate the differential
+ankle's cross-coupled feed-forward torque. The motor's 1 kHz loop executes two
+internal cycles per SBC tick.
 
 The qualified `model1050` baseline uses 15 frames at 100 Hz, covering 150 ms.
 Calling that actor at 50 Hz would change the window to 300 ms and is forbidden.

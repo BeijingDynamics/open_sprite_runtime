@@ -14,8 +14,13 @@ stop, and both ankle calibrations are complete.
 ## Timing contract
 
 - Deployment policy inference: **50 Hz** (`dt=0.02 s`)
-- SBC state aggregation and target interpolation: **500 Hz**
+- SBC feedback, safety, ankle coupling, and held-target refresh: **500 Hz**
 - Damiao internal MIT/current loop: **1 kHz**
+
+The 50 Hz policy target uses a 20 ms zero-order hold, matching both the Isaac
+Lab decimation loop and the qualified MuJoCo runtime. The 500 Hz layer must not
+invent intermediate policy targets. It may refresh the held target and add the
+measured differential-ankle cross-coupling feed-forward term.
 
 The qualified `model1050` actor remains a 100 Hz teacher/baseline and is not the
 hardware deployment policy. The deployment actor will be trained natively at

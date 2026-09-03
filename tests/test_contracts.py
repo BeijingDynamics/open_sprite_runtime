@@ -9,11 +9,21 @@ class RuntimeTimingTests(unittest.TestCase):
     def test_qualified_multirate_plan(self) -> None:
         timing = RuntimeTiming(policy_hz=50, state_hz=500, motor_internal_hz=1000)
         timing.validate()
+        self.assertEqual(timing.state_updates_per_policy, 10)
         self.assertEqual(timing.interpolation_steps, 10)
 
     def test_rejects_non_integer_rate_relationship(self) -> None:
         with self.assertRaises(ValueError):
             RuntimeTiming(policy_hz=50, state_hz=400, motor_internal_hz=1000).validate()
+
+    def test_rejects_policy_target_interpolation(self) -> None:
+        with self.assertRaisesRegex(ValueError, "zero-order hold"):
+            RuntimeTiming(
+                policy_hz=50,
+                state_hz=500,
+                motor_internal_hz=1000,
+                policy_target_semantics="linear_interpolation",
+            ).validate()
 
     def test_default_safety_state_cannot_arm(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "hardware arm blocked"):
