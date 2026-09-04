@@ -71,13 +71,19 @@ def complete_hardware() -> dict:
             row["rated_torque_nm"] = 3.5
             row["peak_torque_nm"] = 12.5
             row["rated_speed_rad_s"] = 12.56
-            row["max_speed_rad_s"] = 47.1
+            row["max_speed_rad_s"] = 36.2
             row["coupled_joints"] = list(pair)
             row.pop("policy_to_motor_sign")
             records[f"{side}_ankle_motor_{suffix}"] = row
             index += 1
     return {
         "configured": True,
+        "controller": {
+            "candidate": "jetson_orin_nano",
+            "usb_canfd_channels": 4,
+            "measured_round_trip_latency_required": True,
+            "nominal_bus_voltage_v": 38.0,
+        },
         "imu": {
             "configured": True,
             "mount_link": "pelvis",
@@ -125,6 +131,13 @@ class HardwareInventoryTest(unittest.TestCase):
         report = validate_hardware_inventory({"configured": False, "motor_map": {}}, JOINTS)
         self.assertFalse(report.valid)
         self.assertEqual(len(report.missing_policy_joints), 27)
+
+    def test_unqualified_bus_voltage_is_rejected(self) -> None:
+        hardware = complete_hardware()
+        hardware["controller"]["nominal_bus_voltage_v"] = 48.0
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("36-40 V" in error for error in report.errors))
 
     def test_duplicate_can_and_missing_mapping_are_rejected(self) -> None:
         hardware = complete_hardware()

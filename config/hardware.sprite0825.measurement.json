@@ -4,7 +4,8 @@
   "controller": {
     "candidate": "jetson_orin_nano_or_raspberry_pi_5",
     "usb_canfd_channels": 4,
-    "measured_round_trip_latency_required": true
+    "measured_round_trip_latency_required": true,
+    "nominal_bus_voltage_v": 38.0
   },
   "imu": {
     "configured": false,
@@ -792,7 +793,7 @@
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
-      "max_speed_rad_s": 47.1,
+      "max_speed_rad_s": 36.2,
       "rated_current_a": null,
       "peak_current_a": null,
       "temperature_limit_c": null,
@@ -822,7 +823,7 @@
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
-      "max_speed_rad_s": 47.1,
+      "max_speed_rad_s": 36.2,
       "rated_current_a": null,
       "peak_current_a": null,
       "temperature_limit_c": null,
@@ -852,7 +853,7 @@
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
-      "max_speed_rad_s": 47.1,
+      "max_speed_rad_s": 36.2,
       "rated_current_a": null,
       "peak_current_a": null,
       "temperature_limit_c": null,
@@ -882,7 +883,7 @@
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
-      "max_speed_rad_s": 47.1,
+      "max_speed_rad_s": 36.2,
       "rated_current_a": null,
       "peak_current_a": null,
       "temperature_limit_c": null,

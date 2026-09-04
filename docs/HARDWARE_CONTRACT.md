@@ -55,10 +55,13 @@ policy joint would be physically incorrect.
 
 The inventory validator also pins the known leg nameplate data: hip/knee motors
 are DM-J4340P-2EC with 14/40 Nm rated/peak torque, about 3.8 rad/s rated speed,
-and a 9-10 rad/s operating maximum at approximately 38 V. The four ankle
-motors are DM-J4310P-2EC with 3.5/12.5 Nm and 12.56/47.1 rad/s rated/no-load
-maximum values. Current and temperature limits remain hardware/firmware
-measurements and must be entered before qualification.
+and a 9-10 rad/s operating maximum at approximately 38 V. The four ankle motors
+are DM-J4310P-2EC with 3.5/12.5 Nm rated/peak torque and 12.56 rad/s rated speed.
+The 48 V nameplate no-load speed is 47.1 rad/s, but the qualified approximately
+38 V deployment contract uses 36.2 rad/s as its operating no-load safety bound.
+Record `controller.nominal_bus_voltage_v`; this candidate rejects values outside
+36-40 V. Current and temperature limits remain hardware/firmware measurements
+and must be entered before qualification.
 
 ## IMU and heading
 

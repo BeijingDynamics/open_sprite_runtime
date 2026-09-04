@@ -223,7 +223,7 @@ def _validate_known_leg_motor(
             ("rated_torque_nm", 3.5),
             ("peak_torque_nm", 12.5),
             ("rated_speed_rad_s", 12.56),
-            ("max_speed_rad_s", 47.1),
+            ("max_speed_rad_s", 36.2),
         ):
             if not _close(record.get(field), expected, tolerance=0.02):
                 errors.append(f"motor_map.{label} J4310P {field} must be {expected}")
@@ -239,6 +239,20 @@ def validate_hardware_inventory(
     policy_set = set(policy_order)
     if len(policy_order) != 31 or len(policy_set) != 31:
         errors.append("frozen policy contract must contain 31 unique joints")
+
+    controller = hardware.get("controller")
+    if not isinstance(controller, dict):
+        errors.append("controller configuration is missing")
+    else:
+        voltage = controller.get("nominal_bus_voltage_v")
+        try:
+            voltage = float(voltage)
+            if not np.isfinite(voltage) or not 36.0 <= voltage <= 40.0:
+                raise ValueError
+        except (TypeError, ValueError):
+            errors.append(
+                "controller.nominal_bus_voltage_v must be within the qualified 36-40 V range"
+            )
 
     motor_map = hardware.get("motor_map")
     if not isinstance(motor_map, dict):
@@ -401,7 +415,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
                     "rated_torque_nm": 3.5,
                     "peak_torque_nm": 12.5,
                     "rated_speed_rad_s": 12.56,
-                    "max_speed_rad_s": 47.1,
+                    "max_speed_rad_s": 36.2,
                     "coupled_joints": list(pair),
                 }
             )
@@ -416,6 +430,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "candidate": "jetson_orin_nano_or_raspberry_pi_5",
             "usb_canfd_channels": 4,
             "measured_round_trip_latency_required": True,
+            "nominal_bus_voltage_v": 38.0,
         },
         "imu": {
             "configured": False,
