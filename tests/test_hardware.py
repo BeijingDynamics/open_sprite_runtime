@@ -40,7 +40,7 @@ def motor(channel: int, can_id: int) -> dict:
         "rated_torque_nm": 14.0,
         "peak_torque_nm": 40.0,
         "rated_speed_rad_s": 3.8,
-        "max_speed_rad_s": 10.0,
+        "max_speed_rad_s": 9.3,
         "rated_current_a": 4.0,
         "peak_current_a": 12.0,
         "temperature_limit_c": 70.0,
@@ -138,6 +138,13 @@ class HardwareInventoryTest(unittest.TestCase):
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
         self.assertTrue(any("36-40 V" in error for error in report.errors))
+
+    def test_leg_speed_above_frozen_envelope_is_rejected(self) -> None:
+        hardware = complete_hardware()
+        hardware["motor_map"]["motor_00"]["max_speed_rad_s"] = 10.0
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("frozen 9.3 rad/s" in error for error in report.errors))
 
     def test_duplicate_can_and_missing_mapping_are_rejected(self) -> None:
         hardware = complete_hardware()

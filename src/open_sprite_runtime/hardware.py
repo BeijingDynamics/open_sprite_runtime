@@ -212,8 +212,10 @@ def _validate_known_leg_motor(
             max_speed = float(record["max_speed_rad_s"])
             if not 3.6 <= rated_speed <= 4.0:
                 errors.append(f"motor_map.{label} J4340P rated speed must be about 3.8 rad/s")
-            if not 9.0 <= max_speed <= 10.5:
-                errors.append(f"motor_map.{label} J4340P 38 V max speed must be 9-10 rad/s")
+            if not _close(max_speed, 9.3, tolerance=0.02):
+                errors.append(
+                    f"motor_map.{label} J4340P 38 V max speed must match the frozen 9.3 rad/s envelope"
+                )
         except (KeyError, TypeError, ValueError):
             pass
     if coupled is not None:
@@ -401,7 +403,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
                     "rated_torque_nm": 14.0,
                     "peak_torque_nm": 40.0,
                     "rated_speed_rad_s": 3.8,
-                    "max_speed_rad_s": 10.0,
+                    "max_speed_rad_s": 9.3,
                 }
             )
         motor_map[joint.removesuffix("_joint") + "_motor"] = record

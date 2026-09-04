@@ -55,7 +55,8 @@ policy joint would be physically incorrect.
 
 The inventory validator also pins the known leg nameplate data: hip/knee motors
 are DM-J4340P-2EC with 14/40 Nm rated/peak torque, about 3.8 rad/s rated speed,
-and a 9-10 rad/s operating maximum at approximately 38 V. The four ankle motors
+and the frozen 9.3 rad/s operating maximum at approximately 38 V. Raising this
+limit toward 10 rad/s requires a new motor-envelope qualification. The four ankle motors
 are DM-J4310P-2EC with 3.5/12.5 Nm rated/peak torque and 12.56 rad/s rated speed.
 The 48 V nameplate no-load speed is 47.1 rad/s, but the qualified approximately
 38 V deployment contract uses 36.2 rad/s as its operating no-load safety bound.
