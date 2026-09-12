@@ -80,6 +80,19 @@ enable polling.
 None of these files may be imported, copied into, or executed by the Sprite
 commissioning runtime.
 
+## Implemented RX-only evidence path
+
+`DamiaoFeedbackDecoder` maps every frame by `(SocketCAN interface, Master ID)`
+and checks the controller-ID nibble. `DamiaoRxAudit` then fails closed on a
+missing motor, fault status, raw timestamp regression, insufficient samples,
+feedback below 475 Hz, any raw timestamp gap above 6 ms, or kernel-to-userspace
+queue-age P99 above 6 ms. Its report always records
+`hardware_tx_attempts=0`.
+
+Raw KH adapter time and host time remain separate. The hardware timestamp is
+used only for per-motor rate/gap statistics; queue age uses the kernel software
+RX timestamp and userspace receipt time.
+
 ## Remaining hardware evidence
 
 Before any torque-enabled run, record for all 31 physical motors: interface,
