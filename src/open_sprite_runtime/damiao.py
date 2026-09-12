@@ -8,7 +8,9 @@ import selectors
 import time
 from typing import Any, Callable, Iterable, Mapping
 
+from .hardware import validate_hardware_inventory
 from .socketcan import ReceivedCanFrame
+from .telemetry import MotorTelemetryLimits, limits_from_hardware_record
 
 
 STATUS_NAMES = {
@@ -133,6 +135,62 @@ class EncodedDamiaoMitCommand:
     data: bytes
 
 
+@dataclass(frozen=True)
+class DamiaoMitCommandProfile:
+    """Validated physical-motor endpoint and its dynamic command limits."""
+
+    endpoint: DamiaoFeedbackEndpoint
+    soft_position_rad: tuple[float, float]
+    telemetry_limits: MotorTelemetryLimits
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "soft_position_rad",
+            _validate_range("soft_position_rad", self.soft_position_rad),
+        )
+        self.telemetry_limits.validate()
+        low, high = self.soft_position_rad
+        protocol_low, protocol_high = self.endpoint.ranges.position_rad
+        if low < protocol_low or high > protocol_high:
+            raise ValueError("motor soft limits exceed the register-readback MIT position range")
+
+    def envelope_for_state(
+        self, measured_state: DamiaoMitState
+    ) -> DamiaoMitCommandEnvelope:
+        """Build a torque-speed-aware envelope for one fresh physical-motor state."""
+        protocol_velocity = min(abs(value) for value in self.endpoint.ranges.velocity_rad_s)
+        maximum_velocity = min(
+            self.telemetry_limits.maximum_speed_rad_s,
+            protocol_velocity,
+        )
+        protocol_torque = min(abs(value) for value in self.endpoint.ranges.torque_nm)
+        maximum_torque = min(
+            self.telemetry_limits.torque_limit_at_speed(measured_state.velocity_rad_s),
+            protocol_torque,
+        )
+        if maximum_velocity <= 0.0 or maximum_torque <= 0.0:
+            raise ValueError("motor state leaves no positive MIT command envelope")
+        return DamiaoMitCommandEnvelope(
+            position_rad=self.soft_position_rad,
+            maximum_velocity_rad_s=maximum_velocity,
+            maximum_feedforward_torque_nm=maximum_torque,
+            maximum_output_torque_nm=maximum_torque,
+        )
+
+    def encode(
+        self,
+        command: DamiaoMitCommand,
+        measured_state: DamiaoMitState,
+    ) -> EncodedDamiaoMitCommand:
+        return encode_damiao_mit_command(
+            self.endpoint,
+            command,
+            measured_state,
+            self.envelope_for_state(measured_state),
+        )
+
+
 def _float_to_uint_strict(
     name: str,
     value: float,
@@ -214,6 +272,43 @@ def encode_damiao_mit_command(
         can_id=endpoint.can_id,
         data=data,
     )
+
+
+def command_profiles_from_hardware_config(
+    hardware: Mapping[str, Any],
+    policy_joint_names: Iterable[str],
+    *,
+    expected_motor_count: int = 31,
+) -> tuple[DamiaoMitCommandProfile, ...]:
+    """Build exact physical-motor profiles only from a complete armable inventory."""
+    hardware_dict = dict(hardware)
+    policy_order = tuple(policy_joint_names)
+    if hardware_dict.get("configured") is not True:
+        raise ValueError("hardware configured=true is required for command profiles")
+    report = validate_hardware_inventory(hardware_dict, policy_order)
+    if not report.valid:
+        raise ValueError("hardware inventory is invalid: " + "; ".join(report.errors))
+    endpoints = endpoints_from_hardware_config(
+        hardware_dict,
+        expected_motor_count=expected_motor_count,
+    )
+    motor_map = hardware_dict["motor_map"]
+    profiles = []
+    for endpoint in endpoints:
+        record = motor_map[endpoint.motor_name]
+        profile = DamiaoMitCommandProfile(
+            endpoint=endpoint,
+            soft_position_rad=tuple(float(value) for value in record["soft_limit_rad"]),
+            telemetry_limits=limits_from_hardware_record(record),
+        )
+        # Exercise the dynamic limits at rest so incompatible measured ranges fail now.
+        profile.envelope_for_state(DamiaoMitState(0.0, 0.0))
+        profiles.append(profile)
+    if len(profiles) != expected_motor_count:
+        raise ValueError(
+            f"built {len(profiles)} command profiles; expected {expected_motor_count}"
+        )
+    return tuple(profiles)
 
 
 @dataclass(frozen=True)

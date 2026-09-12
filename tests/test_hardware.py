@@ -1,6 +1,11 @@
 import copy
 import unittest
 
+from open_sprite_runtime.damiao import (
+    DamiaoMitCommand,
+    DamiaoMitState,
+    command_profiles_from_hardware_config,
+)
 from open_sprite_runtime.hardware import (
     ANKLE_JOINTS,
     ANKLE_PAIRS,
@@ -127,6 +132,44 @@ def complete_hardware() -> dict:
 
 
 class HardwareInventoryTest(unittest.TestCase):
+    def test_builds_31_physical_command_profiles_with_dynamic_torque_limits(self) -> None:
+        hardware = complete_hardware()
+        profiles = command_profiles_from_hardware_config(hardware, JOINTS)
+        self.assertEqual(len(profiles), 31)
+        by_name = {profile.endpoint.motor_name: profile for profile in profiles}
+
+        leg = by_name["motor_00"]
+        self.assertEqual(
+            leg.envelope_for_state(DamiaoMitState(0.0, 0.0)).maximum_output_torque_nm,
+            40.0,
+        )
+        self.assertAlmostEqual(
+            leg.envelope_for_state(DamiaoMitState(0.0, 3.8)).maximum_output_torque_nm,
+            14.0,
+        )
+        ankle = by_name["left_ankle_motor_a"]
+        self.assertEqual(
+            ankle.envelope_for_state(DamiaoMitState(0.0, 0.0)).maximum_output_torque_nm,
+            12.5,
+        )
+        encoded = leg.encode(
+            DamiaoMitCommand(0.0, 0.0, 20.0, 1.0, 0.0),
+            DamiaoMitState(0.0, 0.0),
+        )
+        self.assertEqual(encoded.can_id, leg.endpoint.can_id)
+        self.assertEqual(len(encoded.data), 8)
+
+    def test_command_profiles_require_configured_valid_measured_hardware(self) -> None:
+        hardware = complete_hardware()
+        hardware["configured"] = False
+        with self.assertRaisesRegex(ValueError, "configured=true"):
+            command_profiles_from_hardware_config(hardware, JOINTS)
+
+        hardware = complete_hardware()
+        hardware["motor_map"]["motor_00"]["mit_ranges"]["source"] = "sdk_default"
+        with self.assertRaisesRegex(ValueError, "motor_register_readback"):
+            command_profiles_from_hardware_config(hardware, JOINTS)
+
     def test_generated_template_has_physical_topology_and_known_leg_ratings(self) -> None:
         template = make_hardware_template(JOINTS)
         records = template["motor_map"]
