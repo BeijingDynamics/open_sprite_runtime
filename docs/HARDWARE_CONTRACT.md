@@ -25,7 +25,7 @@ typing joint names manually:
 
 ```bash
 open-sprite-runtime hardware-template \
-  --contract artifacts/g60_model3450/deploy/contract.json \
+  --contract <g74-model3000-candidate>/deploy/contract.json \
   --output config/hardware.sprite0825.local.json
 ```
 

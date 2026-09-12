@@ -3,14 +3,23 @@
 ## Gate 0: frozen software contract
 
 - [x] Pin `model1050` as the qualified 100 Hz teacher/baseline.
-- [x] Train and pin G60 `model3450`, a native 50 Hz deployment actor with 160 ms history.
+- [x] Retain G59 `model2999` as the pre-shoulder-upgrade rollback baseline.
+- [x] Train, dual-seed qualify, and freeze G74 `model3000`, a native 50 Hz
+  deployment actor with 160 ms history and four J4340P proximal shoulder
+  pitch/roll motors.
 - [x] Reproduce 299 sampled MuJoCo policy actions from recorded observations
   through the packaged ONNX actor with zero numerical difference.
+- [x] Replay all 2,998 policy ticks through 29,980 synthetic 500 Hz safety
+  ticks with zero action error, zero target-hold error, zero policy overruns,
+  and zero permitted hardware transmissions.
 - [x] Exclude horizontal base velocity, global position, and global yaw from actor observations.
 - [x] Implement and unit-test the PM01-style integrated-IMU-yaw outer command
   controller without adding global yaw to the actor.
-- [x] Qualify the outer heading controller under the same Isaac robust pushes
-  and randomization used for the open-loop G60 stress matrix.
+- [x] Qualify the outer heading controller and G74 policy under independent
+  Isaac seeds 303/404 and the unchanged seven-case MuJoCo matrix. Model3000
+  passed all 48 downstream gates.
+- [ ] Obtain Tony's final visual sign-off using the frozen model3000 MuJoCo
+  review; visual review is the only remaining software-candidate gate.
 
 ## Gate 1: hardware inventory
 
@@ -47,9 +56,9 @@
   cannot certify the Raspberry Pi 5 or Jetson Orin Nano.
 
 The deterministic safety scenarios and a no-load 500 Hz probe pass on the 234
-development PC. A 60-second MuJoCo trace also passed 2,998 ONNX policy ticks
-and 29,980 synthetic 500 Hz safety ticks with zero action/hold error and zero
-permitted hardware transmissions. This does not complete Gate 3: live
+development PC. The final G74 60-second MuJoCo trace also passed 2,998 ONNX
+policy ticks and 29,980 synthetic 500 Hz safety ticks with zero action/hold
+error and zero permitted hardware transmissions. This does not complete Gate 3: live
 motor/IMU frames, USB-CAN load, full logging, and the selected SBC are still
 required.
 
