@@ -29,8 +29,9 @@ open-sprite-runtime hardware-template \
   --output config/hardware.sprite0825.local.json
 ```
 
-The generated file is deliberately non-armable. It pre-fills only the known
-leg motor nameplate values and physical ankle topology; every machine-specific
+The generated file is deliberately non-armable. It pre-fills the known leg and
+upgraded shoulder pitch/roll motor nameplate values plus the physical ankle
+topology; every machine-specific
 CAN endpoint, firmware version, zero, sign, limit, current/temperature bound,
 MIT range, IMU transform, e-stop description, and measured ankle matrix remains
 unset until measured.
@@ -53,10 +54,11 @@ the two calibrated motor coordinates to pitch/roll belongs in that side's
 measured 2x2 `joint_to_motor_matrix`. Assigning a single ankle motor sign to one
 policy joint would be physically incorrect.
 
-The inventory validator also pins the known leg nameplate data: hip/knee motors
-are DM-J4340P-2EC with 14/40 Nm rated/peak torque, about 3.8 rad/s rated speed,
-and the frozen 9.3 rad/s operating maximum at approximately 38 V. Raising this
-limit toward 10 rad/s requires a new motor-envelope qualification. The four ankle motors
+The inventory validator also pins the known J4340P nameplate data: hip/knee and
+the four shoulder pitch/roll motors are DM-J4340P-2EC with 14/40 Nm rated/peak
+torque, about 3.8 rad/s rated speed, and the frozen 9.3 rad/s operating maximum
+at approximately 38 V. Raising this limit toward 10 rad/s requires a new
+motor-envelope qualification. The four ankle motors
 are DM-J4310P-2EC with 3.5/12.5 Nm rated/peak torque and 12.56 rad/s rated speed.
 The 48 V nameplate no-load speed is 47.1 rad/s, but the qualified approximately
 38 V deployment contract uses 36.2 rad/s as its operating no-load safety bound.

@@ -189,7 +189,7 @@ def _close(value: Any, expected: float, tolerance: float = 1.0e-6) -> bool:
         return False
 
 
-def _validate_known_leg_motor(
+def _validate_known_motor_profile(
     label: str,
     record: dict[str, Any],
     direct: str | None,
@@ -200,9 +200,16 @@ def _validate_known_leg_motor(
     direct_leg = direct is not None and (
         "_hip_" in direct or direct.endswith("_knee_joint")
     )
-    if direct_leg:
+    direct_upgraded_shoulder = direct is not None and direct in {
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+    }
+    if direct_leg or direct_upgraded_shoulder:
         if "4340P" not in model:
-            errors.append(f"motor_map.{label} leg motor must be DM-J4340P-2EC")
+            role = "leg" if direct_leg else "shoulder pitch/roll"
+            errors.append(f"motor_map.{label} {role} motor must be DM-J4340P-2EC")
         if not _close(record.get("rated_torque_nm"), 14.0):
             errors.append(f"motor_map.{label} J4340P rated torque must be 14 Nm")
         if not _close(record.get("peak_torque_nm"), 40.0):
@@ -268,7 +275,7 @@ def validate_hardware_inventory(
             str(label), record, policy_set, errors
         )
         if isinstance(record, dict):
-            _validate_known_leg_motor(str(label), record, direct, coupled, errors)
+            _validate_known_motor_profile(str(label), record, direct, coupled, errors)
         if direct is not None:
             direct_counts[direct] = direct_counts.get(direct, 0) + 1
         if coupled in coupled_counts:
@@ -396,7 +403,17 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         record = base_record()
         record["policy_joint"] = joint
         record["policy_to_motor_sign"] = None
-        if "_hip_" in joint or joint.endswith("_knee_joint"):
+        if (
+            "_hip_" in joint
+            or joint.endswith("_knee_joint")
+            or joint
+            in {
+                "left_shoulder_pitch_joint",
+                "left_shoulder_roll_joint",
+                "right_shoulder_pitch_joint",
+                "right_shoulder_roll_joint",
+            }
+        ):
             record.update(
                 {
                     "model": "DM-J4340P-2EC",
