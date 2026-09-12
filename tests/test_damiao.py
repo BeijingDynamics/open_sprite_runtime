@@ -2,6 +2,9 @@ import unittest
 from types import SimpleNamespace
 
 from open_sprite_runtime.damiao import (
+    DamiaoMitCommand,
+    DamiaoMitCommandEnvelope,
+    DamiaoMitState,
     DamiaoFeedbackDecoder,
     DamiaoFeedbackEndpoint,
     DamiaoMitRanges,
@@ -9,6 +12,7 @@ from open_sprite_runtime.damiao import (
     collect_receive_only_audit,
     decode_damiao_feedback,
     endpoints_from_hardware_config,
+    encode_damiao_mit_command,
 )
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
@@ -54,6 +58,68 @@ def frame(data: bytes, **changes) -> ReceivedCanFrame:
 
 
 class DamiaoFeedbackTests(unittest.TestCase):
+    def test_encodes_official_mit_zero_vector_without_transport(self) -> None:
+        encoded = encode_damiao_mit_command(
+            endpoint(),
+            DamiaoMitCommand(0.0, 0.0, 0.0, 0.0, 0.0),
+            DamiaoMitState(0.0, 0.0),
+            DamiaoMitCommandEnvelope((-2.0, 2.0), 9.3, 14.0, 14.0),
+        )
+        self.assertEqual(encoded.can_id, 0x03)  # MIT_MODE is 0x000.
+        self.assertEqual(encoded.data, bytes.fromhex("7fff7ff0000007ff"))
+        self.assertFalse(hasattr(encoded, "send"))
+
+    def test_encodes_official_mit_protocol_maximum_vector(self) -> None:
+        encoded = encode_damiao_mit_command(
+            endpoint(),
+            DamiaoMitCommand(12.5, 20.0, 500.0, 5.0, 28.0),
+            DamiaoMitState(12.5, 20.0),
+            DamiaoMitCommandEnvelope((-12.5, 12.5), 20.0, 28.0, 28.0),
+        )
+        self.assertEqual(encoded.data, bytes.fromhex("ffffffffffffffff"))
+
+    def test_encoder_rejects_nonfinite_and_all_command_overruns(self) -> None:
+        envelope = DamiaoMitCommandEnvelope((-2.0, 2.0), 9.3, 14.0, 14.0)
+        invalid = (
+            DamiaoMitCommand(2.01, 0.0, 0.0, 0.0, 0.0),
+            DamiaoMitCommand(0.0, 9.31, 0.0, 0.0, 0.0),
+            DamiaoMitCommand(0.0, 0.0, 500.01, 0.0, 0.0),
+            DamiaoMitCommand(0.0, 0.0, 0.0, 5.01, 0.0),
+            DamiaoMitCommand(0.0, 0.0, 0.0, 0.0, 14.01),
+        )
+        for command in invalid:
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                encode_damiao_mit_command(
+                    endpoint(), command, DamiaoMitState(0.0, 0.0), envelope
+                )
+        with self.assertRaisesRegex(ValueError, "finite"):
+            DamiaoMitCommand(float("nan"), 0.0, 0.0, 0.0, 0.0)
+
+    def test_encoder_rejects_envelopes_outside_register_readback_ranges(self) -> None:
+        command = DamiaoMitCommand(0.0, 0.0, 0.0, 0.0, 0.0)
+        for envelope in (
+            DamiaoMitCommandEnvelope((-13.0, 12.5), 9.3, 14.0, 14.0),
+            DamiaoMitCommandEnvelope((-2.0, 2.0), 20.1, 14.0, 14.0),
+            DamiaoMitCommandEnvelope((-2.0, 2.0), 9.3, 28.1, 14.0),
+            DamiaoMitCommandEnvelope((-2.0, 2.0), 9.3, 14.0, 28.1),
+        ):
+            with self.subTest(envelope=envelope), self.assertRaises(ValueError):
+                encode_damiao_mit_command(
+                    endpoint(), command, DamiaoMitState(0.0, 0.0), envelope
+                )
+
+    def test_encoder_gates_complete_mit_torque_request_from_measured_state(self) -> None:
+        command = DamiaoMitCommand(1.0, 0.0, 20.0, 1.0, 0.0)
+        envelope = DamiaoMitCommandEnvelope((-2.0, 2.0), 9.3, 14.0, 14.0)
+        with self.assertRaisesRegex(ValueError, "output torque"):
+            encode_damiao_mit_command(
+                endpoint(), command, DamiaoMitState(0.0, 0.0), envelope
+            )
+        encoded = encode_damiao_mit_command(
+            endpoint(), command, DamiaoMitState(0.5, -1.0), envelope
+        )
+        self.assertEqual(len(encoded.data), 8)
+
     def test_decodes_official_v14_layout_and_temperatures(self) -> None:
         # enabled + CAN ID 3, zero position/velocity/torque, 42 C MOS, 37 C rotor
         data = bytes([0x13, 0x80, 0x00, 0x80, 0x08, 0x00, 42, 37])

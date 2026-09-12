@@ -100,3 +100,23 @@ CAN ID, Master ID, firmware, PMAX/VMAX/TMAX readback, encoder zero/direction,
 current and temperature bounds, and measured hard/soft limits. Then capture a
 listen-only hardware-timestamped trace and prove complete IDs, monotonic sample
 ages, status health, and p99 receive age at most 6 ms.
+## MIT command encoder audit
+
+The official Python and C++ U2CANFD implementations at dmBots/motor-sdk commit
+`0b2ede457bdbf0882e29ab9958ab8fda047b7f4a` both define `MIT_MODE = 0x000`.
+Consequently, an MIT command uses the configured motor CAN ID unchanged. The
+`+ mode` expression in the SDK is a common dispatch formula; offsets `0x100`,
+`0x200`, and `0x300` apply only to the other control modes.
+
+The runtime's pure encoder reproduces the official 16/12/12/12/12-bit payload
+layout and truncating in-range quantization. It intentionally does not reproduce
+unsafe SDK boundary behavior: Python silently clips and C++ can wrap values.
+The runtime rejects non-finite values, protocol-range violations, and violations
+of the narrower project command envelope. It requires fresh measured position
+and velocity to gate the complete official MIT request
+`kp*(q_des-q)+kd*(dq_des-dq)+tau_ff`, not only the feedforward term. The encoder
+has no socket, transmit, enable, zero-setting, or register-writing capability.
+
+PMAX/VMAX/TMAX remain motor register readbacks, not SDK model defaults. In
+particular, motor mechanical ratings and the active MIT quantization TMAX are
+different facts and must never be substituted for each other.

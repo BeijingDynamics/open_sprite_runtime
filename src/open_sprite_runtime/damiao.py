@@ -1,4 +1,4 @@
-"""Pure, receive-only decoding for Damiao MIT feedback frames."""
+"""Pure Damiao MIT frame codecs and receive-only feedback auditing."""
 
 from __future__ import annotations
 
@@ -69,6 +69,151 @@ class DamiaoFeedbackEndpoint:
         # The official V1.4 frame stores the controller ID in D[0]'s low nibble.
         if self.can_id > 0xF:
             raise ValueError("can_id must fit the feedback frame's four-bit controller ID field")
+
+
+@dataclass(frozen=True)
+class DamiaoMitCommand:
+    """One MIT impedance command before protocol quantization."""
+
+    position_rad: float
+    velocity_rad_s: float
+    kp: float
+    kd: float
+    feedforward_torque_nm: float
+
+    def __post_init__(self) -> None:
+        for name, value in asdict(self).items():
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+
+
+@dataclass(frozen=True)
+class DamiaoMitState:
+    """Measured joint state used to gate the complete MIT torque request."""
+
+    position_rad: float
+    velocity_rad_s: float
+
+    def __post_init__(self) -> None:
+        for name, value in asdict(self).items():
+            if not math.isfinite(value):
+                raise ValueError(f"measured {name} must be finite")
+
+
+@dataclass(frozen=True)
+class DamiaoMitCommandEnvelope:
+    """Project limits inside the motor's register-readback MIT ranges."""
+
+    position_rad: tuple[float, float]
+    maximum_velocity_rad_s: float
+    maximum_feedforward_torque_nm: float
+    maximum_output_torque_nm: float
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "position_rad", _validate_range("position_rad", self.position_rad)
+        )
+        for name in (
+            "maximum_velocity_rad_s",
+            "maximum_feedforward_torque_nm",
+            "maximum_output_torque_nm",
+        ):
+            value = getattr(self, name)
+            if not math.isfinite(value) or value <= 0.0:
+                raise ValueError(f"{name} must be finite and positive")
+
+
+@dataclass(frozen=True)
+class EncodedDamiaoMitCommand:
+    """A standard-CAN MIT payload; this object has no transport capability."""
+
+    motor_name: str
+    interface: str
+    can_id: int
+    data: bytes
+
+
+def _float_to_uint_strict(
+    name: str,
+    value: float,
+    limits: tuple[float, float],
+    bits: int,
+) -> int:
+    low, high = limits
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be finite")
+    if not low <= value <= high:
+        raise ValueError(f"{name}={value} is outside [{low}, {high}]")
+    # Match the official SDK's truncating conversion for in-range values. Unlike
+    # the SDK, reject out-of-range values instead of clipping or wrapping them.
+    return int((value - low) / (high - low) * ((1 << bits) - 1))
+
+
+def encode_damiao_mit_command(
+    endpoint: DamiaoFeedbackEndpoint,
+    command: DamiaoMitCommand,
+    measured_state: DamiaoMitState,
+    envelope: DamiaoMitCommandEnvelope,
+) -> EncodedDamiaoMitCommand:
+    """Encode the official eight-byte MIT command without opening or writing CAN."""
+    protocol = endpoint.ranges
+    if (
+        envelope.position_rad[0] < protocol.position_rad[0]
+        or envelope.position_rad[1] > protocol.position_rad[1]
+    ):
+        raise ValueError("position envelope exceeds the motor register-readback MIT range")
+    protocol_velocity = max(abs(value) for value in protocol.velocity_rad_s)
+    if envelope.maximum_velocity_rad_s > protocol_velocity:
+        raise ValueError("velocity envelope exceeds the motor register-readback MIT range")
+    protocol_torque = max(abs(value) for value in protocol.torque_nm)
+    if envelope.maximum_feedforward_torque_nm > protocol_torque:
+        raise ValueError("torque envelope exceeds the motor register-readback MIT range")
+    if envelope.maximum_output_torque_nm > protocol_torque:
+        raise ValueError("output torque envelope exceeds the motor register-readback MIT range")
+
+    _float_to_uint_strict("position_rad", command.position_rad, envelope.position_rad, 16)
+    if abs(command.velocity_rad_s) > envelope.maximum_velocity_rad_s:
+        raise ValueError("velocity_rad_s exceeds the project command envelope")
+    if abs(command.feedforward_torque_nm) > envelope.maximum_feedforward_torque_nm:
+        raise ValueError("feedforward_torque_nm exceeds the project command envelope")
+    estimated_output_torque_nm = (
+        command.kp * (command.position_rad - measured_state.position_rad)
+        + command.kd * (command.velocity_rad_s - measured_state.velocity_rad_s)
+        + command.feedforward_torque_nm
+    )
+    if not math.isfinite(estimated_output_torque_nm):
+        raise ValueError("estimated MIT output torque must be finite")
+    if abs(estimated_output_torque_nm) > envelope.maximum_output_torque_nm:
+        raise ValueError("estimated MIT output torque exceeds the project command envelope")
+
+    position = _float_to_uint_strict("position_rad", command.position_rad, protocol.position_rad, 16)
+    velocity = _float_to_uint_strict(
+        "velocity_rad_s", command.velocity_rad_s, protocol.velocity_rad_s, 12
+    )
+    kp = _float_to_uint_strict("kp", command.kp, (0.0, 500.0), 12)
+    kd = _float_to_uint_strict("kd", command.kd, (0.0, 5.0), 12)
+    torque = _float_to_uint_strict(
+        "feedforward_torque_nm", command.feedforward_torque_nm, protocol.torque_nm, 12
+    )
+    data = bytes(
+        (
+            (position >> 8) & 0xFF,
+            position & 0xFF,
+            (velocity >> 4) & 0xFF,
+            ((velocity & 0xF) << 4) | ((kp >> 8) & 0xF),
+            kp & 0xFF,
+            (kd >> 4) & 0xFF,
+            ((kd & 0xF) << 4) | ((torque >> 8) & 0xF),
+            torque & 0xFF,
+        )
+    )
+    # Official SDK commit 0b2ede4 defines MIT_MODE as 0x000.
+    return EncodedDamiaoMitCommand(
+        motor_name=endpoint.motor_name,
+        interface=endpoint.interface,
+        can_id=endpoint.can_id,
+        data=data,
+    )
 
 
 @dataclass(frozen=True)
