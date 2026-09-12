@@ -1,10 +1,12 @@
 # Open Sprite Runtime
 
 Safety-gated Sim2Real runtime work for Sprite0825. The current deployment
-candidate is the native-50 Hz G60 `model3450`; its ONNX actor, contract, and
-compact Isaac/MuJoCo qualification evidence are under
-`artifacts/g60_model3450`. The qualified 100 Hz `model1050` release remains a
-teacher and comparison baseline only.
+candidate is the native-50 Hz G74 `model3000`, qualified after the proximal
+shoulder pitch/roll motors were changed to J4340P. Its frozen actor, contract,
+and Isaac/MuJoCo qualification evidence are distributed in the external G74
+Sim2Real candidate package. G59 `model2999` remains the pre-upgrade rollback
+baseline; the qualified 100 Hz `model1050` release remains a teacher and
+comparison baseline only.
 
 This repository is intentionally **not hardware-ready yet**. The initial code
 can inspect a policy contract and validate differential-ankle math, but it has
@@ -24,7 +26,7 @@ invent intermediate policy targets. It may refresh the held target and add the
 measured differential-ankle cross-coupling feed-forward term.
 
 The qualified `model1050` actor remains a 100 Hz teacher/baseline and is not the
-hardware deployment policy. G60 `model3450` is trained natively at 50 Hz with
+hardware deployment policy. G74 `model3000` is trained natively at 50 Hz with
 a 160 ms observation window. Contract validation rejects a 100 Hz actor when
 the runtime is configured for 50 Hz.
 
@@ -37,11 +39,11 @@ pip install -e '.[dev]'
 python -m unittest discover -s tests -v
 ```
 
-Inspect the native-50 Hz candidate contract without touching hardware:
+Inspect a native-50 Hz candidate contract without touching hardware:
 
 ```bash
 sprite-runtime inspect \
-  --contract artifacts/g60_model3450/deploy/contract.json \
+  --contract <candidate>/deploy/contract.json \
   --runtime-config config/runtime.example.json \
   --hardware-config config/hardware.example.json
 ```
