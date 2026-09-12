@@ -80,6 +80,8 @@ remaining blockers are summarized in [G60 model3450](docs/G60_MODEL3450.md),
 including the [robust heading audit](docs/G60_ROBUST_HEADING_AUDIT.md).
 The four-motor proximal-shoulder upgrade is documented in
 [Sprite0825 4340P shoulder revision](docs/SPRITE0825_4340_SHOULDER_REVISION.md);
+the receive-only Damiao frame contract and pinned manufacturer sources are in
+[Damiao protocol source audit](docs/SPRITE0825_DAMIAO_PROTOCOL_SOURCE_AUDIT.md).
 G74 model3000 is the frozen software candidate after independent-seed Isaac
 qualification and the unchanged seven-case MuJoCo gate matrix. G59 model2999
 remains the pre-upgrade rollback baseline.

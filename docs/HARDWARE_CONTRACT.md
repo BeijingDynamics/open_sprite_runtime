@@ -3,13 +3,14 @@
 Before shadow mode, fill every policy joint entry in `motor_map` with:
 
 - Damiao model and firmware version
-- USB-CAN FD channel and CAN ID
+- USB-CAN FD channel, command CAN ID, and feedback Master ID
 - mechanical zero and encoder zero
 - raw encoder sign; for direct joints, positive policy direction versus positive motor direction
 - reduction ratio and any linkage ratio
 - soft limit and independently measured hard limit
 - rated/peak torque, speed, current, and temperature limits
-- MIT protocol ranges and quantization for position, velocity, Kp, Kd, torque
+- MIT protocol ranges and quantization for position, velocity, Kp, Kd, torque;
+  PMAX/VMAX/TMAX must be captured from each drive's register readback
 
 At every 500 Hz state tick, the runtime must reject missing/extra motor frames,
 non-finite values, hard-position-limit violations, excessive speed, peak torque,
@@ -38,6 +39,12 @@ unset until measured.
 
 The runtime must reorder feedback into the exact 31-joint policy order from the
 qualified contract. It must never use CAN enumeration order as policy order.
+Feedback identity is the pair `(SocketCAN interface, Master ID)` and D0's
+controller-ID nibble must agree with the configured command CAN ID.
+
+See `SPRITE0825_DAMIAO_PROTOCOL_SOURCE_AUDIT.md` for the pinned official
+protocol sources, exact receive-frame layout, status values, and the reason the
+decoded torque is an estimate rather than an independent torque measurement.
 
 Run `open-sprite-runtime inspect` after filling the hardware file. The
 `hardware_inventory` report is fail-closed: it requires 27 one-to-one joint

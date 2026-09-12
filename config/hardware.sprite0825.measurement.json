@@ -49,6 +49,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -57,7 +58,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -67,7 +68,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_hip_pitch_joint",
       "policy_to_motor_sign": null
@@ -77,6 +79,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -85,7 +88,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -95,7 +98,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_hip_pitch_joint",
       "policy_to_motor_sign": null
@@ -105,6 +109,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -123,7 +128,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "waist_roll_joint",
       "policy_to_motor_sign": null
@@ -133,6 +139,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -141,7 +148,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -151,7 +158,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_hip_roll_joint",
       "policy_to_motor_sign": null
@@ -161,6 +169,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -169,7 +178,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -179,7 +188,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_hip_roll_joint",
       "policy_to_motor_sign": null
@@ -189,6 +199,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -207,7 +218,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "waist_yaw_joint",
       "policy_to_motor_sign": null
@@ -217,6 +229,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -225,7 +238,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -235,7 +248,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_hip_yaw_joint",
       "policy_to_motor_sign": null
@@ -245,6 +259,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -253,7 +268,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -263,7 +278,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_hip_yaw_joint",
       "policy_to_motor_sign": null
@@ -273,6 +289,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -291,7 +308,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "head_pitch_joint",
       "policy_to_motor_sign": null
@@ -301,6 +319,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -319,7 +338,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_shoulder_pitch_joint",
       "policy_to_motor_sign": null
@@ -329,6 +349,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -347,7 +368,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_shoulder_pitch_joint",
       "policy_to_motor_sign": null
@@ -357,6 +379,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -365,7 +388,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -375,7 +398,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_knee_joint",
       "policy_to_motor_sign": null
@@ -385,6 +409,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -393,7 +418,7 @@
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
-      "rated_speed_rad_s": 3.8,
+      "rated_speed_rad_s": 3.77,
       "max_speed_rad_s": 9.3,
       "rated_current_a": null,
       "peak_current_a": null,
@@ -403,7 +428,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_knee_joint",
       "policy_to_motor_sign": null
@@ -413,6 +439,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -431,7 +458,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "head_roll_joint",
       "policy_to_motor_sign": null
@@ -441,6 +469,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -459,7 +488,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_shoulder_roll_joint",
       "policy_to_motor_sign": null
@@ -469,6 +499,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -487,7 +518,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_shoulder_roll_joint",
       "policy_to_motor_sign": null
@@ -497,6 +529,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -515,7 +548,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "head_yaw_joint",
       "policy_to_motor_sign": null
@@ -525,6 +559,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -543,7 +578,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_shoulder_yaw_joint",
       "policy_to_motor_sign": null
@@ -553,6 +589,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -571,7 +608,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_shoulder_yaw_joint",
       "policy_to_motor_sign": null
@@ -581,6 +619,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -599,7 +638,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_elbow_joint",
       "policy_to_motor_sign": null
@@ -609,6 +649,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -627,7 +668,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_elbow_joint",
       "policy_to_motor_sign": null
@@ -637,6 +679,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -655,7 +698,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_wrist_yaw_joint",
       "policy_to_motor_sign": null
@@ -665,6 +709,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -683,7 +728,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_wrist_yaw_joint",
       "policy_to_motor_sign": null
@@ -693,6 +739,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -711,7 +758,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_wrist_pitch_joint",
       "policy_to_motor_sign": null
@@ -721,6 +769,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -739,7 +788,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_wrist_pitch_joint",
       "policy_to_motor_sign": null
@@ -749,6 +799,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -767,7 +818,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "left_wrist_roll_joint",
       "policy_to_motor_sign": null
@@ -777,6 +829,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -795,7 +848,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "policy_joint": "right_wrist_roll_joint",
       "policy_to_motor_sign": null
@@ -805,6 +859,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -823,7 +878,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -835,6 +891,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -853,7 +910,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -865,6 +923,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -883,7 +942,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",
@@ -895,6 +955,7 @@
       "firmware": null,
       "can_channel": null,
       "can_id": null,
+      "master_id": null,
       "motor_zero_rad": null,
       "encoder_sign": null,
       "reduction_ratio": null,
@@ -913,7 +974,8 @@
         "velocity_rad_s": null,
         "kp": null,
         "kd": null,
-        "torque_nm": null
+        "torque_nm": null,
+        "source": null
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",

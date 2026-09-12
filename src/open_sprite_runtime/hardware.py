@@ -20,6 +20,7 @@ MOTOR_REQUIRED_FIELDS = (
     "firmware",
     "can_channel",
     "can_id",
+    "master_id",
     "motor_zero_rad",
     "encoder_sign",
     "reduction_ratio",
@@ -172,11 +173,20 @@ def _validate_motor_record(
             errors.append(f"motor_map.{label}.{field} is empty or TODO")
     channel = record.get("can_channel")
     can_id = record.get("can_id")
+    master_id = record.get("master_id")
     endpoint = None
     if channel is not None and (not isinstance(channel, int) or not 0 <= channel < 4):
         errors.append(f"motor_map.{label}.can_channel must be an integer in [0, 3]")
     if can_id is not None and (not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF):
         errors.append(f"motor_map.{label}.can_id must be an 11-bit integer")
+    elif isinstance(can_id, int) and can_id > 0xF:
+        errors.append(
+            f"motor_map.{label}.can_id must fit the Damiao feedback controller-ID nibble"
+        )
+    if master_id is not None and (
+        not isinstance(master_id, int) or not 0 <= master_id <= 0x7FF
+    ):
+        errors.append(f"motor_map.{label}.master_id must be an 11-bit integer")
     if isinstance(channel, int) and isinstance(can_id, int):
         endpoint = f"{channel}:{can_id}"
 
@@ -226,7 +236,14 @@ def _validate_motor_record(
     elif isinstance(mit, dict):
         unset_mit = [
             field
-            for field in ("position_rad", "velocity_rad_s", "kp", "kd", "torque_nm")
+            for field in (
+                "position_rad",
+                "velocity_rad_s",
+                "kp",
+                "kd",
+                "torque_nm",
+                "source",
+            )
             if mit.get(field) is None
         ]
         if unset_mit:
@@ -236,6 +253,10 @@ def _validate_motor_record(
         for field in ("position_rad", "velocity_rad_s", "kp", "kd", "torque_nm"):
             if mit.get(field) is not None:
                 _pair(mit[field], f"motor_map.{label}.mit_ranges.{field}", errors)
+        if mit.get("source") is not None and mit.get("source") != "motor_register_readback":
+            errors.append(
+                f"motor_map.{label}.mit_ranges.source must be motor_register_readback"
+            )
     return direct if isinstance(direct, str) else None, coupled, endpoint
 
 
@@ -329,6 +350,7 @@ def validate_hardware_inventory(
     direct_counts: dict[str, int] = {}
     coupled_counts = {pair: 0 for pair in ANKLE_PAIRS.values()}
     endpoints: list[str] = []
+    feedback_endpoints: list[str] = []
     for label, record in motor_map.items():
         direct, coupled, endpoint = _validate_motor_record(
             str(label), record, policy_set, errors
@@ -341,6 +363,11 @@ def validate_hardware_inventory(
             coupled_counts[coupled] += 1
         if endpoint is not None:
             endpoints.append(endpoint)
+        if isinstance(record, dict):
+            channel = record.get("can_channel")
+            master_id = record.get("master_id")
+            if isinstance(channel, int) and isinstance(master_id, int):
+                feedback_endpoints.append(f"{channel}:{master_id}")
 
     expected_direct = policy_set - ANKLE_JOINTS
     missing = sorted(joint for joint in expected_direct if direct_counts.get(joint, 0) == 0)
@@ -361,6 +388,20 @@ def validate_hardware_inventory(
     duplicate_endpoints = sorted({item for item in endpoints if endpoints.count(item) > 1})
     if duplicate_endpoints:
         errors.append(f"duplicate CAN channel/ID endpoints: {', '.join(duplicate_endpoints)}")
+    duplicate_feedback = sorted(
+        {item for item in feedback_endpoints if feedback_endpoints.count(item) > 1}
+    )
+    if duplicate_feedback:
+        errors.append(
+            "duplicate CAN channel/Master-ID feedback endpoints: "
+            + ", ".join(duplicate_feedback)
+        )
+    feedback_command_overlap = sorted(set(endpoints) & set(feedback_endpoints))
+    if feedback_command_overlap:
+        errors.append(
+            "CAN command and feedback endpoints overlap: "
+            + ", ".join(feedback_command_overlap)
+        )
     if len(motor_map) != 31:
         errors.append(f"motor_map has {len(motor_map)} physical motors; expected 31")
 
@@ -433,6 +474,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "firmware": None,
             "can_channel": None,
             "can_id": None,
+            "master_id": None,
             "motor_zero_rad": None,
             "encoder_sign": None,
             "reduction_ratio": None,
@@ -452,6 +494,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
                 "kp": None,
                 "kd": None,
                 "torque_nm": None,
+                "source": None,
             },
         }
 
@@ -478,7 +521,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
                     "model": "DM-J4340P-2EC",
                     "rated_torque_nm": 14.0,
                     "peak_torque_nm": 40.0,
-                    "rated_speed_rad_s": 3.8,
+                    "rated_speed_rad_s": 3.77,
                     "max_speed_rad_s": 9.3,
                 }
             )

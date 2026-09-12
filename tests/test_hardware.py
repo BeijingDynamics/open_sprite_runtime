@@ -30,6 +30,7 @@ def motor(channel: int, can_id: int) -> dict:
         "firmware": "measured-version",
         "can_channel": channel,
         "can_id": can_id,
+        "master_id": can_id + 0x10,
         "motor_zero_rad": 0.0,
         "encoder_sign": 1,
         "policy_to_motor_sign": 1,
@@ -50,6 +51,7 @@ def motor(channel: int, can_id: int) -> dict:
             "kp": [0.0, 500.0],
             "kd": [0.0, 5.0],
             "torque_nm": [-40.0, 40.0],
+            "source": "motor_register_readback",
         },
     }
 
@@ -173,6 +175,41 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("duplicate CAN" in error for error in report.errors))
         self.assertTrue(report.duplicate_policy_joints)
+
+    def test_duplicate_master_feedback_endpoint_is_rejected(self) -> None:
+        hardware = complete_hardware()
+        records = hardware["motor_map"]
+        labels = list(records)
+        records[labels[1]]["can_channel"] = records[labels[0]]["can_channel"]
+        records[labels[1]]["master_id"] = records[labels[0]]["master_id"]
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("Master-ID feedback" in error for error in report.errors))
+
+    def test_command_id_must_fit_feedback_nibble(self) -> None:
+        hardware = complete_hardware()
+        first = next(iter(hardware["motor_map"].values()))
+        first["can_id"] = 0x20
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("controller-ID nibble" in error for error in report.errors))
+
+    def test_command_and_feedback_ids_must_not_overlap(self) -> None:
+        hardware = complete_hardware()
+        records = hardware["motor_map"]
+        labels = list(records)
+        records[labels[0]]["master_id"] = records[labels[1]]["can_id"]
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("command and feedback endpoints overlap" in error for error in report.errors))
+
+    def test_mit_range_source_requires_register_readback(self) -> None:
+        hardware = complete_hardware()
+        first = next(iter(hardware["motor_map"].values()))
+        first["mit_ranges"]["source"] = "sdk_default"
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("motor_register_readback" in error for error in report.errors))
 
     def test_can_adapter_requires_four_unique_interfaces(self) -> None:
         hardware = complete_hardware()
