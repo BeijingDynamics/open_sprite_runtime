@@ -54,3 +54,10 @@ sprite-runtime socketcan-rx-preflight \
   --snapshot kh_socketcan_snapshot.json \
   --interfaces can0 can1 can2 can3
 ```
+
+After that report passes, `SocketCanReceiver.open()` can create an API that
+only exposes `receive()` and `close()`. It enables CAN-FD and Linux hardware RX
+timestamping before binding. Every received frame must carry a non-zero raw
+hardware timestamp; the implementation deliberately raises an error instead
+of falling back to a software timestamp. Opening is rejected unless the same
+interface appears in a passing listen-only preflight report.

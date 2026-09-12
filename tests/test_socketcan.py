@@ -1,6 +1,13 @@
 import unittest
+import socket
+import struct
 
-from open_sprite_runtime.socketcan import audit_socketcan_rx_snapshot
+from open_sprite_runtime.socketcan import (
+    CANFD_FRAME,
+    SO_TIMESTAMPING_LINUX_64,
+    SocketCanReceiver,
+    audit_socketcan_rx_snapshot,
+)
 
 
 def entry(name: str, *, up: bool = True, listen_only: bool = True) -> dict:
@@ -41,6 +48,66 @@ class SocketCanRxPreflightTests(unittest.TestCase):
         report = audit_socketcan_rx_snapshot(snapshot, [f"can{index}" for index in range(4)])
         self.assertFalse(report.passed)
         self.assertTrue(any("can2: interface is not CAN" in error for error in report.errors))
+
+
+class FakeSocket:
+    def __init__(self, frame: bytes = b"", ancillary: list | None = None):
+        self.frame = frame
+        self.ancillary = ancillary or []
+        self.options = []
+        self.address = None
+        self.closed = False
+
+    def setsockopt(self, level, name, value):
+        self.options.append((level, name, value))
+
+    def bind(self, address):
+        self.address = address
+
+    def recvmsg(self, *_args):
+        return self.frame, self.ancillary, 0, ("can0",)
+
+    def close(self):
+        self.closed = True
+
+
+class SocketCanReceiverTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.preflight = audit_socketcan_rx_snapshot(
+            [entry(f"can{index}") for index in range(4)],
+            [f"can{index}" for index in range(4)],
+        )
+
+    def test_open_requires_passed_listen_only_evidence(self) -> None:
+        failed = audit_socketcan_rx_snapshot([], [f"can{index}" for index in range(4)])
+        with self.assertRaisesRegex(RuntimeError, "preflight did not pass"):
+            SocketCanReceiver.open("can0", failed, socket_factory=lambda *_args: FakeSocket())
+
+    def test_open_enables_fd_and_hardware_timestamping_before_bind(self) -> None:
+        fake = FakeSocket()
+        receiver = SocketCanReceiver.open("can0", self.preflight, socket_factory=lambda *_: fake)
+        self.assertEqual(fake.address, ("can0",))
+        self.assertFalse(hasattr(receiver, "send"))
+        self.assertIn((socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1), fake.options)
+        self.assertTrue(any(option[1] == SO_TIMESTAMPING_LINUX_64 for option in fake.options))
+        receiver.close()
+        self.assertTrue(fake.closed)
+
+    def test_receive_decodes_fd_frame_and_raw_hardware_timestamp(self) -> None:
+        frame = CANFD_FRAME.pack(0x123, 4, 0x01, 0, 0, b"abcd".ljust(64, b"\0"))
+        timestamps = struct.pack("=6q", 1, 2, 3, 4, 5, 6)
+        fake = FakeSocket(frame, [(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamps)])
+        received = SocketCanReceiver("can0", fake).receive()
+        self.assertEqual(received.can_id, 0x123)
+        self.assertEqual(received.data, b"abcd")
+        self.assertTrue(received.is_fd)
+        self.assertTrue(received.bit_rate_switch)
+        self.assertEqual(received.hardware_timestamp_ns, 5_000_000_006)
+
+    def test_receive_rejects_missing_hardware_timestamp(self) -> None:
+        frame = CANFD_FRAME.pack(0x123, 1, 0, 0, 0, b"x".ljust(64, b"\0"))
+        with self.assertRaisesRegex(RuntimeError, "software fallback is forbidden"):
+            SocketCanReceiver("can0", FakeSocket(frame)).receive()
 
 
 if __name__ == "__main__":
