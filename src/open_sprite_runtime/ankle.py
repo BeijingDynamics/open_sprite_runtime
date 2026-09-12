@@ -76,8 +76,9 @@ def _vector2(value: ArrayLike, name: str) -> Vector2:
 class DifferentialAnkle:
     """Linearized map ``q_motor = A @ q_joint + zero``.
 
-    Joint order is ``[pitch, roll]``. Motor signs and scale belong in ``A``;
-    they must be identified independently for the left and right mechanisms.
+    Joint order is ``[pitch, roll]``. Mechanism row signs and scale belong in
+    ``A``; raw drive encoder polarity is applied by the outer motor-coordinate
+    map. Both layers must be identified independently for left and right.
     """
 
     joint_to_motor_matrix: Matrix2

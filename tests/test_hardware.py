@@ -122,6 +122,10 @@ def complete_hardware() -> dict:
         "ankles": {
             side: {
                 "calibrated": True,
+                "motor_names": [
+                    f"{side}_ankle_motor_a",
+                    f"{side}_ankle_motor_b",
+                ],
                 "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
                 "motor_zero_rad": [0.1, -0.1],
                 "source": "fixture measurement 2026-09-03",
@@ -280,7 +284,30 @@ class HardwareInventoryTest(unittest.TestCase):
         hardware["motor_map"].pop("left_ankle_motor_b")
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
-        self.assertTrue(any("left ankle requires exactly two" in error for error in report.errors))
+        self.assertTrue(
+            any("left ankle requires exactly two" in error for error in report.errors)
+        )
+
+    def test_ankle_matrix_rows_require_exact_ordered_motor_names(self) -> None:
+        hardware = complete_hardware()
+        hardware["ankles"]["left"]["motor_names"][1] = "right_ankle_motor_a"
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(
+            any(
+                "left ankle motor_names must exactly match" in error
+                for error in report.errors
+            )
+        )
+
+        hardware = complete_hardware()
+        hardware["ankles"]["right"]["motor_names"] = [
+            "right_ankle_motor_a",
+            "right_ankle_motor_a",
+        ]
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("two unique motor labels" in error for error in report.errors))
 
 
 if __name__ == "__main__":

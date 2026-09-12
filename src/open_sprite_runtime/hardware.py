@@ -349,6 +349,9 @@ def validate_hardware_inventory(
         motor_map = {}
     direct_counts: dict[str, int] = {}
     coupled_counts = {pair: 0 for pair in ANKLE_PAIRS.values()}
+    coupled_labels: dict[tuple[str, ...], list[str]] = {
+        pair: [] for pair in ANKLE_PAIRS.values()
+    }
     endpoints: list[str] = []
     feedback_endpoints: list[str] = []
     for label, record in motor_map.items():
@@ -361,6 +364,7 @@ def validate_hardware_inventory(
             direct_counts[direct] = direct_counts.get(direct, 0) + 1
         if coupled in coupled_counts:
             coupled_counts[coupled] += 1
+            coupled_labels[coupled].append(str(label))
         if endpoint is not None:
             endpoints.append(endpoint)
         if isinstance(record, dict):
@@ -427,11 +431,23 @@ def validate_hardware_inventory(
         errors.append("estop.hardware_chain is empty or TODO")
 
     ankles = hardware.get("ankles", {})
-    for side in ANKLE_PAIRS:
+    for side, pair in ANKLE_PAIRS.items():
         config = ankles.get(side, {}) if isinstance(ankles, dict) else {}
         if not isinstance(config, dict) or config.get("calibrated") is not True:
             errors.append(f"{side} differential ankle is not calibrated")
             continue
+        motor_names = config.get("motor_names")
+        if (
+            not isinstance(motor_names, list)
+            or len(motor_names) != 2
+            or any(not isinstance(name, str) or not name for name in motor_names)
+            or len(set(motor_names)) != 2
+        ):
+            errors.append(f"{side} ankle motor_names must contain two unique motor labels")
+        elif set(motor_names) != set(coupled_labels[pair]):
+            errors.append(
+                f"{side} ankle motor_names must exactly match its two coupled motor records"
+            )
         try:
             matrix = np.asarray(config["joint_to_motor_matrix"], dtype=float)
             zeros = np.asarray(config["motor_zero_rad"], dtype=float)

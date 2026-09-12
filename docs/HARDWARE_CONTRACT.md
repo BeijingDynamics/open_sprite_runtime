@@ -79,6 +79,30 @@ the two calibrated motor coordinates to pitch/roll belongs in that side's
 measured 2x2 `joint_to_motor_matrix`. Assigning a single ankle motor sign to one
 policy joint would be physically incorrect.
 
+The coordinate layers are fixed as follows. `q_drive` is the raw coordinate used
+by the Damiao MIT frame, while `q_motor` is the signed physical motor coordinate:
+
+```text
+q_motor = encoder_sign * (q_drive - motor_zero_rad)
+```
+
+For a direct joint:
+
+```text
+q_motor = policy_to_motor_sign * reduction_ratio * linkage_ratio * q_joint
+```
+
+For a differential ankle, `ankles.<side>.motor_names` gives the exact row order
+of the calibrated matrix and must match that side's two coupled motor records:
+
+```text
+q_motor = joint_to_motor_matrix * [q_pitch, q_roll] + ankle_motor_zero
+```
+
+Velocity uses the same linear map without offsets. Torque uses the inverse
+transpose so instantaneous power is preserved. These transforms are tested in
+both directions over the complete 31-joint/31-motor map.
+
 The inventory validator also pins the known J4340P nameplate data: hip/knee and
 the four shoulder pitch/roll motors are DM-J4340P-2EC with 14/40 Nm rated/peak
 torque, about 3.8 rad/s rated speed, and the frozen 9.3 rad/s operating maximum
