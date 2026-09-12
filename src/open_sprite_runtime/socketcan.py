@@ -210,6 +210,9 @@ class SocketCanReceiver:
     def close(self) -> None:
         self._socket.close()
 
+    def fileno(self) -> int:
+        return self._socket.fileno()
+
     def __enter__(self) -> "SocketCanReceiver":
         return self
 

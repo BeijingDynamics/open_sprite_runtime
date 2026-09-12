@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 import math
-from typing import Any, Iterable, Mapping
+import selectors
+import time
+from typing import Any, Callable, Iterable, Mapping
 
 from .socketcan import ReceivedCanFrame
 
@@ -164,6 +166,8 @@ class DamiaoFeedbackDecoder:
 
 def endpoints_from_hardware_config(
     hardware: Mapping[str, Any],
+    *,
+    expected_motor_count: int = 31,
 ) -> tuple[DamiaoFeedbackEndpoint, ...]:
     """Build explicit decoder endpoints from a measured hardware contract."""
     adapter = hardware.get("can_adapter")
@@ -178,6 +182,10 @@ def endpoints_from_hardware_config(
     motor_map = hardware.get("motor_map")
     if not isinstance(motor_map, Mapping) or not motor_map:
         raise ValueError("motor_map is missing or empty")
+    if len(motor_map) != expected_motor_count:
+        raise ValueError(
+            f"motor_map has {len(motor_map)} motors; expected {expected_motor_count}"
+        )
     endpoints: list[DamiaoFeedbackEndpoint] = []
     for motor_name, raw in motor_map.items():
         if not isinstance(raw, Mapping):
@@ -206,6 +214,13 @@ def endpoints_from_hardware_config(
             )
         )
     DamiaoFeedbackDecoder(endpoints)
+    command_keys = [(item.interface, item.can_id) for item in endpoints]
+    feedback_keys = [(item.interface, item.master_id) for item in endpoints]
+    if len(set(command_keys)) != len(command_keys):
+        raise ValueError("duplicate Damiao command endpoint")
+    overlap = sorted(set(command_keys) & set(feedback_keys))
+    if overlap:
+        raise ValueError(f"Damiao command and feedback endpoints overlap: {overlap}")
     return tuple(endpoints)
 
 
@@ -233,6 +248,9 @@ class DamiaoRxAuditReport:
     missing_motors: tuple[str, ...]
     motor_stats: dict[str, DamiaoMotorRxStats]
     errors: tuple[str, ...]
+    observed_control_frame_count: int
+    decoded_feedback_frame_count: int
+    unexpected_frame_count: int
     hardware_tx_attempts: int = 0
 
     @property
@@ -248,6 +266,9 @@ class DamiaoRxAuditReport:
                 name: asdict(stats) for name, stats in self.motor_stats.items()
             },
             "errors": self.errors,
+            "observed_control_frame_count": self.observed_control_frame_count,
+            "decoded_feedback_frame_count": self.decoded_feedback_frame_count,
+            "unexpected_frame_count": self.unexpected_frame_count,
             "hardware_tx_attempts": self.hardware_tx_attempts,
             "passed": self.passed,
         }
@@ -268,6 +289,14 @@ class DamiaoRxAudit:
         endpoint_list = tuple(endpoints)
         self._decoder = DamiaoFeedbackDecoder(endpoint_list)
         self._expected = {endpoint.motor_name for endpoint in endpoint_list}
+        self._feedback_keys = {
+            (endpoint.interface, endpoint.master_id) for endpoint in endpoint_list
+        }
+        self._command_keys = {
+            (endpoint.interface, endpoint.can_id) for endpoint in endpoint_list
+        }
+        if self._feedback_keys & self._command_keys:
+            raise ValueError("Damiao command and feedback endpoints overlap")
         if minimum_samples_per_motor <= 0:
             raise ValueError("minimum_samples_per_motor must be positive")
         for name, value in (
@@ -285,6 +314,9 @@ class DamiaoRxAudit:
             name: [] for name in self._expected
         }
         self._errors: list[str] = []
+        self._unexpected_keys: set[tuple[str, int]] = set()
+        self._observed_control_frames = 0
+        self._decoded_feedback_frames = 0
 
     def ingest(self, frame: ReceivedCanFrame) -> DamiaoFeedback:
         feedback = self._decoder.decode(frame)
@@ -296,10 +328,24 @@ class DamiaoRxAudit:
                 f"{feedback.motor_name}: motor fault {feedback.status_name}"
             )
         samples.append(feedback)
+        self._decoded_feedback_frames += 1
         return feedback
+
+    def ingest_bus_frame(self, frame: ReceivedCanFrame) -> DamiaoFeedback | None:
+        """Classify one bus frame without treating observed controller TX as ours."""
+        key = (frame.interface, frame.can_id)
+        if key in self._feedback_keys:
+            return self.ingest(frame)
+        if key in self._command_keys:
+            self._observed_control_frames += 1
+            return None
+        self._unexpected_keys.add(key)
+        return None
 
     def report(self) -> DamiaoRxAuditReport:
         errors = list(self._errors)
+        for interface, can_id in sorted(self._unexpected_keys):
+            errors.append(f"unexpected CAN endpoint: {interface}:{can_id:#x}")
         stats: dict[str, DamiaoMotorRxStats] = {}
         missing = tuple(sorted(name for name, values in self._samples.items() if not values))
         for name in sorted(self._samples):
@@ -349,4 +395,37 @@ class DamiaoRxAudit:
             missing_motors=missing,
             motor_stats=stats,
             errors=tuple(errors),
+            observed_control_frame_count=self._observed_control_frames,
+            decoded_feedback_frame_count=self._decoded_feedback_frames,
+            unexpected_frame_count=len(self._unexpected_keys),
         )
+
+
+def collect_receive_only_audit(
+    receivers: Mapping[str, Any],
+    audit: DamiaoRxAudit,
+    duration_s: float,
+    *,
+    selector_factory: Callable[[], Any] = selectors.DefaultSelector,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> DamiaoRxAuditReport:
+    """Collect from already-open receive-only sockets for a finite duration."""
+    if not math.isfinite(duration_s) or duration_s <= 0.0:
+        raise ValueError("duration_s must be finite and positive")
+    if not receivers:
+        raise ValueError("at least one receive-only socket is required")
+    start = monotonic()
+    with selector_factory() as selector:
+        for interface, receiver in receivers.items():
+            if receiver.interface != interface:
+                raise ValueError("receiver mapping key does not match its interface")
+            if hasattr(receiver, "send") or hasattr(receiver, "enable"):
+                raise ValueError("collector accepts receive-only interfaces only")
+            selector.register(receiver, selectors.EVENT_READ, receiver)
+        while True:
+            remaining = duration_s - (monotonic() - start)
+            if remaining <= 0.0:
+                break
+            for key, _mask in selector.select(timeout=min(remaining, 0.1)):
+                audit.ingest_bus_frame(key.data.receive())
+    return audit.report()

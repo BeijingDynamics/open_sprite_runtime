@@ -57,6 +57,11 @@ sprite-runtime heading-self-test --runtime-config config/runtime.example.json
 sprite-runtime timing-probe --duration 10 --state-hz 500
 ```
 
+Once the measured motor map is complete, `sprite-runtime damiao-rx-audit`
+collects a finite, hardware-timestamped four-bus shadow trace with kernel
+listen-only mode. It contains no transmit path and fails on missing or unknown
+motors, feedback-rate/gap/queue-age violations, or Damiao fault status.
+
 The heading controller follows Isaac Lab's PM01 command interface: while
 walking straight it computes `wz = clip(0.5 * wrap(target_yaw - imu_yaw),
 -0.2, 0.2)`. Standing resets the target to the current integrated IMU yaw;

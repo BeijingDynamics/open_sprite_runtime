@@ -58,6 +58,24 @@ sprite-runtime socketcan-rx-preflight \
   --interfaces can0 can1 can2 can3
 ```
 
+After all 31 motor mappings and register-readback ranges are filled, collect a
+finite live shadow report while a separately approved controller supplies the
+normal command traffic:
+
+```bash
+ip -j -d link show type can > kh_socketcan_snapshot.json
+sprite-runtime damiao-rx-audit \
+  --hardware-config config/hardware.sprite0825.local.json \
+  --snapshot kh_socketcan_snapshot.json \
+  --duration 10 \
+  --output evidence/damiao_rx_only_10s.json
+```
+
+The command opens four receive-only sockets only after the saved snapshot
+proves all interfaces are UP and in kernel `LISTEN-ONLY`. It accepts observed
+command IDs as traffic from the separate controller, decodes only configured
+Master IDs, and rejects every unknown endpoint. It never transmits.
+
 After that report passes, `SocketCanReceiver.open()` can create an API that
 only exposes `receive()` and `close()`. It enables CAN-FD plus Linux hardware
 and software RX timestamping before binding. Every frame must carry both a

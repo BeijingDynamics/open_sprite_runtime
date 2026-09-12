@@ -71,6 +71,9 @@ class FakeSocket:
     def close(self):
         self.closed = True
 
+    def fileno(self):
+        return 17
+
 
 class SocketCanReceiverTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -97,6 +100,7 @@ class SocketCanReceiverTests(unittest.TestCase):
         self.assertTrue(timestamp_value & SOF_TIMESTAMPING_RX_SOFTWARE)
         receiver.close()
         self.assertTrue(fake.closed)
+        self.assertEqual(receiver.fileno(), 17)
 
     def test_receive_decodes_fd_frame_and_raw_hardware_timestamp(self) -> None:
         frame = CANFD_FRAME.pack(0x123, 4, 0x01, 0, 0, b"abcd".ljust(64, b"\0"))

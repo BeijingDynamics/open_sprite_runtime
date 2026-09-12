@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import csv
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 
 from .ankle import DifferentialAnkle, fit_differential_ankle
 from .contracts import PolicyContract, RuntimeTiming
+from .damiao import (
+    DamiaoRxAudit,
+    collect_receive_only_audit,
+    endpoints_from_hardware_config,
+)
 from .heading import HeadingCommandController, HeadingControllerConfig
 from .hardware import make_hardware_template, validate_hardware_inventory
 from .safety import (
@@ -20,7 +27,7 @@ from .safety import (
     SafetyState,
     SafetySupervisor,
 )
-from .socketcan import audit_socketcan_rx_snapshot
+from .socketcan import SocketCanReceiver, audit_socketcan_rx_snapshot
 from .shadow import replay_mujoco_trace, replay_multirate_mujoco_trace
 from .timing import run_host_timing_probe
 from .telemetry import (
@@ -370,6 +377,46 @@ def socketcan_rx_preflight(args: argparse.Namespace) -> None:
         raise SystemExit("SocketCAN receive-only preflight failed")
 
 
+def damiao_rx_audit(args: argparse.Namespace) -> None:
+    hardware = load_json(args.hardware_config)
+    interfaces = hardware.get("can_adapter", {}).get("interfaces")
+    endpoints = endpoints_from_hardware_config(hardware)
+    snapshot = load_json(args.snapshot)
+    preflight = audit_socketcan_rx_snapshot(snapshot, interfaces)
+    if not preflight.passed:
+        raise SystemExit(
+            "SocketCAN receive-only preflight failed: " + "; ".join(preflight.errors)
+        )
+    minimum_samples = math.ceil(
+        args.duration * args.minimum_feedback_hz * args.minimum_sample_coverage
+    )
+    audit = DamiaoRxAudit(
+        endpoints,
+        minimum_samples_per_motor=minimum_samples,
+        minimum_feedback_hz=args.minimum_feedback_hz,
+        maximum_hardware_gap_ms=args.maximum_hardware_gap_ms,
+        maximum_userspace_queue_age_p99_ms=args.maximum_queue_age_p99_ms,
+    )
+    with ExitStack() as stack:
+        receivers = {
+            interface: stack.enter_context(SocketCanReceiver.open(interface, preflight))
+            for interface in interfaces
+        }
+        report = collect_receive_only_audit(receivers, audit, args.duration)
+    result = {
+        "mode": "live_damiao_socketcan_receive_only_no_hardware_tx",
+        "duration_s": args.duration,
+        "preflight": preflight.to_dict(),
+        **report.to_dict(),
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not report.passed:
+        raise SystemExit("Damiao receive-only audit failed")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(required=True)
@@ -441,6 +488,19 @@ def main() -> None:
         "--interfaces", nargs=4, default=("can0", "can1", "can2", "can3")
     )
     can_parser.set_defaults(handler=socketcan_rx_preflight)
+    damiao_parser = subparsers.add_parser(
+        "damiao-rx-audit",
+        help="collect a finite four-bus Damiao shadow trace without CAN transmission",
+    )
+    damiao_parser.add_argument("--hardware-config", required=True)
+    damiao_parser.add_argument("--snapshot", required=True)
+    damiao_parser.add_argument("--output", required=True)
+    damiao_parser.add_argument("--duration", type=float, default=10.0)
+    damiao_parser.add_argument("--minimum-feedback-hz", type=float, default=475.0)
+    damiao_parser.add_argument("--minimum-sample-coverage", type=float, default=0.95)
+    damiao_parser.add_argument("--maximum-hardware-gap-ms", type=float, default=6.0)
+    damiao_parser.add_argument("--maximum-queue-age-p99-ms", type=float, default=6.0)
+    damiao_parser.set_defaults(handler=damiao_rx_audit)
     args = parser.parse_args()
     args.handler(args)
 

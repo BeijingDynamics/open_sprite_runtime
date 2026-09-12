@@ -1,10 +1,12 @@
 import unittest
+from types import SimpleNamespace
 
 from open_sprite_runtime.damiao import (
     DamiaoFeedbackDecoder,
     DamiaoFeedbackEndpoint,
     DamiaoMitRanges,
     DamiaoRxAudit,
+    collect_receive_only_audit,
     decode_damiao_feedback,
     endpoints_from_hardware_config,
 )
@@ -112,7 +114,7 @@ class DamiaoFeedbackTests(unittest.TestCase):
                 }
             },
         }
-        built = endpoints_from_hardware_config(hardware)
+        built = endpoints_from_hardware_config(hardware, expected_motor_count=1)
         self.assertEqual(built, (endpoint(),))
 
     def test_rx_audit_passes_complete_500hz_trace(self) -> None:
@@ -158,6 +160,63 @@ class DamiaoFeedbackTests(unittest.TestCase):
         self.assertTrue(any("motor fault" in error for error in report.errors))
         self.assertTrue(any("hardware timestamp gap" in error for error in report.errors))
         self.assertTrue(any("queue age P99" in error for error in report.errors))
+
+    def test_bus_classifier_accepts_observed_control_but_rejects_unknown_id(self) -> None:
+        audit = DamiaoRxAudit([endpoint()], minimum_samples_per_motor=1)
+        self.assertIsNone(audit.ingest_bus_frame(frame(bytes(8), can_id=0x03)))
+        self.assertIsNone(audit.ingest_bus_frame(frame(bytes(8), can_id=0x55)))
+        report = audit.report()
+        self.assertEqual(report.observed_control_frame_count, 1)
+        self.assertEqual(report.unexpected_frame_count, 1)
+        self.assertFalse(report.passed)
+
+    def test_finite_collector_uses_only_receive_api(self) -> None:
+        class Receiver:
+            interface = "can2"
+
+            def __init__(self):
+                self.frames = [
+                    frame(
+                        bytes([0x03]) + bytes(7),
+                        hardware_timestamp_ns=1_000_000_000 + index * 2_000_000,
+                        software_timestamp_ns=2_000_000_000 + index * 2_000_000,
+                        userspace_receive_timestamp_ns=2_000_100_000 + index * 2_000_000,
+                    )
+                    for index in range(3)
+                ]
+
+            def receive(self):
+                return self.frames.pop(0)
+
+        receiver = Receiver()
+
+        class Selector:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def register(self, _fileobj, _events, data):
+                self.data = data
+
+            def select(self, timeout):
+                if self.data.frames:
+                    return [(SimpleNamespace(data=self.data), 1)]
+                return []
+
+        ticks = iter((0.0, 0.001, 0.002, 0.003, 0.2))
+        audit = DamiaoRxAudit([endpoint()], minimum_samples_per_motor=3)
+        report = collect_receive_only_audit(
+            {"can2": receiver},
+            audit,
+            0.1,
+            selector_factory=Selector,
+            monotonic=lambda: next(ticks),
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.decoded_feedback_frame_count, 3)
+        self.assertEqual(report.hardware_tx_attempts, 0)
 
 
 if __name__ == "__main__":
