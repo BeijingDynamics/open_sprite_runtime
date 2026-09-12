@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import re
 from typing import Any, Iterable
 
 import numpy as np
@@ -34,6 +35,62 @@ MOTOR_REQUIRED_FIELDS = (
     "temperature_limit_c",
     "mit_ranges",
 )
+
+SOCKETCAN_INTERFACE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+
+def _validate_can_adapter(hardware: dict[str, Any], errors: list[str]) -> None:
+    adapter = hardware.get("can_adapter")
+    if not isinstance(adapter, dict):
+        errors.append("can_adapter configuration is missing")
+        return
+    if adapter.get("backend") != "socketcan":
+        errors.append("can_adapter.backend must be socketcan")
+    if not _nonempty(adapter.get("vendor")):
+        errors.append("can_adapter.vendor is empty or TODO")
+    if not _nonempty(adapter.get("sdk_version")):
+        errors.append("can_adapter.sdk_version is empty or TODO")
+
+    interfaces = adapter.get("interfaces")
+    if not isinstance(interfaces, list) or len(interfaces) != 4:
+        errors.append("can_adapter.interfaces must contain four SocketCAN interface names")
+    elif any(
+        not isinstance(name, str) or not SOCKETCAN_INTERFACE_RE.fullmatch(name)
+        for name in interfaces
+    ):
+        errors.append("can_adapter.interfaces contains an invalid interface name")
+    elif len(set(interfaces)) != 4:
+        errors.append("can_adapter.interfaces must be unique")
+
+    shadow = adapter.get("rx_only_shadow")
+    if not isinstance(shadow, dict):
+        errors.append("can_adapter.rx_only_shadow configuration is missing")
+        return
+    required_true = (
+        "required_before_arm",
+        "kernel_listen_only_required",
+        "hardware_timestamp_required",
+        "completed",
+    )
+    for field in required_true:
+        if shadow.get(field) is not True:
+            errors.append(f"can_adapter.rx_only_shadow.{field} must be true")
+    if shadow.get("kernel_ctrlmode") != "CAN_CTRLMODE_LISTENONLY":
+        errors.append(
+            "can_adapter.rx_only_shadow.kernel_ctrlmode must be CAN_CTRLMODE_LISTENONLY"
+        )
+    if not _nonempty(shadow.get("evidence_report")):
+        errors.append("can_adapter.rx_only_shadow.evidence_report is empty or TODO")
+    if shadow.get("timestamp_source") not in ("device", "hardware"):
+        errors.append("can_adapter.rx_only_shadow.timestamp_source must be device or hardware")
+    try:
+        p99 = float(shadow["measured_rx_age_p99_ms"])
+        if not np.isfinite(p99) or p99 <= 0.0 or p99 > 6.0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        errors.append(
+            "can_adapter.rx_only_shadow.measured_rx_age_p99_ms must be in (0, 6]"
+        )
 
 
 @dataclass(frozen=True)
@@ -249,6 +306,8 @@ def validate_hardware_inventory(
     if len(policy_order) != 31 or len(policy_set) != 31:
         errors.append("frozen policy contract must contain 31 unique joints")
 
+    _validate_can_adapter(hardware, errors)
+
     controller = hardware.get("controller")
     if not isinstance(controller, dict):
         errors.append("controller configuration is missing")
@@ -450,6 +509,22 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "usb_canfd_channels": 4,
             "measured_round_trip_latency_required": True,
             "nominal_bus_voltage_v": 38.0,
+        },
+        "can_adapter": {
+            "backend": "socketcan",
+            "vendor": "KunHong",
+            "sdk_version": "1.3.1",
+            "interfaces": [None, None, None, None],
+            "rx_only_shadow": {
+                "required_before_arm": True,
+                "kernel_listen_only_required": True,
+                "kernel_ctrlmode": "CAN_CTRLMODE_LISTENONLY",
+                "hardware_timestamp_required": True,
+                "completed": False,
+                "timestamp_source": None,
+                "measured_rx_age_p99_ms": None,
+                "evidence_report": None,
+            },
         },
         "imu": {
             "configured": False,

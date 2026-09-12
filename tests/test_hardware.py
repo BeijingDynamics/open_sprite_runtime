@@ -84,6 +84,22 @@ def complete_hardware() -> dict:
             "measured_round_trip_latency_required": True,
             "nominal_bus_voltage_v": 38.0,
         },
+        "can_adapter": {
+            "backend": "socketcan",
+            "vendor": "KunHong",
+            "sdk_version": "1.3.1",
+            "interfaces": ["can0", "can1", "can2", "can3"],
+            "rx_only_shadow": {
+                "required_before_arm": True,
+                "kernel_listen_only_required": True,
+                "kernel_ctrlmode": "CAN_CTRLMODE_LISTENONLY",
+                "hardware_timestamp_required": True,
+                "completed": True,
+                "timestamp_source": "hardware",
+                "measured_rx_age_p99_ms": 1.2,
+                "evidence_report": "reports/kh_rx_only_20260913.json",
+            },
+        },
         "imu": {
             "configured": True,
             "mount_link": "pelvis",
@@ -157,6 +173,27 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("duplicate CAN" in error for error in report.errors))
         self.assertTrue(report.duplicate_policy_joints)
+
+    def test_can_adapter_requires_four_unique_interfaces(self) -> None:
+        hardware = complete_hardware()
+        hardware["can_adapter"]["interfaces"] = ["can0", "can1", "can2", "can2"]
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("interfaces must be unique" in error for error in report.errors))
+
+    def test_can_adapter_requires_completed_listen_only_shadow_gate(self) -> None:
+        hardware = complete_hardware()
+        hardware["can_adapter"]["rx_only_shadow"]["completed"] = False
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("completed must be true" in error for error in report.errors))
+
+    def test_can_adapter_rejects_stale_receive_age(self) -> None:
+        hardware = complete_hardware()
+        hardware["can_adapter"]["rx_only_shadow"]["measured_rx_age_p99_ms"] = 6.1
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("measured_rx_age_p99_ms" in error for error in report.errors))
 
     def test_ankle_must_use_two_coupled_motors_per_side(self) -> None:
         hardware = complete_hardware()
