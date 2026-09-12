@@ -44,3 +44,13 @@ Listen-only is a shadow-mode commissioning gate, not the final armed state.
 Changing an interface to active mode later must be a separate deliberate
 operation guarded by the independent e-stop, complete hardware inventory,
 ankle calibration, fresh telemetry, and runtime arming checks.
+
+The runtime command below audits a saved structured snapshot offline. It does
+not open a CAN socket:
+
+```bash
+ip -j -d link show type can > kh_socketcan_snapshot.json
+sprite-runtime socketcan-rx-preflight \
+  --snapshot kh_socketcan_snapshot.json \
+  --interfaces can0 can1 can2 can3
+```

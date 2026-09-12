@@ -20,6 +20,7 @@ from .safety import (
     SafetyState,
     SafetySupervisor,
 )
+from .socketcan import audit_socketcan_rx_snapshot
 from .shadow import replay_mujoco_trace, replay_multirate_mujoco_trace
 from .timing import run_host_timing_probe
 from .telemetry import (
@@ -361,6 +362,14 @@ def hardware_template(args: argparse.Namespace) -> None:
     )
 
 
+def socketcan_rx_preflight(args: argparse.Namespace) -> None:
+    snapshot = json.loads(Path(args.snapshot).read_text(encoding="utf-8"))
+    report = audit_socketcan_rx_snapshot(snapshot, args.interfaces)
+    print(json.dumps({"mode": "offline_socketcan_rx_preflight_no_hardware_tx", **report.to_dict()}, indent=2))
+    if not report.passed:
+        raise SystemExit("SocketCAN receive-only preflight failed")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(required=True)
@@ -423,6 +432,15 @@ def main() -> None:
     template_parser.add_argument("--output", required=True)
     template_parser.add_argument("--force", action="store_true")
     template_parser.set_defaults(handler=hardware_template)
+    can_parser = subparsers.add_parser(
+        "socketcan-rx-preflight",
+        help="audit a saved ip-link JSON snapshot without opening or transmitting on CAN",
+    )
+    can_parser.add_argument("--snapshot", required=True)
+    can_parser.add_argument(
+        "--interfaces", nargs=4, default=("can0", "can1", "can2", "can3")
+    )
+    can_parser.set_defaults(handler=socketcan_rx_preflight)
     args = parser.parse_args()
     args.handler(args)
 
