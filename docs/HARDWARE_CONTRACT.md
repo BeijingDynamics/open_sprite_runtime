@@ -103,6 +103,13 @@ Velocity uses the same linear map without offsets. Torque uses the inverse
 transpose so instantaneous power is preserved. These transforms are tested in
 both directions over the complete 31-joint/31-motor map.
 
+For differential ankles, arbitrary pitch/roll gains transform to full 2x2 motor
+impedance matrices. The 1 kHz Damiao MIT loops implement their diagonal terms;
+the 500 Hz state layer computes the non-diagonal coupling terms as feedforward
+torque from fresh measured state. This split exactly reproduces the requested
+joint-space PD torque and avoids pretending that two independent scalar motor
+gains can represent unequal or non-ideal coupled-joint gains.
+
 The inventory validator also pins the known J4340P nameplate data: hip/knee and
 the four shoulder pitch/roll motors are DM-J4340P-2EC with 14/40 Nm rated/peak
 torque, about 3.8 rad/s rated speed, and the frozen 9.3 rad/s operating maximum

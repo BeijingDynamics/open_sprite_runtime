@@ -311,6 +311,27 @@ def command_profiles_from_hardware_config(
     return tuple(profiles)
 
 
+def encode_damiao_mit_command_bank(
+    profiles: Iterable[DamiaoMitCommandProfile],
+    commands: Mapping[str, DamiaoMitCommand],
+    measured_states: Mapping[str, DamiaoMitState],
+) -> tuple[EncodedDamiaoMitCommand, ...]:
+    """Encode an exact all-or-nothing physical-motor bank without transmission."""
+    profile_list = tuple(profiles)
+    profile_map = {profile.endpoint.motor_name: profile for profile in profile_list}
+    if len(profile_map) != len(profile_list):
+        raise ValueError("duplicate physical motor profile")
+    expected = set(profile_map)
+    if set(commands) != expected:
+        raise ValueError("MIT commands must exactly cover the physical motor profiles")
+    if set(measured_states) != expected:
+        raise ValueError("measured states must exactly cover the physical motor profiles")
+    return tuple(
+        profile.encode(commands[name], measured_states[name])
+        for name, profile in profile_map.items()
+    )
+
+
 @dataclass(frozen=True)
 class DamiaoFeedback:
     motor_name: str

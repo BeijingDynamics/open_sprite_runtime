@@ -10,6 +10,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from .ankle import DifferentialAnkle
+from .damiao import DamiaoMitCommand
 from .hardware import ANKLE_PAIRS, validate_hardware_inventory
 
 
@@ -88,6 +89,23 @@ class DirectMotorMap:
             _finite_scalar(kd, "joint kd") / scale,
         )
 
+    def joint_impedance_to_drive_command(
+        self,
+        desired_position_rad: float,
+        desired_velocity_rad_s: float,
+        kp: float,
+        kd: float,
+        feedforward_torque_nm: float,
+    ) -> DamiaoMitCommand:
+        drive_kp, drive_kd = self.joint_to_drive_gains(kp, kd)
+        return DamiaoMitCommand(
+            position_rad=self.joint_to_drive_position(desired_position_rad),
+            velocity_rad_s=self.joint_to_drive_velocity(desired_velocity_rad_s),
+            kp=drive_kp,
+            kd=drive_kd,
+            feedforward_torque_nm=self.joint_to_drive_torque(feedforward_torque_nm),
+        )
+
 
 @dataclass(frozen=True)
 class DifferentialAnkleDriveMap:
@@ -136,6 +154,70 @@ class DifferentialAnkleDriveMap:
     def drive_to_joint_torque(self, drive_torque: ArrayLike) -> Vector:
         drive = np.asarray(drive_torque, dtype=np.float64)
         return self.ankle.motor_to_joint_torque(self.encoder_sign * drive)
+
+    @property
+    def joint_to_drive_matrix(self) -> NDArray[np.float64]:
+        return np.diag(self.encoder_sign) @ self.ankle.joint_to_motor_matrix
+
+    def joint_impedance_to_drive_commands(
+        self,
+        desired_position_rad: ArrayLike,
+        desired_velocity_rad_s: ArrayLike,
+        measured_position_rad: ArrayLike,
+        measured_velocity_rad_s: ArrayLike,
+        kp: ArrayLike,
+        kd: ArrayLike,
+        feedforward_torque_nm: ArrayLike,
+    ) -> tuple[DamiaoMitCommand, DamiaoMitCommand]:
+        """Split exact joint impedance into embedded diagonal PD and host coupling."""
+        desired_position = np.asarray(desired_position_rad, dtype=np.float64)
+        desired_velocity = np.asarray(desired_velocity_rad_s, dtype=np.float64)
+        measured_position = np.asarray(measured_position_rad, dtype=np.float64)
+        measured_velocity = np.asarray(measured_velocity_rad_s, dtype=np.float64)
+        joint_kp = np.asarray(kp, dtype=np.float64)
+        joint_kd = np.asarray(kd, dtype=np.float64)
+        joint_ff = np.asarray(feedforward_torque_nm, dtype=np.float64)
+        vectors = (
+            desired_position,
+            desired_velocity,
+            measured_position,
+            measured_velocity,
+            joint_kp,
+            joint_kd,
+            joint_ff,
+        )
+        if any(value.shape != (2,) or not np.isfinite(value).all() for value in vectors):
+            raise ValueError("ankle impedance inputs must be finite two-vectors")
+        if np.any(joint_kp < 0.0) or np.any(joint_kd < 0.0):
+            raise ValueError("ankle impedance gains must be non-negative")
+
+        desired_drive_position = self.joint_to_drive_position(desired_position)
+        desired_drive_velocity = self.joint_to_drive_velocity(desired_velocity)
+        measured_drive_position = self.joint_to_drive_position(measured_position)
+        measured_drive_velocity = self.joint_to_drive_velocity(measured_velocity)
+        position_error = desired_drive_position - measured_drive_position
+        velocity_error = desired_drive_velocity - measured_drive_velocity
+
+        inverse = np.linalg.inv(self.joint_to_drive_matrix)
+        drive_kp = inverse.T @ np.diag(joint_kp) @ inverse
+        drive_kd = inverse.T @ np.diag(joint_kd) @ inverse
+        embedded_kp = np.diag(drive_kp)
+        embedded_kd = np.diag(drive_kd)
+        coupled_torque = (
+            (drive_kp - np.diag(embedded_kp)) @ position_error
+            + (drive_kd - np.diag(embedded_kd)) @ velocity_error
+            + inverse.T @ joint_ff
+        )
+        return tuple(
+            DamiaoMitCommand(
+                position_rad=float(desired_drive_position[index]),
+                velocity_rad_s=float(desired_drive_velocity[index]),
+                kp=float(embedded_kp[index]),
+                kd=float(embedded_kd[index]),
+                feedforward_torque_nm=float(coupled_torque[index]),
+            )
+            for index in range(2)
+        )
 
 
 @dataclass(frozen=True)
@@ -206,6 +288,54 @@ class SpriteMotorMap:
 
     def motor_to_joint_torques(self, values: Mapping[str, float]) -> Vector:
         return self._motor_to_joint(values, "torque")
+
+    def joint_impedance_to_motor_commands(
+        self,
+        desired_position_rad: ArrayLike,
+        desired_velocity_rad_s: ArrayLike,
+        measured_position_rad: ArrayLike,
+        measured_velocity_rad_s: ArrayLike,
+        kp: ArrayLike,
+        kd: ArrayLike,
+        feedforward_torque_nm: ArrayLike,
+    ) -> dict[str, DamiaoMitCommand]:
+        vectors = {
+            "desired_position": self._joint_vector(desired_position_rad, "desired position"),
+            "desired_velocity": self._joint_vector(desired_velocity_rad_s, "desired velocity"),
+            "measured_position": self._joint_vector(measured_position_rad, "measured position"),
+            "measured_velocity": self._joint_vector(measured_velocity_rad_s, "measured velocity"),
+            "kp": self._joint_vector(kp, "joint kp"),
+            "kd": self._joint_vector(kd, "joint kd"),
+            "feedforward": self._joint_vector(feedforward_torque_nm, "joint feedforward"),
+        }
+        if np.any(vectors["kp"] < 0.0) or np.any(vectors["kd"] < 0.0):
+            raise ValueError("joint impedance gains must be non-negative")
+        indices = {name: index for index, name in enumerate(self.policy_joint_names)}
+        commands: dict[str, DamiaoMitCommand] = {}
+        for joint_name, mapping in self.direct.items():
+            index = indices[joint_name]
+            commands[mapping.motor_name] = mapping.joint_impedance_to_drive_command(
+                vectors["desired_position"][index],
+                vectors["desired_velocity"][index],
+                vectors["kp"][index],
+                vectors["kd"][index],
+                vectors["feedforward"][index],
+            )
+        for mapping in self.ankles.values():
+            ankle_indices = [indices[name] for name in mapping.joint_names]
+            ankle_commands = mapping.joint_impedance_to_drive_commands(
+                vectors["desired_position"][ankle_indices],
+                vectors["desired_velocity"][ankle_indices],
+                vectors["measured_position"][ankle_indices],
+                vectors["measured_velocity"][ankle_indices],
+                vectors["kp"][ankle_indices],
+                vectors["kd"][ankle_indices],
+                vectors["feedforward"][ankle_indices],
+            )
+            commands.update(zip(mapping.motor_names, ankle_commands, strict=True))
+        if set(commands) != set(self.physical_motor_names):
+            raise RuntimeError("impedance mapping did not produce the exact physical motor set")
+        return commands
 
     def _motor_to_joint(self, values: Mapping[str, float], kind: str) -> Vector:
         motor = self._motor_values(values, f"motor {kind}")
