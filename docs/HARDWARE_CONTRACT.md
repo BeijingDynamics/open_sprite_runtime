@@ -44,6 +44,17 @@ CAN endpoint, firmware version, zero, sign, limit, current/temperature bound,
 MIT range, IMU transform, e-stop description, and measured ankle matrix remains
 unset until measured.
 
+MIT command profiles are built only from a complete `configured=true` hardware
+inventory. They use the physical motor map rather than policy-joint index order,
+which is essential for the two-motor differential ankles. Each command is checked
+against motor soft position limits, motor-register-readback PMAX/VMAX/TMAX, and
+the current-speed torque envelope. The complete impedance request
+`kp*(q_des-q)+kd*(dq_des-dq)+tau_ff` must pass, not only `tau_ff`.
+
+Both `motor_telemetry_healthy` and `command_envelope_healthy` default false in the
+runtime safety input. Either violation creates a latched fault, so omission of a
+health signal cannot silently authorize transmission.
+
 The runtime must reorder feedback into the exact 31-joint policy order from the
 qualified contract. It must never use CAN enumeration order as policy order.
 Feedback identity is the pair `(SocketCAN interface, Master ID)` and D0's

@@ -189,6 +189,8 @@ def replay_multirate_mujoco_trace(
                     right_ankle_calibrated=True,
                     imu_valid=True,
                     estop_healthy=True,
+                    motor_telemetry_healthy=True,
+                    command_envelope_healthy=True,
                 )
             )
             tx_permitted_count += int(decision.hardware_tx_permitted)

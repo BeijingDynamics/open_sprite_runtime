@@ -199,6 +199,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
             "imu_valid": True,
             "estop_healthy": True,
             "motor_telemetry_healthy": True,
+            "command_envelope_healthy": True,
         }
         values.update(overrides)
         decision = supervisor.evaluate(SafetyInputs(**values))  # type: ignore[arg-type]
@@ -223,6 +224,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
         "estop_open": evaluate(fresh(), estop_healthy=False),
         "policy_overrun": evaluate(fresh(), policy_overrun_ms=3.0),
         "motor_limit": evaluate(fresh(), motor_telemetry_healthy=False),
+        "command_limit": evaluate(fresh(), command_envelope_healthy=False),
         "latch_sequence": {
             "stale": stale_latched,
             "healthy_input_still_latched": recovered_but_latched,
@@ -236,6 +238,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
         report["estop_open"],
         report["policy_overrun"],
         report["motor_limit"],
+        report["command_limit"],
     )
     if any(case["hardware_tx_permitted"] for case in independent_cases):
         raise RuntimeError("shadow self-test unexpectedly permitted hardware TX")
@@ -437,7 +440,8 @@ def main() -> None:
     heading_parser.add_argument("--runtime-config", required=True)
     heading_parser.set_defaults(handler=heading_self_test)
     safety_parser = subparsers.add_parser(
-        "safety-self-test", help="exercise stale-data, timeout, overrun, and e-stop gates"
+        "safety-self-test",
+        help="exercise timing, e-stop, telemetry, and command-envelope gates",
     )
     safety_parser.add_argument("--runtime-config", required=True)
     safety_parser.set_defaults(handler=safety_self_test)

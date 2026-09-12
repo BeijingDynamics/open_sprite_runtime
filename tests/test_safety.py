@@ -26,6 +26,7 @@ class SafetySupervisorTests(unittest.TestCase):
             "imu_valid": True,
             "estop_healthy": True,
             "motor_telemetry_healthy": True,
+            "command_envelope_healthy": True,
         }
         values.update(overrides)
         return SafetyInputs(**values)  # type: ignore[arg-type]
@@ -76,6 +77,22 @@ class SafetySupervisorTests(unittest.TestCase):
         decision = supervisor.evaluate(self.inputs(motor_telemetry_healthy=False))
         self.assertIn("motor_limit", decision.latched_faults)
         self.assertFalse(supervisor.evaluate(self.inputs()).hardware_tx_permitted)
+
+    def test_command_limit_latches(self) -> None:
+        supervisor = SafetySupervisor(RuntimeMode.ARMED, self.limits)
+        decision = supervisor.evaluate(self.inputs(command_envelope_healthy=False))
+        self.assertIn("command_limit", decision.latched_faults)
+        self.assertFalse(supervisor.evaluate(self.inputs()).hardware_tx_permitted)
+
+    def test_omitted_motor_and_command_health_fail_closed(self) -> None:
+        values = vars(self.inputs()).copy()
+        values.pop("motor_telemetry_healthy")
+        values.pop("command_envelope_healthy")
+        decision = SafetySupervisor(RuntimeMode.ARMED, self.limits).evaluate(
+            SafetyInputs(**values)
+        )
+        self.assertIn("motor_limit", decision.blockers)
+        self.assertIn("command_limit", decision.blockers)
 
     def test_future_timestamp_is_rejected(self) -> None:
         supervisor = SafetySupervisor(RuntimeMode.SHADOW, self.limits)

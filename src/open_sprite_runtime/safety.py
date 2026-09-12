@@ -71,7 +71,8 @@ class SafetyInputs:
     right_ankle_calibrated: bool
     imu_valid: bool
     estop_healthy: bool
-    motor_telemetry_healthy: bool = True
+    motor_telemetry_healthy: bool = False
+    command_envelope_healthy: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,13 @@ class SafetySupervisor:
     """Fail-closed runtime gate independent of the future CAN backend."""
 
     _LATCHING_FAULTS = frozenset(
-        ("estop_unhealthy", "state_stale", "policy_overrun", "motor_limit")
+        (
+            "estop_unhealthy",
+            "state_stale",
+            "policy_overrun",
+            "motor_limit",
+            "command_limit",
+        )
     )
 
     def __init__(self, mode: RuntimeMode, limits: SafetyLimits):
@@ -120,6 +127,7 @@ class SafetySupervisor:
             ("imu_invalid", inputs.imu_valid),
             ("estop_unhealthy", inputs.estop_healthy),
             ("motor_limit", inputs.motor_telemetry_healthy),
+            ("command_limit", inputs.command_envelope_healthy),
             ("state_stale", state_age_ms <= self.limits.maximum_state_age_ms),
             ("command_stale", command_age_ms <= self.limits.maximum_command_age_ms),
             (
