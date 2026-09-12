@@ -41,7 +41,9 @@ def frame(data: bytes, **changes) -> ReceivedCanFrame:
         "is_fd": False,
         "bit_rate_switch": False,
         "error_state_indicator": False,
+        "software_timestamp_ns": 123456700,
         "hardware_timestamp_ns": 123456789,
+        "userspace_receive_timestamp_ns": 123456800,
     }
     values.update(changes)
     return ReceivedCanFrame(**values)
@@ -94,4 +96,3 @@ class DamiaoFeedbackTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

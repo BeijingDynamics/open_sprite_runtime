@@ -5,6 +5,7 @@ import struct
 from open_sprite_runtime.socketcan import (
     CANFD_FRAME,
     SO_TIMESTAMPING_LINUX_64,
+    SOF_TIMESTAMPING_RX_SOFTWARE,
     SocketCanReceiver,
     audit_socketcan_rx_snapshot,
 )
@@ -90,6 +91,10 @@ class SocketCanReceiverTests(unittest.TestCase):
         self.assertFalse(hasattr(receiver, "send"))
         self.assertIn((socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1), fake.options)
         self.assertTrue(any(option[1] == SO_TIMESTAMPING_LINUX_64 for option in fake.options))
+        timestamp_value = next(
+            option[2] for option in fake.options if option[1] == SO_TIMESTAMPING_LINUX_64
+        )
+        self.assertTrue(timestamp_value & SOF_TIMESTAMPING_RX_SOFTWARE)
         receiver.close()
         self.assertTrue(fake.closed)
 
@@ -97,17 +102,39 @@ class SocketCanReceiverTests(unittest.TestCase):
         frame = CANFD_FRAME.pack(0x123, 4, 0x01, 0, 0, b"abcd".ljust(64, b"\0"))
         timestamps = struct.pack("=6q", 1, 2, 3, 4, 5, 6)
         fake = FakeSocket(frame, [(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamps)])
-        received = SocketCanReceiver("can0", fake).receive()
+        received = SocketCanReceiver(
+            "can0", fake, clock_ns=lambda: 1_000_000_102
+        ).receive()
         self.assertEqual(received.can_id, 0x123)
         self.assertEqual(received.data, b"abcd")
         self.assertTrue(received.is_fd)
         self.assertTrue(received.bit_rate_switch)
+        self.assertEqual(received.software_timestamp_ns, 1_000_000_002)
         self.assertEqual(received.hardware_timestamp_ns, 5_000_000_006)
+        self.assertEqual(received.userspace_queue_age_ns, 100)
 
     def test_receive_rejects_missing_hardware_timestamp(self) -> None:
         frame = CANFD_FRAME.pack(0x123, 1, 0, 0, 0, b"x".ljust(64, b"\0"))
-        with self.assertRaisesRegex(RuntimeError, "software fallback is forbidden"):
+        with self.assertRaisesRegex(RuntimeError, "SCM_TIMESTAMPING evidence is missing"):
             SocketCanReceiver("can0", FakeSocket(frame)).receive()
+
+    def test_receive_rejects_missing_raw_hardware_timestamp(self) -> None:
+        frame = CANFD_FRAME.pack(0x123, 1, 0, 0, 0, b"x".ljust(64, b"\0"))
+        timestamps = struct.pack("=6q", 1, 2, 0, 0, 0, 0)
+        ancillary = [(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamps)]
+        with self.assertRaisesRegex(RuntimeError, "software fallback is forbidden"):
+            SocketCanReceiver(
+                "can0", FakeSocket(frame, ancillary), clock_ns=lambda: 2_000_000_000
+            ).receive()
+
+    def test_receive_rejects_missing_kernel_software_timestamp(self) -> None:
+        frame = CANFD_FRAME.pack(0x123, 1, 0, 0, 0, b"x".ljust(64, b"\0"))
+        timestamps = struct.pack("=6q", 0, 0, 0, 0, 5, 6)
+        ancillary = [(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamps)]
+        with self.assertRaisesRegex(RuntimeError, "software RX timestamp is missing"):
+            SocketCanReceiver(
+                "can0", FakeSocket(frame, ancillary), clock_ns=lambda: 6_000_000_000
+            ).receive()
 
 
 if __name__ == "__main__":

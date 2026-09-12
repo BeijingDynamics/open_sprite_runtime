@@ -5,11 +5,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 import socket
 import struct
+import time
 from typing import Any, Iterable
 
 
 SO_TIMESTAMPING_LINUX_64 = 37
 SOF_TIMESTAMPING_RX_HARDWARE = 1 << 2
+SOF_TIMESTAMPING_RX_SOFTWARE = 1 << 3
 SOF_TIMESTAMPING_SOFTWARE = 1 << 4
 SOF_TIMESTAMPING_RAW_HARDWARE = 1 << 6
 CAN_EFF_FLAG = 0x80000000
@@ -46,7 +48,13 @@ class ReceivedCanFrame:
     is_fd: bool
     bit_rate_switch: bool
     error_state_indicator: bool
+    software_timestamp_ns: int
     hardware_timestamp_ns: int
+    userspace_receive_timestamp_ns: int
+
+    @property
+    def userspace_queue_age_ns(self) -> int:
+        return self.userspace_receive_timestamp_ns - self.software_timestamp_ns
 
 
 def _ctrlmodes(entry: dict[str, Any]) -> set[str]:
@@ -105,25 +113,34 @@ def audit_socketcan_rx_snapshot(
     )
 
 
-def _raw_hardware_timestamp_ns(ancillary: Iterable[tuple[int, int, bytes]]) -> int:
+def _socket_timestamps_ns(
+    ancillary: Iterable[tuple[int, int, bytes]],
+) -> tuple[int, int]:
     for level, kind, payload in ancillary:
         if level != socket.SOL_SOCKET or kind != SO_TIMESTAMPING_LINUX_64:
             continue
         if len(payload) < 6 * 8:
             raise RuntimeError("SCM_TIMESTAMPING payload is shorter than three timespec values")
         values = struct.unpack_from("=6q", payload)
-        seconds, nanoseconds = values[4], values[5]
-        if seconds > 0 or nanoseconds > 0:
-            return seconds * 1_000_000_000 + nanoseconds
-    raise RuntimeError("raw hardware RX timestamp is missing; software fallback is forbidden")
+        software_ns = values[0] * 1_000_000_000 + values[1]
+        raw_hardware_ns = values[4] * 1_000_000_000 + values[5]
+        if software_ns <= 0:
+            raise RuntimeError("kernel software RX timestamp is missing")
+        if raw_hardware_ns <= 0:
+            raise RuntimeError(
+                "raw hardware RX timestamp is missing; software fallback is forbidden"
+            )
+        return software_ns, raw_hardware_ns
+    raise RuntimeError("SCM_TIMESTAMPING evidence is missing")
 
 
 class SocketCanReceiver:
     """Receive-only SocketCAN wrapper with no transmit API."""
 
-    def __init__(self, interface: str, raw_socket: Any):
+    def __init__(self, interface: str, raw_socket: Any, *, clock_ns: Any = time.time_ns):
         self.interface = interface
         self._socket = raw_socket
+        self._clock_ns = clock_ns
 
     @classmethod
     def open(
@@ -142,6 +159,7 @@ class SocketCanReceiver:
             raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
             timestamp_flags = (
                 SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
                 | SOF_TIMESTAMPING_SOFTWARE
                 | SOF_TIMESTAMPING_RAW_HARDWARE
             )
@@ -156,7 +174,10 @@ class SocketCanReceiver:
         payload, ancillary, _flags, _address = self._socket.recvmsg(
             CANFD_FRAME.size, socket.CMSG_SPACE(6 * 8)
         )
-        timestamp_ns = _raw_hardware_timestamp_ns(ancillary)
+        userspace_receive_ns = int(self._clock_ns())
+        software_timestamp_ns, hardware_timestamp_ns = _socket_timestamps_ns(ancillary)
+        if userspace_receive_ns < software_timestamp_ns:
+            raise RuntimeError("kernel RX timestamp is in the future relative to userspace")
         if len(payload) == CANFD_FRAME.size:
             raw_id, length, flags, _reserved0, _reserved1, data = CANFD_FRAME.unpack(payload)
             is_fd = True
@@ -181,7 +202,9 @@ class SocketCanReceiver:
             is_fd=is_fd,
             bit_rate_switch=bit_rate_switch,
             error_state_indicator=error_state_indicator,
-            hardware_timestamp_ns=timestamp_ns,
+            software_timestamp_ns=software_timestamp_ns,
+            hardware_timestamp_ns=hardware_timestamp_ns,
+            userspace_receive_timestamp_ns=userspace_receive_ns,
         )
 
     def close(self) -> None:

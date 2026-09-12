@@ -17,7 +17,8 @@ No CAN device was opened, configured, or used to transmit frames.
   omitting `send()` calls in the application.
 - The driver supports device/hardware receive timestamps. Its public frame
   contract marks timestamps with `KCANFD_TIMESTAMP` and
-  `KCANFD_HWTIMESTAMP`; the SocketCAN path populates `skb_hwtstamps`.
+  `KCANFD_HWTIMESTAMP`; the SocketCAN path populates `skb_hwtstamps` with the
+  adapter's raw device-clock value. This raw value is not host wall-clock time.
 - Driver source and tests are GPL/LGPL licensed. The runtime should use the
   kernel SocketCAN ABI and must not copy vendor driver code into the AGPL
   runtime repository.
@@ -33,9 +34,11 @@ No CAN device was opened, configured, or used to transmit frames.
    `ip -details link` evidence before the runtime opens receive sockets.
 3. Receive motor telemetry only. Verify zero application TX calls and zero CAN
    TX frame count while exercising every joint manually with motor torque off.
-4. Verify hardware/device timestamps are present and monotonic. Measure P99
-   receive age under all 31 motors at the intended CAN-FD rates; the current
-   runtime contract requires no more than 6 ms.
+4. Verify raw hardware timestamps are present and monotonic. Separately verify
+   kernel software RX timestamps and measure kernel-to-userspace queue age
+   under all 31 motors; its P99 must be no more than 6 ms. Do not report raw
+   hardware time minus host time as latency. Measure USB bus-to-kernel latency
+   later with synchronized clocks or a physical loopback test.
 5. Save the machine-readable report and set `rx_only_shadow.completed=true`
    only after all four channels pass. Leaving any field unset keeps the runtime
    fail-closed.
@@ -56,8 +59,9 @@ sprite-runtime socketcan-rx-preflight \
 ```
 
 After that report passes, `SocketCanReceiver.open()` can create an API that
-only exposes `receive()` and `close()`. It enables CAN-FD and Linux hardware RX
-timestamping before binding. Every received frame must carry a non-zero raw
-hardware timestamp; the implementation deliberately raises an error instead
-of falling back to a software timestamp. Opening is rejected unless the same
-interface appears in a passing listen-only preflight report.
+only exposes `receive()` and `close()`. It enables CAN-FD plus Linux hardware
+and software RX timestamping before binding. Every frame must carry both a
+non-zero raw hardware timestamp and a kernel software receive timestamp; the
+implementation deliberately fails closed if either is missing. Opening is
+rejected unless the same interface appears in a passing listen-only preflight
+report.

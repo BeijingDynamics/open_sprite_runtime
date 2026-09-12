@@ -21,6 +21,13 @@ uses a conservative nameplate polyline from peak torque at zero speed, through
 rated torque at rated speed, to zero torque at maximum speed. This is a safety
 bound, not a motor thermal model; sustained-load qualification remains required.
 
+For the KH SocketCAN driver, the raw hardware timestamp is in the adapter's
+device clock domain. Retain it for bus-event intervals and jitter, but never
+subtract it directly from host time. The p99 receive-age gate uses the kernel
+software RX timestamp through userspace receipt and is specifically a host
+queue/scheduling bound. USB bus-to-kernel latency requires a separate
+synchronized-clock or physical-loopback measurement.
+
 Generate the measurement worksheet from the frozen policy order instead of
 typing joint names manually:
 
