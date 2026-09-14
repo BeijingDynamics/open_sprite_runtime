@@ -656,7 +656,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         "can_adapter": {
             "backend": "socketcan",
             "vendor": "KunHong",
-            "sdk_version": "1.3.1",
+            "sdk_version": "1.4.2",
             "logical_bus_names": ["CANFD1", "CANFD2", "CANFD3", "CANFD4"],
             "interfaces": [None, None, None, None],
             "rx_only_shadow": {

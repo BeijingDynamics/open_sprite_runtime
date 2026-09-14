@@ -198,6 +198,7 @@ class HardwareInventoryTest(unittest.TestCase):
         records = template["motor_map"]
         self.assertEqual(len(records), 31)
         self.assertFalse(template["configured"])
+        self.assertEqual(template["can_adapter"]["sdk_version"], "1.4.2")
         self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
         self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])
