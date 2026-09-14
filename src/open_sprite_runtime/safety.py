@@ -19,6 +19,7 @@ class SafetyState:
     hardware_configured: bool = False
     left_ankle_calibrated: bool = False
     right_ankle_calibrated: bool = False
+    head_differential_calibrated: bool = False
     imu_valid: bool = False
     estop_healthy: bool = False
     state_fresh: bool = False
@@ -30,6 +31,7 @@ class SafetyState:
             "hardware_configured": self.hardware_configured,
             "left_ankle_calibrated": self.left_ankle_calibrated,
             "right_ankle_calibrated": self.right_ankle_calibrated,
+            "head_differential_calibrated": self.head_differential_calibrated,
             "imu_valid": self.imu_valid,
             "estop_healthy": self.estop_healthy,
             "state_fresh": self.state_fresh,
@@ -69,6 +71,7 @@ class SafetyInputs:
     hardware_configured: bool
     left_ankle_calibrated: bool
     right_ankle_calibrated: bool
+    head_differential_calibrated: bool
     imu_valid: bool
     estop_healthy: bool
     motor_telemetry_healthy: bool = False
@@ -124,6 +127,7 @@ class SafetySupervisor:
             ("hardware_configured", inputs.hardware_configured),
             ("left_ankle_calibrated", inputs.left_ankle_calibrated),
             ("right_ankle_calibrated", inputs.right_ankle_calibrated),
+            ("head_differential_calibrated", inputs.head_differential_calibrated),
             ("imu_invalid", inputs.imu_valid),
             ("estop_unhealthy", inputs.estop_healthy),
             ("motor_limit", inputs.motor_telemetry_healthy),

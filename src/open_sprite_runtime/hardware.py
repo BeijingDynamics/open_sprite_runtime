@@ -14,6 +14,22 @@ ANKLE_PAIRS = {
     "right": ("right_ankle_pitch_joint", "right_ankle_roll_joint"),
 }
 ANKLE_JOINTS = frozenset(joint for pair in ANKLE_PAIRS.values() for joint in pair)
+DIFFERENTIAL_PAIRS = {
+    "left_ankle": ANKLE_PAIRS["left"],
+    "right_ankle": ANKLE_PAIRS["right"],
+    "head": ("head_pitch_joint", "head_roll_joint"),
+}
+DIFFERENTIAL_JOINTS = frozenset(
+    joint for pair in DIFFERENTIAL_PAIRS.values() for joint in pair
+)
+
+CONFIRMED_POLICY_TO_MOTOR_SIGNS = {
+    "waist_yaw_joint": -1,
+    "left_wrist_pitch_joint": -1,
+    "left_wrist_roll_joint": -1,
+    "right_wrist_roll_joint": -1,
+    "head_yaw_joint": -1,
+}
 
 MOTOR_REQUIRED_FIELDS = (
     "model",
@@ -158,8 +174,8 @@ def _validate_motor_record(
         errors.append(f"motor_map.{label} must define exactly one of policy_joint/coupled_joints")
     if direct is not None and direct not in policy_joints:
         errors.append(f"motor_map.{label}.policy_joint is not in the frozen policy order")
-    if coupled is not None and coupled not in ANKLE_PAIRS.values():
-        errors.append(f"motor_map.{label}.coupled_joints is not a physical ankle pair")
+    if coupled is not None and coupled not in DIFFERENTIAL_PAIRS.values():
+        errors.append(f"motor_map.{label}.coupled_joints is not a physical differential pair")
 
     required = list(MOTOR_REQUIRED_FIELDS)
     if direct is not None:
@@ -303,7 +319,7 @@ def _validate_known_motor_profile(
                 )
         except (KeyError, TypeError, ValueError):
             pass
-    if coupled is not None:
+    if coupled in ANKLE_PAIRS.values():
         if "4310P" not in model:
             errors.append(f"motor_map.{label} ankle motor must be DM-J4310P-2EC")
         for field, expected in (
@@ -348,9 +364,9 @@ def validate_hardware_inventory(
         errors.append("motor_map must be an object")
         motor_map = {}
     direct_counts: dict[str, int] = {}
-    coupled_counts = {pair: 0 for pair in ANKLE_PAIRS.values()}
+    coupled_counts = {pair: 0 for pair in DIFFERENTIAL_PAIRS.values()}
     coupled_labels: dict[tuple[str, ...], list[str]] = {
-        pair: [] for pair in ANKLE_PAIRS.values()
+        pair: [] for pair in DIFFERENTIAL_PAIRS.values()
     }
     endpoints: list[str] = []
     feedback_endpoints: list[str] = []
@@ -373,22 +389,22 @@ def validate_hardware_inventory(
             if isinstance(channel, int) and isinstance(master_id, int):
                 feedback_endpoints.append(f"{channel}:{master_id}")
 
-    expected_direct = policy_set - ANKLE_JOINTS
+    expected_direct = policy_set - DIFFERENTIAL_JOINTS
     missing = sorted(joint for joint in expected_direct if direct_counts.get(joint, 0) == 0)
     duplicate = sorted(joint for joint, count in direct_counts.items() if count > 1)
-    unexpected_direct = sorted(set(direct_counts) & ANKLE_JOINTS)
+    unexpected_direct = sorted(set(direct_counts) & DIFFERENTIAL_JOINTS)
     if missing:
         errors.append(f"missing direct motor mappings for: {', '.join(missing)}")
     if duplicate:
         errors.append(f"duplicate direct motor mappings for: {', '.join(duplicate)}")
     if unexpected_direct:
         errors.append(
-            "ankle policy joints must use coupled_joints, not direct mappings: "
+            "differential policy joints must use coupled_joints, not direct mappings: "
             + ", ".join(unexpected_direct)
         )
-    for side, pair in ANKLE_PAIRS.items():
+    for name, pair in DIFFERENTIAL_PAIRS.items():
         if coupled_counts[pair] != 2:
-            errors.append(f"{side} ankle requires exactly two coupled motor records")
+            errors.append(f"{name} requires exactly two coupled motor records")
     duplicate_endpoints = sorted({item for item in endpoints if endpoints.count(item) > 1})
     if duplicate_endpoints:
         errors.append(f"duplicate CAN channel/ID endpoints: {', '.join(duplicate_endpoints)}")
@@ -430,11 +446,11 @@ def validate_hardware_inventory(
     elif not _nonempty(estop.get("hardware_chain")):
         errors.append("estop.hardware_chain is empty or TODO")
 
-    ankles = hardware.get("ankles", {})
-    for side, pair in ANKLE_PAIRS.items():
-        config = ankles.get(side, {}) if isinstance(ankles, dict) else {}
+    differentials = hardware.get("differentials", {})
+    for name, pair in DIFFERENTIAL_PAIRS.items():
+        config = differentials.get(name, {}) if isinstance(differentials, dict) else {}
         if not isinstance(config, dict) or config.get("calibrated") is not True:
-            errors.append(f"{side} differential ankle is not calibrated")
+            errors.append(f"{name} differential is not calibrated")
             continue
         motor_names = config.get("motor_names")
         if (
@@ -443,10 +459,10 @@ def validate_hardware_inventory(
             or any(not isinstance(name, str) or not name for name in motor_names)
             or len(set(motor_names)) != 2
         ):
-            errors.append(f"{side} ankle motor_names must contain two unique motor labels")
+            errors.append(f"{name} motor_names must contain two unique motor labels")
         elif set(motor_names) != set(coupled_labels[pair]):
             errors.append(
-                f"{side} ankle motor_names must exactly match its two coupled motor records"
+                f"{name} motor_names must exactly match its two coupled motor records"
             )
         try:
             matrix = np.asarray(config["joint_to_motor_matrix"], dtype=float)
@@ -456,11 +472,11 @@ def validate_hardware_inventory(
             if not np.isfinite(matrix).all() or not np.isfinite(zeros).all():
                 raise ValueError
             if abs(float(np.linalg.det(matrix))) < 1.0e-6:
-                errors.append(f"{side} ankle matrix is singular")
+                errors.append(f"{name} differential matrix is singular")
         except (KeyError, TypeError, ValueError):
-            errors.append(f"{side} ankle matrix/zeros are invalid")
+            errors.append(f"{name} differential matrix/zeros are invalid")
         if not _nonempty(config.get("source")) or "PLACEHOLDER" in str(config.get("source")):
-            errors.append(f"{side} ankle calibration source is missing or placeholder")
+            errors.append(f"{name} differential calibration source is missing or placeholder")
 
     if hardware.get("configured") is True and errors:
         errors.append("configured=true is inconsistent with an incomplete hardware inventory")
@@ -516,11 +532,11 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
 
     motor_map: dict[str, dict[str, Any]] = {}
     for joint in policy_order:
-        if joint in ANKLE_JOINTS:
+        if joint in DIFFERENTIAL_JOINTS:
             continue
         record = base_record()
         record["policy_joint"] = joint
-        record["policy_to_motor_sign"] = None
+        record["policy_to_motor_sign"] = CONFIRMED_POLICY_TO_MOTOR_SIGNS.get(joint, 1)
         if (
             "_hip_" in joint
             or joint.endswith("_knee_joint")
@@ -558,10 +574,16 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             )
             motor_map[f"{side}_ankle_motor_{suffix}"] = record
 
+    head_pair = DIFFERENTIAL_PAIRS["head"]
+    for suffix in ("a", "b"):
+        record = base_record()
+        record.update({"coupled_joints": list(head_pair)})
+        motor_map[f"head_motor_{suffix}"] = record
+
     if len(motor_map) != 31:
         raise AssertionError("generated hardware template must contain 31 physical motors")
     return {
-        "schema": "sprite0825_hardware_contract_v1",
+        "schema": "sprite0825_hardware_contract_v2",
         "configured": False,
         "controller": {
             "candidate": "jetson_orin_nano_or_raspberry_pi_5",
@@ -601,15 +623,19 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "watchdog_timeout_ms": 20,
         },
         "motor_map": motor_map,
-        "ankles": {
-            side: {
+        "differentials": {
+            name: {
                 "calibrated": False,
                 "joint_order": list(pair),
-                "motor_order": [f"{side}_ankle_motor_a", f"{side}_ankle_motor_b"],
+                "motor_names": (
+                    [f"{name.removesuffix('_ankle')}_ankle_motor_a", f"{name.removesuffix('_ankle')}_ankle_motor_b"]
+                    if name.endswith("_ankle")
+                    else ["head_motor_a", "head_motor_b"]
+                ),
                 "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
                 "motor_zero_rad": [0.0, 0.0],
                 "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM",
             }
-            for side, pair in ANKLE_PAIRS.items()
+            for name, pair in DIFFERENTIAL_PAIRS.items()
         },
     }

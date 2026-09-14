@@ -32,21 +32,21 @@ Generate the measurement worksheet from the frozen policy order instead of
 typing joint names manually:
 
 ```bash
-open-sprite-runtime hardware-template \
+sprite-runtime hardware-template \
   --contract <g74-model3000-candidate>/deploy/contract.json \
   --output config/hardware.sprite0825.local.json
 ```
 
 The generated file is deliberately non-armable. It pre-fills the known leg and
-upgraded shoulder pitch/roll motor nameplate values plus the physical ankle
-topology; every machine-specific
+upgraded shoulder pitch/roll motor nameplate values plus the physical ankle and
+head differential topology; every machine-specific
 CAN endpoint, firmware version, zero, sign, limit, current/temperature bound,
 MIT range, IMU transform, e-stop description, and measured ankle matrix remains
 unset until measured.
 
 MIT command profiles are built only from a complete `configured=true` hardware
 inventory. They use the physical motor map rather than policy-joint index order,
-which is essential for the two-motor differential ankles. Each command is checked
+which is essential for every two-motor differential. Each command is checked
 against motor soft position limits, motor-register-readback PMAX/VMAX/TMAX, and
 the current-speed torque envelope. The complete impedance request
 `kp*(q_des-q)+kd*(dq_des-dq)+tau_ff` must pass, not only `tau_ff`.
@@ -64,20 +64,28 @@ See `SPRITE0825_DAMIAO_PROTOCOL_SOURCE_AUDIT.md` for the pinned official
 protocol sources, exact receive-frame layout, status values, and the reason the
 decoded torque is an estimate rather than an independent torque measurement.
 
-Run `open-sprite-runtime inspect` after filling the hardware file. The
-`hardware_inventory` report is fail-closed: it requires 27 one-to-one joint
-motors plus two coupled motors for each differential ankle, exactly 31 physical
+Run `sprite-runtime inspect` after filling the hardware file. The
+`hardware_inventory` report is fail-closed: it requires 25 one-to-one joint
+motors plus two coupled motors for each left ankle, right ankle, and head
+pitch/roll differential, exactly 31 physical
 motors in total, unique `(can_channel, can_id)` endpoints, complete MIT ranges,
 finite zeros, nested soft/hard limits, a measured IMU configuration, an
-independent e-stop chain, and separate left/right ankle calibrations. A passing
+independent e-stop chain, and three separate differential calibrations. A passing
 inventory check validates configuration consistency only; it does not enable
 CAN transmission.
 
 For direct joints, record `encoder_sign` and `policy_to_motor_sign` separately.
-For each coupled ankle motor, record only `encoder_sign`; the relationship from
-the two calibrated motor coordinates to pitch/roll belongs in that side's
-measured 2x2 `joint_to_motor_matrix`. Assigning a single ankle motor sign to one
-policy joint would be physically incorrect.
+For each coupled motor, record only `encoder_sign`; the relationship from
+the two calibrated motor coordinates to pitch/roll belongs in that mechanism's
+measured 2x2 `joint_to_motor_matrix`. Assigning a scalar policy sign from one
+coupled motor to one policy joint would be physically incorrect.
+
+The five direct-joint sign discrepancies confirmed against the Sprite0825 v5
+policy asset are frozen as `policy_to_motor_sign = -1` for `waist_yaw_joint`,
+`left_wrist_pitch_joint`, `left_wrist_roll_joint`, `right_wrist_roll_joint`, and
+`head_yaw_joint`. The same signed ratio is used for outgoing position, velocity,
+and torque commands and for incoming feedback. Damiao firmware direction is not
+changed.
 
 The coordinate layers are fixed as follows. `q_drive` is the raw coordinate used
 by the Damiao MIT frame, while `q_motor` is the signed physical motor coordinate:
@@ -92,8 +100,9 @@ For a direct joint:
 q_motor = policy_to_motor_sign * reduction_ratio * linkage_ratio * q_joint
 ```
 
-For a differential ankle, `ankles.<side>.motor_names` gives the exact row order
-of the calibrated matrix and must match that side's two coupled motor records:
+For any differential, `differentials.<name>.motor_names` gives the exact row
+order of the calibrated matrix and must match that mechanism's two coupled motor
+records. The configured names are `left_ankle`, `right_ankle`, and `head`:
 
 ```text
 q_motor = joint_to_motor_matrix * [q_pitch, q_roll] + ankle_motor_zero
@@ -103,7 +112,7 @@ Velocity uses the same linear map without offsets. Torque uses the inverse
 transpose so instantaneous power is preserved. These transforms are tested in
 both directions over the complete 31-joint/31-motor map.
 
-For differential ankles, arbitrary pitch/roll gains transform to full 2x2 motor
+For differential pairs, arbitrary pitch/roll gains transform to full 2x2 motor
 impedance matrices. The 1 kHz Damiao MIT loops implement their diagonal terms;
 the 500 Hz state layer computes the non-diagonal coupling terms as feedforward
 torque from fresh measured state. This split exactly reproduces the requested
@@ -147,7 +156,7 @@ A second torso IMU may be logged later for structural-flex diagnostics, but it
 must not alter the frozen actor observation. Invalid, stale, discontinuous, or
 non-finite IMU data blocks hardware transmission through the safety supervisor.
 
-## Differential ankles
+## Differential ankles and head
 
 The ideal linear map is:
 
@@ -156,7 +165,8 @@ The ideal linear map is:
 [q_motor_b] = [1 -1] [q_roll ] + motor_zero
 ```
 
-The real left and right matrices must be measured separately. The torque map is
+The real left ankle, right ankle, and head matrices must be verified or measured
+separately. The torque map is
 the inverse transpose, not the position map:
 
 ```text
@@ -171,14 +181,17 @@ impedance; the 500 Hz layer must supply the cross-coupled correction through
 MIT feed-forward torque, or the policy must be requalified with the realizable
 impedance.
 
-Collect at least six unloaded poses per side spanning independent positive and
-negative pitch and roll. Record a CSV with
+Collect at least six unloaded poses per mechanism spanning independent positive
+and negative pitch and roll. Record a CSV with
 `pitch_rad,roll_rad,motor_a_rad,motor_b_rad`, then fit each side separately:
 
 ```bash
-open-sprite-runtime ankle-calibrate --side left \
+sprite-runtime differential-calibrate --pair left_ankle \
   --samples calibration/left_ankle.csv --output calibration/left_ankle_fit.json
 ```
+
+For the head use the same tool with `--pair head`. The legacy
+`sprite-runtime ankle-calibrate --side left|right` command remains available.
 
 The fitter reports the 2x2 matrix, both motor zeros, excitation and matrix
 condition numbers, and per-motor residuals. Its default gate requires RMS

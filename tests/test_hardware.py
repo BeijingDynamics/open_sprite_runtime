@@ -7,8 +7,9 @@ from open_sprite_runtime.damiao import (
     command_profiles_from_hardware_config,
 )
 from open_sprite_runtime.hardware import (
-    ANKLE_JOINTS,
     ANKLE_PAIRS,
+    DIFFERENTIAL_JOINTS,
+    DIFFERENTIAL_PAIRS,
     make_hardware_template,
     validate_hardware_inventory,
 )
@@ -65,7 +66,7 @@ def complete_hardware() -> dict:
     records = {}
     index = 0
     for joint in JOINTS:
-        if joint in ANKLE_JOINTS:
+        if joint in DIFFERENTIAL_JOINTS:
             continue
         row = motor(index // 8, index % 8 + 1)
         row["policy_joint"] = joint
@@ -83,6 +84,12 @@ def complete_hardware() -> dict:
             row.pop("policy_to_motor_sign")
             records[f"{side}_ankle_motor_{suffix}"] = row
             index += 1
+    for suffix in ("a", "b"):
+        row = motor(index // 8, index % 8 + 1)
+        row["coupled_joints"] = list(DIFFERENTIAL_PAIRS["head"])
+        row.pop("policy_to_motor_sign")
+        records[f"head_motor_{suffix}"] = row
+        index += 1
     return {
         "configured": True,
         "controller": {
@@ -119,18 +126,22 @@ def complete_hardware() -> dict:
         },
         "estop": {"configured": True, "hardware_chain": "physical normally-closed loop"},
         "motor_map": records,
-        "ankles": {
-            side: {
+        "differentials": {
+            name: {
                 "calibrated": True,
                 "motor_names": [
-                    f"{side}_ankle_motor_a",
-                    f"{side}_ankle_motor_b",
+                    f"{name.removesuffix('_ankle')}_ankle_motor_a"
+                    if name.endswith("_ankle")
+                    else "head_motor_a",
+                    f"{name.removesuffix('_ankle')}_ankle_motor_b"
+                    if name.endswith("_ankle")
+                    else "head_motor_b",
                 ],
                 "joint_to_motor_matrix": [[1.0, 1.0], [1.0, -1.0]],
                 "motor_zero_rad": [0.1, -0.1],
                 "source": "fixture measurement 2026-09-03",
             }
-            for side in ANKLE_PAIRS
+            for name in DIFFERENTIAL_PAIRS
         },
     }
 
@@ -182,6 +193,12 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
         self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])
+        self.assertNotIn("policy_to_motor_sign", records["head_motor_a"])
+        self.assertEqual(records["waist_yaw_motor"]["policy_to_motor_sign"], -1)
+        self.assertEqual(records["left_wrist_pitch_motor"]["policy_to_motor_sign"], -1)
+        self.assertEqual(records["left_wrist_roll_motor"]["policy_to_motor_sign"], -1)
+        self.assertEqual(records["right_wrist_roll_motor"]["policy_to_motor_sign"], -1)
+        self.assertEqual(records["head_yaw_motor"]["policy_to_motor_sign"], -1)
         report = validate_hardware_inventory(template, JOINTS)
         self.assertFalse(report.valid)
         self.assertFalse(report.missing_policy_joints)
@@ -195,7 +212,7 @@ class HardwareInventoryTest(unittest.TestCase):
     def test_empty_example_fails_closed(self) -> None:
         report = validate_hardware_inventory({"configured": False, "motor_map": {}}, JOINTS)
         self.assertFalse(report.valid)
-        self.assertEqual(len(report.missing_policy_joints), 27)
+        self.assertEqual(len(report.missing_policy_joints), 25)
 
     def test_unqualified_bus_voltage_is_rejected(self) -> None:
         hardware = complete_hardware()
@@ -285,23 +302,30 @@ class HardwareInventoryTest(unittest.TestCase):
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
         self.assertTrue(
-            any("left ankle requires exactly two" in error for error in report.errors)
+            any("left_ankle requires exactly two" in error for error in report.errors)
         )
+
+    def test_head_must_use_two_coupled_motors(self) -> None:
+        hardware = complete_hardware()
+        hardware["motor_map"].pop("head_motor_b")
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("head requires exactly two" in error for error in report.errors))
 
     def test_ankle_matrix_rows_require_exact_ordered_motor_names(self) -> None:
         hardware = complete_hardware()
-        hardware["ankles"]["left"]["motor_names"][1] = "right_ankle_motor_a"
+        hardware["differentials"]["left_ankle"]["motor_names"][1] = "right_ankle_motor_a"
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
         self.assertTrue(
             any(
-                "left ankle motor_names must exactly match" in error
+                "left_ankle motor_names must exactly match" in error
                 for error in report.errors
             )
         )
 
         hardware = complete_hardware()
-        hardware["ankles"]["right"]["motor_names"] = [
+        hardware["differentials"]["right_ankle"]["motor_names"] = [
             "right_ankle_motor_a",
             "right_ankle_motor_a",
         ]

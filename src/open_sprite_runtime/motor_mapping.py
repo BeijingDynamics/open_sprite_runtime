@@ -9,9 +9,9 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .ankle import DifferentialAnkle
+from .ankle import DifferentialPair
 from .damiao import DamiaoMitCommand
-from .hardware import ANKLE_PAIRS, validate_hardware_inventory
+from .hardware import DIFFERENTIAL_PAIRS, validate_hardware_inventory
 
 
 Vector = NDArray[np.float64]
@@ -108,56 +108,56 @@ class DirectMotorMap:
 
 
 @dataclass(frozen=True)
-class DifferentialAnkleDriveMap:
-    side: str
+class DifferentialPairDriveMap:
+    name: str
     joint_names: tuple[str, str]
     motor_names: tuple[str, str]
     drive_zero_rad: Vector
     encoder_sign: Vector
-    ankle: DifferentialAnkle
+    coupling: DifferentialPair
 
     def __post_init__(self) -> None:
-        if self.side not in ANKLE_PAIRS:
-            raise ValueError("ankle side must be left or right")
-        if self.joint_names != ANKLE_PAIRS[self.side]:
-            raise ValueError("ankle joint order must be [pitch, roll]")
+        if self.name not in DIFFERENTIAL_PAIRS:
+            raise ValueError("unknown differential pair")
+        if self.joint_names != DIFFERENTIAL_PAIRS[self.name]:
+            raise ValueError("differential joint order must match the hardware contract")
         if len(self.motor_names) != 2 or len(set(self.motor_names)) != 2:
-            raise ValueError("ankle motor_names must contain two unique labels")
+            raise ValueError("differential motor_names must contain two unique labels")
         zeros = np.asarray(self.drive_zero_rad, dtype=np.float64)
         signs = np.asarray(self.encoder_sign, dtype=np.float64)
         if zeros.shape != (2,) or not np.isfinite(zeros).all():
-            raise ValueError("ankle drive_zero_rad must be a finite two-vector")
+            raise ValueError("differential drive_zero_rad must be a finite two-vector")
         if signs.shape != (2,) or not np.isin(signs, (-1.0, 1.0)).all():
-            raise ValueError("ankle encoder_sign must be a two-vector of -1 or 1")
+            raise ValueError("differential encoder_sign must be a two-vector of -1 or 1")
         object.__setattr__(self, "drive_zero_rad", zeros)
         object.__setattr__(self, "encoder_sign", signs)
 
     def joint_to_drive_position(self, joint_position: ArrayLike) -> Vector:
-        canonical = self.ankle.joint_to_motor_position(joint_position)
+        canonical = self.coupling.joint_to_motor_position(joint_position)
         return self.drive_zero_rad + self.encoder_sign * canonical
 
     def drive_to_joint_position(self, drive_position: ArrayLike) -> Vector:
         drive = np.asarray(drive_position, dtype=np.float64)
         canonical = self.encoder_sign * (drive - self.drive_zero_rad)
-        return self.ankle.motor_to_joint_position(canonical)
+        return self.coupling.motor_to_joint_position(canonical)
 
     def joint_to_drive_velocity(self, joint_velocity: ArrayLike) -> Vector:
-        return self.encoder_sign * self.ankle.joint_to_motor_velocity(joint_velocity)
+        return self.encoder_sign * self.coupling.joint_to_motor_velocity(joint_velocity)
 
     def drive_to_joint_velocity(self, drive_velocity: ArrayLike) -> Vector:
         drive = np.asarray(drive_velocity, dtype=np.float64)
-        return self.ankle.motor_to_joint_velocity(self.encoder_sign * drive)
+        return self.coupling.motor_to_joint_velocity(self.encoder_sign * drive)
 
     def joint_to_drive_torque(self, joint_torque: ArrayLike) -> Vector:
-        return self.encoder_sign * self.ankle.joint_to_motor_torque(joint_torque)
+        return self.encoder_sign * self.coupling.joint_to_motor_torque(joint_torque)
 
     def drive_to_joint_torque(self, drive_torque: ArrayLike) -> Vector:
         drive = np.asarray(drive_torque, dtype=np.float64)
-        return self.ankle.motor_to_joint_torque(self.encoder_sign * drive)
+        return self.coupling.motor_to_joint_torque(self.encoder_sign * drive)
 
     @property
     def joint_to_drive_matrix(self) -> NDArray[np.float64]:
-        return np.diag(self.encoder_sign) @ self.ankle.joint_to_motor_matrix
+        return np.diag(self.encoder_sign) @ self.coupling.joint_to_motor_matrix
 
     def joint_impedance_to_drive_commands(
         self,
@@ -187,9 +187,9 @@ class DifferentialAnkleDriveMap:
             joint_ff,
         )
         if any(value.shape != (2,) or not np.isfinite(value).all() for value in vectors):
-            raise ValueError("ankle impedance inputs must be finite two-vectors")
+            raise ValueError("differential impedance inputs must be finite two-vectors")
         if np.any(joint_kp < 0.0) or np.any(joint_kd < 0.0):
-            raise ValueError("ankle impedance gains must be non-negative")
+            raise ValueError("differential impedance gains must be non-negative")
 
         desired_drive_position = self.joint_to_drive_position(desired_position)
         desired_drive_velocity = self.joint_to_drive_velocity(desired_velocity)
@@ -224,26 +224,36 @@ class DifferentialAnkleDriveMap:
 class SpriteMotorMap:
     policy_joint_names: tuple[str, ...]
     direct: Mapping[str, DirectMotorMap]
-    ankles: Mapping[str, DifferentialAnkleDriveMap]
+    differentials: Mapping[str, DifferentialPairDriveMap]
 
     def __post_init__(self) -> None:
         if len(self.policy_joint_names) != 31 or len(set(self.policy_joint_names)) != 31:
             raise ValueError("policy_joint_names must contain 31 unique joints")
         expected_direct = set(self.policy_joint_names) - {
-            joint for pair in ANKLE_PAIRS.values() for joint in pair
+            joint for pair in DIFFERENTIAL_PAIRS.values() for joint in pair
         }
         if set(self.direct) != expected_direct:
-            raise ValueError("direct motor map does not exactly cover non-ankle policy joints")
-        if set(self.ankles) != set(ANKLE_PAIRS):
-            raise ValueError("left and right differential ankle maps are required")
+            raise ValueError("direct motor map does not exactly cover non-differential joints")
+        if set(self.differentials) != set(DIFFERENTIAL_PAIRS):
+            raise ValueError("left/right ankle and head differential maps are required")
+
+    @property
+    def ankles(self) -> Mapping[str, DifferentialPairDriveMap]:
+        """Backward-compatible left/right ankle view."""
+        return {
+            "left": self.differentials["left_ankle"],
+            "right": self.differentials["right_ankle"],
+        }
 
     @property
     def physical_motor_names(self) -> tuple[str, ...]:
         direct_names = tuple(item.motor_name for item in self.direct.values())
-        ankle_names = tuple(
-            name for side in ("left", "right") for name in self.ankles[side].motor_names
+        differential_names = tuple(
+            name
+            for pair_name in DIFFERENTIAL_PAIRS
+            for name in self.differentials[pair_name].motor_names
         )
-        return direct_names + ankle_names
+        return direct_names + differential_names
 
     def _joint_vector(self, values: ArrayLike, name: str) -> Vector:
         vector = np.asarray(values, dtype=np.float64)
@@ -272,7 +282,7 @@ class SpriteMotorMap:
         for joint_name, mapping in self.direct.items():
             transform = getattr(mapping, f"joint_to_drive_{kind}")
             result[mapping.motor_name] = float(transform(joint[joint_name]))
-        for mapping in self.ankles.values():
+        for mapping in self.differentials.values():
             transform = getattr(mapping, f"joint_to_drive_{kind}")
             motor_values = transform([joint[name] for name in mapping.joint_names])
             result.update(zip(mapping.motor_names, map(float, motor_values), strict=True))
@@ -321,18 +331,18 @@ class SpriteMotorMap:
                 vectors["kd"][index],
                 vectors["feedforward"][index],
             )
-        for mapping in self.ankles.values():
-            ankle_indices = [indices[name] for name in mapping.joint_names]
-            ankle_commands = mapping.joint_impedance_to_drive_commands(
-                vectors["desired_position"][ankle_indices],
-                vectors["desired_velocity"][ankle_indices],
-                vectors["measured_position"][ankle_indices],
-                vectors["measured_velocity"][ankle_indices],
-                vectors["kp"][ankle_indices],
-                vectors["kd"][ankle_indices],
-                vectors["feedforward"][ankle_indices],
+        for mapping in self.differentials.values():
+            pair_indices = [indices[name] for name in mapping.joint_names]
+            pair_commands = mapping.joint_impedance_to_drive_commands(
+                vectors["desired_position"][pair_indices],
+                vectors["desired_velocity"][pair_indices],
+                vectors["measured_position"][pair_indices],
+                vectors["measured_velocity"][pair_indices],
+                vectors["kp"][pair_indices],
+                vectors["kd"][pair_indices],
+                vectors["feedforward"][pair_indices],
             )
-            commands.update(zip(mapping.motor_names, ankle_commands, strict=True))
+            commands.update(zip(mapping.motor_names, pair_commands, strict=True))
         if set(commands) != set(self.physical_motor_names):
             raise RuntimeError("impedance mapping did not produce the exact physical motor set")
         return commands
@@ -343,7 +353,7 @@ class SpriteMotorMap:
         for joint_name, mapping in self.direct.items():
             transform = getattr(mapping, f"drive_to_joint_{kind}")
             joint[joint_name] = float(transform(motor[mapping.motor_name]))
-        for mapping in self.ankles.values():
+        for mapping in self.differentials.values():
             transform = getattr(mapping, f"drive_to_joint_{kind}")
             joint_values = transform([motor[name] for name in mapping.motor_names])
             joint.update(zip(mapping.joint_names, map(float, joint_values), strict=True))
@@ -375,12 +385,12 @@ def motor_map_from_hardware_config(
             policy_to_motor_sign=record["policy_to_motor_sign"],
             total_ratio=float(record["reduction_ratio"]) * float(record["linkage_ratio"]),
         )
-    ankles: dict[str, DifferentialAnkleDriveMap] = {}
-    for side, joint_names in ANKLE_PAIRS.items():
-        ankle_record = hardware_dict["ankles"][side]
-        motor_names = tuple(ankle_record["motor_names"])
-        ankles[side] = DifferentialAnkleDriveMap(
-            side=side,
+    differentials: dict[str, DifferentialPairDriveMap] = {}
+    for name, joint_names in DIFFERENTIAL_PAIRS.items():
+        pair_record = hardware_dict["differentials"][name]
+        motor_names = tuple(pair_record["motor_names"])
+        differentials[name] = DifferentialPairDriveMap(
+            name=name,
             joint_names=joint_names,
             motor_names=motor_names,
             drive_zero_rad=np.asarray(
@@ -389,14 +399,18 @@ def motor_map_from_hardware_config(
             encoder_sign=np.asarray(
                 [records[name]["encoder_sign"] for name in motor_names], dtype=np.float64
             ),
-            ankle=DifferentialAnkle(
+            coupling=DifferentialPair(
                 joint_to_motor_matrix=np.asarray(
-                    ankle_record["joint_to_motor_matrix"], dtype=np.float64
+                    pair_record["joint_to_motor_matrix"], dtype=np.float64
                 ),
-                motor_zero_rad=np.asarray(ankle_record["motor_zero_rad"], dtype=np.float64),
+                motor_zero_rad=np.asarray(pair_record["motor_zero_rad"], dtype=np.float64),
             ),
         )
-    result = SpriteMotorMap(policy_order, direct, ankles)
+    result = SpriteMotorMap(policy_order, direct, differentials)
     if set(result.physical_motor_names) != set(records):
         raise ValueError("coordinate map does not exactly cover hardware motor_map")
     return result
+
+
+# Backward-compatible import name; the implementation now also serves the head.
+DifferentialAnkleDriveMap = DifferentialPairDriveMap

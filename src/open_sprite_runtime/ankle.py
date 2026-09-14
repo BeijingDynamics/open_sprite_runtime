@@ -12,14 +12,14 @@ Vector2 = NDArray[np.float64]
 Matrix2 = NDArray[np.float64]
 
 
-def fit_differential_ankle(
+def fit_differential_pair(
     joint_positions_rad: ArrayLike,
     motor_positions_rad: ArrayLike,
     *,
     maximum_rms_residual_rad: float = 0.01,
     maximum_condition_number: float = 100.0,
 ) -> dict[str, object]:
-    """Fit ``q_motor = A @ q_joint + zero`` from unloaded measurements."""
+    """Fit ``q_motor = A @ q_joint + zero`` for a two-joint differential."""
     joints = np.asarray(joint_positions_rad, dtype=np.float64)
     motors = np.asarray(motor_positions_rad, dtype=np.float64)
     if joints.ndim != 2 or joints.shape[1] != 2 or motors.shape != joints.shape:
@@ -27,17 +27,17 @@ def fit_differential_ankle(
     if joints.shape[0] < 6:
         raise ValueError("at least six ankle calibration samples are required")
     if not np.isfinite(joints).all() or not np.isfinite(motors).all():
-        raise ValueError("ankle calibration samples must be finite")
+        raise ValueError("differential calibration samples must be finite")
     design = np.column_stack((joints, np.ones(joints.shape[0])))
     if int(np.linalg.matrix_rank(design)) != 3:
-        raise ValueError("ankle calibration samples do not independently excite pitch and roll")
+        raise ValueError("differential samples do not independently excite both joints")
     excitation_condition = float(np.linalg.cond(design))
     coefficients, _, _, _ = np.linalg.lstsq(design, motors, rcond=None)
     matrix = coefficients[:2, :].T
     zero = coefficients[2, :]
     determinant = float(np.linalg.det(matrix))
     if abs(determinant) < 1.0e-6:
-        raise ValueError("fitted ankle matrix is singular")
+        raise ValueError("fitted differential matrix is singular")
     predicted = joints @ matrix.T + zero
     residual = motors - predicted
     rms = np.sqrt(np.mean(np.square(residual), axis=0))
@@ -73,10 +73,10 @@ def _vector2(value: ArrayLike, name: str) -> Vector2:
 
 
 @dataclass(frozen=True)
-class DifferentialAnkle:
-    """Linearized map ``q_motor = A @ q_joint + zero``.
+class DifferentialPair:
+    """Linearized two-joint map ``q_motor = A @ q_joint + zero``.
 
-    Joint order is ``[pitch, roll]``. Mechanism row signs and scale belong in
+    Joint order is the configured ``[pitch, roll]`` pair. Mechanism row signs and scale belong in
     ``A``; raw drive encoder polarity is applied by the outer motor-coordinate
     map. Both layers must be identified independently for left and right.
     """
@@ -97,7 +97,7 @@ class DifferentialAnkle:
         object.__setattr__(self, "motor_zero_rad", zero)
 
     @classmethod
-    def ideal_symmetric(cls) -> "DifferentialAnkle":
+    def ideal_symmetric(cls) -> "DifferentialPair":
         return cls(
             joint_to_motor_matrix=np.array([[1.0, 1.0], [1.0, -1.0]]),
             motor_zero_rad=np.zeros(2),
@@ -143,3 +143,8 @@ class DifferentialAnkle:
                 "joint gains require cross-coupled motor impedance; embedded diagonal PD is insufficient"
             )
         return np.diag(matrix).copy()
+
+
+# Backward-compatible names for downstream code using the original ankle-only API.
+DifferentialAnkle = DifferentialPair
+fit_differential_ankle = fit_differential_pair

@@ -187,6 +187,7 @@ def replay_multirate_mujoco_trace(
                     hardware_configured=True,
                     left_ankle_calibrated=True,
                     right_ankle_calibrated=True,
+                    head_differential_calibrated=True,
                     imu_valid=True,
                     estop_healthy=True,
                     motor_telemetry_healthy=True,

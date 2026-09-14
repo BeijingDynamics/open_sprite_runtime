@@ -61,7 +61,7 @@ class MotorMappingTests(unittest.TestCase):
         normal_motor = normal.joint_to_motor_positions(joint)
 
         hardware = complete_hardware()
-        hardware["ankles"]["left"]["motor_names"].reverse()
+        hardware["differentials"]["left_ankle"]["motor_names"].reverse()
         swapped = motor_map_from_hardware_config(hardware, JOINTS)
         swapped_motor = swapped.joint_to_motor_positions(joint)
         self.assertAlmostEqual(
@@ -83,7 +83,7 @@ class MotorMappingTests(unittest.TestCase):
         hardware["motor_map"]["motor_00"]["policy_to_motor_sign"] = -1
         hardware["motor_map"]["motor_00"]["reduction_ratio"] = 1.7
         hardware["motor_map"]["left_ankle_motor_b"]["encoder_sign"] = -1
-        hardware["ankles"]["left"]["joint_to_motor_matrix"] = [
+        hardware["differentials"]["left_ankle"]["joint_to_motor_matrix"] = [
             [1.02, 0.96],
             [0.98, -1.04],
         ]
@@ -141,6 +141,38 @@ class MotorMappingTests(unittest.TestCase):
             commands["left_ankle_motor_a"].feedforward_torque_nm,
             0.0,
         )
+
+    def test_head_pitch_roll_use_two_motor_differential(self) -> None:
+        hardware = complete_hardware()
+        hardware["differentials"]["head"]["motor_zero_rad"] = [0.0, 0.0]
+        mapping = motor_map_from_hardware_config(hardware, JOINTS)
+        joint = np.zeros(31)
+        joint[JOINTS.index("head_pitch_joint")] = 0.2
+        joint[JOINTS.index("head_roll_joint")] = -0.1
+        motor = mapping.joint_to_motor_positions(joint)
+        self.assertAlmostEqual(motor["head_motor_a"], 0.1)
+        self.assertAlmostEqual(motor["head_motor_b"], 0.3)
+        np.testing.assert_allclose(mapping.motor_to_joint_positions(motor), joint)
+
+    def test_confirmed_negative_direct_sign_round_trips_feedback(self) -> None:
+        hardware = complete_hardware()
+        record = next(
+            row
+            for row in hardware["motor_map"].values()
+            if row.get("policy_joint") == "waist_yaw_joint"
+        )
+        record["policy_to_motor_sign"] = -1
+        mapping = motor_map_from_hardware_config(hardware, JOINTS)
+        joint = np.zeros(31)
+        joint[JOINTS.index("waist_yaw_joint")] = 0.2
+        motor = mapping.joint_to_motor_positions(joint)
+        mapped_motor_name = next(
+            name
+            for name, row in hardware["motor_map"].items()
+            if row.get("policy_joint") == "waist_yaw_joint"
+        )
+        self.assertAlmostEqual(motor[mapped_motor_name], -0.2)
+        np.testing.assert_allclose(mapping.motor_to_joint_positions(motor), joint)
 
     def test_mapping_profiles_and_encoder_form_exact_31_motor_bank(self) -> None:
         hardware = complete_hardware()

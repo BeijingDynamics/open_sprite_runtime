@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .ankle import DifferentialAnkle, fit_differential_ankle
+from .ankle import DifferentialPair, fit_differential_pair
 from .contracts import PolicyContract, RuntimeTiming
 from .damiao import (
     DamiaoRxAudit,
@@ -77,18 +77,18 @@ def inspect(args: argparse.Namespace) -> None:
         deployment_validation_error = str(exc)
         heading = None
 
-    ankle_report = {}
-    for side, ankle_config in hardware["ankles"].items():
-        ankle = DifferentialAnkle(
-            ankle_config["joint_to_motor_matrix"], ankle_config["motor_zero_rad"]
+    differential_report = {}
+    for name, pair_config in hardware["differentials"].items():
+        coupling = DifferentialPair(
+            pair_config["joint_to_motor_matrix"], pair_config["motor_zero_rad"]
         )
-        ankle_report[side] = {
-            "calibrated": bool(ankle_config["calibrated"]),
-            "determinant": float(np.linalg.det(ankle.joint_to_motor_matrix)),
-            "ideal_equal_joint_kp_to_motor_kp": ankle.diagonal_motor_gains(
+        differential_report[name] = {
+            "calibrated": bool(pair_config["calibrated"]),
+            "determinant": float(np.linalg.det(coupling.joint_to_motor_matrix)),
+            "ideal_equal_joint_kp_to_motor_kp": coupling.diagonal_motor_gains(
                 [14.212230682373, 14.212230682373]
             ).tolist(),
-            "ideal_equal_joint_kd_to_motor_kd": ankle.diagonal_motor_gains(
+            "ideal_equal_joint_kd_to_motor_kd": coupling.diagonal_motor_gains(
                 [0.904778659344, 0.904778659344]
             ).tolist(),
         }
@@ -96,8 +96,9 @@ def inspect(args: argparse.Namespace) -> None:
     safety = SafetyState(
         allow_hardware_tx=bool(runtime["allow_hardware_tx"]),
         hardware_configured=bool(hardware["configured"]),
-        left_ankle_calibrated=bool(hardware["ankles"]["left"]["calibrated"]),
-        right_ankle_calibrated=bool(hardware["ankles"]["right"]["calibrated"]),
+        left_ankle_calibrated=bool(hardware["differentials"]["left_ankle"]["calibrated"]),
+        right_ankle_calibrated=bool(hardware["differentials"]["right_ankle"]["calibrated"]),
+        head_differential_calibrated=bool(hardware["differentials"]["head"]["calibrated"]),
         imu_valid=False,
         estop_healthy=False,
         state_fresh=False,
@@ -123,7 +124,7 @@ def inspect(args: argparse.Namespace) -> None:
             ),
             "actor_receives_global_yaw": False,
         },
-        "ankles": ankle_report,
+        "differentials": differential_report,
         "hardware_inventory": hardware_inventory.to_dict(),
         "hardware_arm_blockers": safety.blockers(),
     }
@@ -196,6 +197,7 @@ def safety_self_test(args: argparse.Namespace) -> None:
             "hardware_configured": False,
             "left_ankle_calibrated": False,
             "right_ankle_calibrated": False,
+            "head_differential_calibrated": False,
             "imu_valid": True,
             "estop_healthy": True,
             "motor_telemetry_healthy": True,
@@ -301,22 +303,22 @@ def ankle_calibrate(args: argparse.Namespace) -> None:
     required = ("pitch_rad", "roll_rad", "motor_a_rad", "motor_b_rad")
     missing = [name for name in required if not rows or name not in rows[0]]
     if missing:
-        raise ValueError(f"ankle calibration CSV missing columns: {', '.join(missing)}")
+        raise ValueError(f"differential calibration CSV missing columns: {', '.join(missing)}")
     joints = np.asarray(
         [[row["pitch_rad"], row["roll_rad"]] for row in rows], dtype=float
     )
     motors = np.asarray(
         [[row["motor_a_rad"], row["motor_b_rad"]] for row in rows], dtype=float
     )
-    result = fit_differential_ankle(
+    result = fit_differential_pair(
         joints,
         motors,
         maximum_rms_residual_rad=args.maximum_rms_residual_rad,
         maximum_condition_number=args.maximum_condition_number,
     )
     report = {
-        "mode": "unloaded_differential_ankle_calibration_no_hardware_tx",
-        "side": args.side,
+        "mode": "unloaded_differential_pair_calibration_no_hardware_tx",
+        "pair": getattr(args, "pair", f"{args.side}_ankle"),
         "source": str(Path(args.samples).resolve()),
         **result,
     }
@@ -325,7 +327,7 @@ def ankle_calibrate(args: argparse.Namespace) -> None:
         Path(args.output).write_text(output, encoding="utf-8")
     print(output, end="")
     if not report["passed"]:
-        raise SystemExit("ankle calibration quality gates failed")
+        raise SystemExit("differential calibration quality gates failed")
 
 
 def replay_trace(args: argparse.Namespace) -> None:
@@ -461,6 +463,18 @@ def main() -> None:
     ankle_parser.add_argument("--maximum-rms-residual-rad", type=float, default=0.01)
     ankle_parser.add_argument("--maximum-condition-number", type=float, default=100.0)
     ankle_parser.set_defaults(handler=ankle_calibrate)
+    differential_parser = subparsers.add_parser(
+        "differential-calibrate",
+        help="fit an unloaded ankle or head differential map from measured CSV samples",
+    )
+    differential_parser.add_argument(
+        "--pair", required=True, choices=("left_ankle", "right_ankle", "head")
+    )
+    differential_parser.add_argument("--samples", required=True)
+    differential_parser.add_argument("--output")
+    differential_parser.add_argument("--maximum-rms-residual-rad", type=float, default=0.01)
+    differential_parser.add_argument("--maximum-condition-number", type=float, default=100.0)
+    differential_parser.set_defaults(handler=ankle_calibrate, side=None)
     replay_parser = subparsers.add_parser(
         "replay-trace", help="replay recorded observations through ONNX without CAN"
     )

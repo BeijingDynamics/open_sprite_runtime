@@ -23,6 +23,7 @@ class SafetySupervisorTests(unittest.TestCase):
             "hardware_configured": True,
             "left_ankle_calibrated": True,
             "right_ankle_calibrated": True,
+            "head_differential_calibrated": True,
             "imu_valid": True,
             "estop_healthy": True,
             "motor_telemetry_healthy": True,
@@ -40,6 +41,13 @@ class SafetySupervisorTests(unittest.TestCase):
         decision = SafetySupervisor(RuntimeMode.SHADOW, self.limits).evaluate(self.inputs())
         self.assertFalse(decision.hardware_tx_permitted)
         self.assertIn("mode_shadow_no_tx", decision.blockers)
+
+    def test_uncalibrated_head_differential_blocks_tx(self) -> None:
+        decision = SafetySupervisor(RuntimeMode.ARMED, self.limits).evaluate(
+            self.inputs(head_differential_calibrated=False)
+        )
+        self.assertFalse(decision.hardware_tx_permitted)
+        self.assertIn("head_differential_calibrated", decision.blockers)
 
     def test_stale_state_latches_and_requires_explicit_clear(self) -> None:
         supervisor = SafetySupervisor(RuntimeMode.ARMED, self.limits)
