@@ -74,6 +74,24 @@ independent e-stop chain, and three separate differential calibrations. A passin
 inventory check validates configuration consistency only; it does not enable
 CAN transmission.
 
+## Frozen CAN FD assignment
+
+Runtime channels are zero-based: channel 0 through 3 correspond to physical
+`CANFD1` through `CANFD4`. Linux SocketCAN interface names are configured
+separately in `can_adapter.interfaces`; their order must follow this logical
+channel order. Every Damiao `master_id` is frozen as `can_id + 0x10`.
+
+| Bus | Channel | ID 1-8 assignment |
+|---|---:|---|
+| CANFD1 | 0 | left hip pitch, left hip roll, left hip yaw, left knee, left ankle motor A, left ankle motor B, waist yaw, waist roll |
+| CANFD2 | 1 | right hip pitch, right hip roll, right hip yaw, right knee, right ankle motor A, right ankle motor B, head motor A, head motor B |
+| CANFD3 | 2 | left shoulder pitch, left shoulder roll, left shoulder yaw, left elbow, left wrist yaw, left wrist pitch, left wrist roll, head yaw |
+| CANFD4 | 3 | right shoulder pitch, right shoulder roll, right shoulder yaw, right elbow, right wrist yaw, right wrist pitch, right wrist roll; ID 8 unused |
+
+In runtime naming, hardware motor `1`/`2` for each differential corresponds to
+motor `a`/`b`. The inventory validator rejects changes to any confirmed channel,
+command ID, or master ID.
+
 For direct joints, record `encoder_sign` and `policy_to_motor_sign` separately.
 For each coupled motor, record only `encoder_sign`; the relationship from
 the two calibrated motor coordinates to pitch/roll belongs in that mechanism's

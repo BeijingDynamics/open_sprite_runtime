@@ -31,6 +31,43 @@ CONFIRMED_POLICY_TO_MOTOR_SIGNS = {
     "head_yaw_joint": -1,
 }
 
+# Logical CAN channels are zero-based in the runtime: channel 0 is physical
+# CANFD1, through channel 3 for CANFD4. Direct motors are keyed by policy joint;
+# differential motors are keyed by their runtime motor label.
+CONFIRMED_CAN_ENDPOINTS = {
+    "left_hip_pitch_joint": (0, 0x01),
+    "left_hip_roll_joint": (0, 0x02),
+    "left_hip_yaw_joint": (0, 0x03),
+    "left_knee_joint": (0, 0x04),
+    "left_ankle_motor_a": (0, 0x05),
+    "left_ankle_motor_b": (0, 0x06),
+    "waist_yaw_joint": (0, 0x07),
+    "waist_roll_joint": (0, 0x08),
+    "right_hip_pitch_joint": (1, 0x01),
+    "right_hip_roll_joint": (1, 0x02),
+    "right_hip_yaw_joint": (1, 0x03),
+    "right_knee_joint": (1, 0x04),
+    "right_ankle_motor_a": (1, 0x05),
+    "right_ankle_motor_b": (1, 0x06),
+    "head_motor_a": (1, 0x07),
+    "head_motor_b": (1, 0x08),
+    "left_shoulder_pitch_joint": (2, 0x01),
+    "left_shoulder_roll_joint": (2, 0x02),
+    "left_shoulder_yaw_joint": (2, 0x03),
+    "left_elbow_joint": (2, 0x04),
+    "left_wrist_yaw_joint": (2, 0x05),
+    "left_wrist_pitch_joint": (2, 0x06),
+    "left_wrist_roll_joint": (2, 0x07),
+    "head_yaw_joint": (2, 0x08),
+    "right_shoulder_pitch_joint": (3, 0x01),
+    "right_shoulder_roll_joint": (3, 0x02),
+    "right_shoulder_yaw_joint": (3, 0x03),
+    "right_elbow_joint": (3, 0x04),
+    "right_wrist_yaw_joint": (3, 0x05),
+    "right_wrist_pitch_joint": (3, 0x06),
+    "right_wrist_roll_joint": (3, 0x07),
+}
+
 MOTOR_REQUIRED_FIELDS = (
     "model",
     "firmware",
@@ -67,6 +104,8 @@ def _validate_can_adapter(hardware: dict[str, Any], errors: list[str]) -> None:
         errors.append("can_adapter.vendor is empty or TODO")
     if not _nonempty(adapter.get("sdk_version")):
         errors.append("can_adapter.sdk_version is empty or TODO")
+    if adapter.get("logical_bus_names") != ["CANFD1", "CANFD2", "CANFD3", "CANFD4"]:
+        errors.append("can_adapter.logical_bus_names must be CANFD1 through CANFD4")
 
     interfaces = adapter.get("interfaces")
     if not isinstance(interfaces, list) or len(interfaces) != 4:
@@ -203,6 +242,8 @@ def _validate_motor_record(
         not isinstance(master_id, int) or not 0 <= master_id <= 0x7FF
     ):
         errors.append(f"motor_map.{label}.master_id must be an 11-bit integer")
+    elif isinstance(can_id, int) and isinstance(master_id, int) and master_id != can_id + 0x10:
+        errors.append(f"motor_map.{label}.master_id must equal can_id + 0x10")
     if isinstance(channel, int) and isinstance(can_id, int):
         endpoint = f"{channel}:{can_id}"
 
@@ -376,6 +417,16 @@ def validate_hardware_inventory(
         )
         if isinstance(record, dict):
             _validate_known_motor_profile(str(label), record, direct, coupled, errors)
+            endpoint_role = direct if direct is not None else str(label)
+            expected_endpoint = CONFIRMED_CAN_ENDPOINTS.get(endpoint_role)
+            actual_endpoint = (record.get("can_channel"), record.get("can_id"))
+            if expected_endpoint is None:
+                errors.append(f"motor_map.{label} has no confirmed Sprite0825 CAN endpoint")
+            elif actual_endpoint != expected_endpoint:
+                errors.append(
+                    f"motor_map.{label} CAN endpoint must be channel "
+                    f"{expected_endpoint[0]} ID 0x{expected_endpoint[1]:02x}"
+                )
         if direct is not None:
             direct_counts[direct] = direct_counts.get(direct, 0) + 1
         if coupled in coupled_counts:
@@ -580,6 +631,17 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         record.update({"coupled_joints": list(head_pair)})
         motor_map[f"head_motor_{suffix}"] = record
 
+    for label, record in motor_map.items():
+        endpoint_role = record.get("policy_joint", label)
+        channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
+        record.update(
+            {
+                "can_channel": channel,
+                "can_id": can_id,
+                "master_id": can_id + 0x10,
+            }
+        )
+
     if len(motor_map) != 31:
         raise AssertionError("generated hardware template must contain 31 physical motors")
     return {
@@ -595,6 +657,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "backend": "socketcan",
             "vendor": "KunHong",
             "sdk_version": "1.3.1",
+            "logical_bus_names": ["CANFD1", "CANFD2", "CANFD3", "CANFD4"],
             "interfaces": [None, None, None, None],
             "rx_only_shadow": {
                 "required_before_arm": True,

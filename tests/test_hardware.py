@@ -8,6 +8,7 @@ from open_sprite_runtime.damiao import (
 )
 from open_sprite_runtime.hardware import (
     ANKLE_PAIRS,
+    CONFIRMED_CAN_ENDPOINTS,
     DIFFERENTIAL_JOINTS,
     DIFFERENTIAL_PAIRS,
     make_hardware_template,
@@ -90,6 +91,12 @@ def complete_hardware() -> dict:
         row.pop("policy_to_motor_sign")
         records[f"head_motor_{suffix}"] = row
         index += 1
+    for label, row in records.items():
+        endpoint_role = row.get("policy_joint", label)
+        channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
+        row["can_channel"] = channel
+        row["can_id"] = can_id
+        row["master_id"] = can_id + 0x10
     return {
         "configured": True,
         "controller": {
@@ -102,6 +109,7 @@ def complete_hardware() -> dict:
             "backend": "socketcan",
             "vendor": "KunHong",
             "sdk_version": "1.3.1",
+            "logical_bus_names": ["CANFD1", "CANFD2", "CANFD3", "CANFD4"],
             "interfaces": ["can0", "can1", "can2", "can3"],
             "rx_only_shadow": {
                 "required_before_arm": True,
@@ -199,6 +207,11 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertEqual(records["left_wrist_roll_motor"]["policy_to_motor_sign"], -1)
         self.assertEqual(records["right_wrist_roll_motor"]["policy_to_motor_sign"], -1)
         self.assertEqual(records["head_yaw_motor"]["policy_to_motor_sign"], -1)
+        for label, record in records.items():
+            endpoint_role = record.get("policy_joint", label)
+            channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
+            self.assertEqual((record["can_channel"], record["can_id"]), (channel, can_id))
+            self.assertEqual(record["master_id"], can_id + 0x10)
         report = validate_hardware_inventory(template, JOINTS)
         self.assertFalse(report.valid)
         self.assertFalse(report.missing_policy_joints)
@@ -208,6 +221,14 @@ class HardwareInventoryTest(unittest.TestCase):
         report = validate_hardware_inventory(complete_hardware(), JOINTS)
         self.assertTrue(report.valid, report.errors)
         self.assertEqual(report.physical_motor_count, 31)
+
+    def test_confirmed_can_endpoint_drift_is_rejected(self) -> None:
+        hardware = complete_hardware()
+        hardware["motor_map"]["motor_00"]["can_id"] = 0x02
+        hardware["motor_map"]["motor_00"]["master_id"] = 0x12
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("CAN endpoint must be" in error for error in report.errors))
 
     def test_empty_example_fails_closed(self) -> None:
         report = validate_hardware_inventory({"configured": False, "motor_map": {}}, JOINTS)
