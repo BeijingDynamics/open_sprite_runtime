@@ -11,4 +11,11 @@ if (( YEAR < 2025 )); then
   exit 2
 fi
 
-exec python3 -m open_sprite_runtime.cli "$@"
+PYTHON="$ROOT/.venv/bin/python"
+if [[ ! -x "$PYTHON" ]]; then
+  echo "ERROR: runtime virtual environment is missing: $PYTHON" >&2
+  echo "Install the project into .venv before running the Jetson launcher." >&2
+  exit 2
+fi
+
+exec "$PYTHON" -m open_sprite_runtime.cli "$@"
