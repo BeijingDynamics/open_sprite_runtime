@@ -10,6 +10,9 @@ from typing import Any, Iterable
 import numpy as np
 
 
+DAMIAO_PROJECT_MAX_EMBEDDED_KD = 3.0
+
+
 ANKLE_PAIRS = {
     "left": ("left_ankle_pitch_joint", "left_ankle_roll_joint"),
     "right": ("right_ankle_pitch_joint", "right_ankle_roll_joint"),
@@ -436,6 +439,14 @@ def validate_hardware_inventory(
             errors.append(
                 "controller.nominal_bus_voltage_v must be within the qualified 36-40 V range"
             )
+        try:
+            maximum_kd = float(controller["damiao_embedded_kd_max"])
+            if not np.isfinite(maximum_kd) or maximum_kd != DAMIAO_PROJECT_MAX_EMBEDDED_KD:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            errors.append(
+                "controller.damiao_embedded_kd_max must equal the qualified 3.0 limit"
+            )
 
     motor_map = hardware.get("motor_map")
     if not isinstance(motor_map, dict):
@@ -707,6 +718,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "usb_canfd_channels": 4,
             "measured_round_trip_latency_required": True,
             "nominal_bus_voltage_v": 38.0,
+            "damiao_embedded_kd_max": DAMIAO_PROJECT_MAX_EMBEDDED_KD,
         },
         "can_adapter": {
             "backend": "socketcan",

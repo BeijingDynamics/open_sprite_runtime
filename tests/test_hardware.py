@@ -106,6 +106,7 @@ def complete_hardware() -> dict:
             "usb_canfd_channels": 4,
             "measured_round_trip_latency_required": True,
             "nominal_bus_voltage_v": 38.0,
+            "damiao_embedded_kd_max": 3.0,
         },
         "can_adapter": {
             "backend": "socketcan",
@@ -183,6 +184,12 @@ class HardwareInventoryTest(unittest.TestCase):
         )
         self.assertEqual(encoded.can_id, leg.endpoint.can_id)
         self.assertEqual(len(encoded.data), 8)
+        self.assertEqual(leg.maximum_embedded_kd, 3.0)
+        with self.assertRaisesRegex(ValueError, "qualified Damiao embedded Kd limit"):
+            leg.encode(
+                DamiaoMitCommand(0.0, 0.0, 20.0, 3.01, 0.0),
+                DamiaoMitState(0.0, 0.0),
+            )
 
     def test_command_profiles_require_configured_valid_measured_hardware(self) -> None:
         hardware = complete_hardware()
@@ -195,12 +202,18 @@ class HardwareInventoryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "motor_register_readback"):
             command_profiles_from_hardware_config(hardware, JOINTS)
 
+        hardware = complete_hardware()
+        hardware["controller"]["damiao_embedded_kd_max"] = 5.0
+        with self.assertRaisesRegex(ValueError, "qualified 3.0 limit"):
+            command_profiles_from_hardware_config(hardware, JOINTS)
+
     def test_generated_template_has_physical_topology_and_known_leg_ratings(self) -> None:
         template = make_hardware_template(JOINTS)
         records = template["motor_map"]
         self.assertEqual(len(records), 31)
         self.assertFalse(template["configured"])
         self.assertEqual(template["can_adapter"]["sdk_version"], "1.4.2")
+        self.assertEqual(template["controller"]["damiao_embedded_kd_max"], 3.0)
         self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
         self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])

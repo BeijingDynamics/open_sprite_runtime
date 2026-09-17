@@ -105,6 +105,17 @@ enum in the physical inventory.
 This table identifies hardware only. MIT `PMAX/VMAX/TMAX` still comes from
 per-drive register readback, while rated/peak torque, current, speed, and
 temperature limits come from the matching nameplate/manual plus qualification.
+The protocol can encode `Kd` through 5, but Sprite0825 deliberately qualifies
+only `0 <= Kd <= 3` for every Damiao motor. The hardware inventory records this
+as `controller.damiao_embedded_kd_max = 3.0`, and command profiles reject larger
+values before frame encoding. This is an engineering limit based on bench
+behavior, not a change to the Damiao wire format.
+
+Training/deployment contracts retain the simulation stiffness and damping that
+produced a policy. Those values are provenance and must not be silently clipped
+into hardware commands. A hardware-realizable gain profile must be selected and
+requalified in MuJoCo/Isaac; until then, a simulation damping such as `8.042`
+causes a fail-closed preflight error rather than CAN transmission.
 
 In runtime naming, hardware motor `1`/`2` for each differential corresponds to
 motor `a`/`b`. The inventory validator rejects changes to any confirmed channel,
@@ -148,12 +159,11 @@ Velocity uses the same linear map without offsets. Torque uses the inverse
 transpose so instantaneous power is preserved. These transforms are tested in
 both directions over the complete 31-joint/31-motor map.
 
-For differential pairs, arbitrary pitch/roll gains transform to full 2x2 motor
-impedance matrices. The 1 kHz Damiao MIT loops implement their diagonal terms;
-the 500 Hz state layer computes the non-diagonal coupling terms as feedforward
-torque from fresh measured state. This split exactly reproduces the requested
-joint-space PD torque and avoids pretending that two independent scalar motor
-gains can represent unequal or non-ideal coupled-joint gains.
+For the ankle differential pairs, the 500 Hz host layer computes complete
+joint-space PD torque from fresh state and maps it through `A^-T`. The ankle
+motors receive `Kp=Kd=0` plus feed-forward motor torque, so the embedded-Damiao
+`Kd <= 3` limit does not alter ankle impedance. The head differential remains
+non-actuating until its explicit control path is qualified.
 
 The inventory validator also pins the known J4340P nameplate data: hip/knee and
 the four shoulder pitch/roll motors are DM-J4340P-2EC with 14/40 Nm rated/peak

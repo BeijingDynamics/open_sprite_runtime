@@ -5,7 +5,8 @@
     "candidate": "jetson_orin_nano_or_raspberry_pi_5",
     "usb_canfd_channels": 4,
     "measured_round_trip_latency_required": true,
-    "nominal_bus_voltage_v": 38.0
+    "nominal_bus_voltage_v": 38.0,
+    "damiao_embedded_kd_max": 3.0
   },
   "can_adapter": {
     "backend": "socketcan",

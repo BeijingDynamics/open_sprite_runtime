@@ -8,7 +8,7 @@ import selectors
 import time
 from typing import Any, Callable, Iterable, Mapping
 
-from .hardware import validate_hardware_inventory
+from .hardware import DAMIAO_PROJECT_MAX_EMBEDDED_KD, validate_hardware_inventory
 from .socketcan import ReceivedCanFrame
 from .telemetry import MotorTelemetryLimits, limits_from_hardware_record
 
@@ -152,6 +152,7 @@ class DamiaoMitCommandProfile:
     endpoint: DamiaoFeedbackEndpoint
     soft_position_rad: tuple[float, float]
     telemetry_limits: MotorTelemetryLimits
+    maximum_embedded_kd: float = DAMIAO_PROJECT_MAX_EMBEDDED_KD
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -160,6 +161,12 @@ class DamiaoMitCommandProfile:
             _validate_range("soft_position_rad", self.soft_position_rad),
         )
         self.telemetry_limits.validate()
+        if (
+            not math.isfinite(self.maximum_embedded_kd)
+            or self.maximum_embedded_kd <= 0.0
+            or self.maximum_embedded_kd > 5.0
+        ):
+            raise ValueError("maximum_embedded_kd must be finite and in (0, 5]")
         low, high = self.soft_position_rad
         protocol_low, protocol_high = self.endpoint.ranges.position_rad
         if low < protocol_low or high > protocol_high:
@@ -193,6 +200,11 @@ class DamiaoMitCommandProfile:
         command: DamiaoMitCommand,
         measured_state: DamiaoMitState,
     ) -> EncodedDamiaoMitCommand:
+        if command.kd > self.maximum_embedded_kd:
+            raise ValueError(
+                f"kd={command.kd} exceeds the qualified Damiao embedded Kd limit "
+                f"{self.maximum_embedded_kd} for {self.endpoint.motor_name}"
+            )
         return encode_damiao_mit_command(
             self.endpoint,
             command,
@@ -331,6 +343,9 @@ def command_profiles_from_hardware_config(
         expected_motor_count=expected_motor_count,
     )
     motor_map = hardware_dict["motor_map"]
+    maximum_embedded_kd = float(
+        hardware_dict["controller"]["damiao_embedded_kd_max"]
+    )
     profiles = []
     for endpoint in endpoints:
         record = motor_map[endpoint.motor_name]
@@ -338,6 +353,7 @@ def command_profiles_from_hardware_config(
             endpoint=endpoint,
             soft_position_rad=tuple(float(value) for value in record["soft_limit_rad"]),
             telemetry_limits=limits_from_hardware_record(record),
+            maximum_embedded_kd=maximum_embedded_kd,
         )
         # Exercise the dynamic limits at rest so incompatible measured ranges fail now.
         profile.envelope_for_state(DamiaoMitState(0.0, 0.0))
