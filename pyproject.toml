@@ -17,6 +17,8 @@ dependencies = [
 
 [project.optional-dependencies]
 can = ["python-can>=4.4"]
+imu = ["pyserial>=3.5"]
+viewer = ["mujoco>=3.2,<4"]
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
@@ -27,4 +29,3 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 100
-

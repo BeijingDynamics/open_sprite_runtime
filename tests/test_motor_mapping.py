@@ -77,6 +77,18 @@ class MotorMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "configured=true"):
             motor_map_from_hardware_config(hardware, JOINTS)
 
+    def test_receive_only_mapping_does_not_require_armable_inventory(self) -> None:
+        hardware = complete_hardware()
+        hardware["configured"] = False
+        mapping = motor_map_from_hardware_config(
+            hardware, JOINTS, require_armable=False
+        )
+        zeros = np.zeros(31)
+        np.testing.assert_allclose(
+            mapping.motor_to_joint_positions(mapping.joint_to_motor_positions(zeros)),
+            zeros,
+        )
+
     def test_impedance_commands_reproduce_exact_joint_space_torque(self) -> None:
         hardware = complete_hardware()
         hardware["motor_map"]["motor_00"]["encoder_sign"] = -1

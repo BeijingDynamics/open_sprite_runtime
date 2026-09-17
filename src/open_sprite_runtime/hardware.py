@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 import re
 from typing import Any, Iterable
 
@@ -66,6 +67,42 @@ CONFIRMED_CAN_ENDPOINTS = {
     "right_wrist_yaw_joint": (3, 0x05),
     "right_wrist_pitch_joint": (3, 0x06),
     "right_wrist_roll_joint": (3, 0x07),
+}
+
+# Exact installed Sprite0825 motor variants, keyed the same way as the frozen
+# CAN endpoint table. Differential motors use their runtime motor labels.
+CONFIRMED_MOTOR_MODELS = {
+    "left_hip_pitch_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_hip_roll_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_hip_yaw_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_knee_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_ankle_motor_a": "DM-J4310P-2EC (48V)",
+    "left_ankle_motor_b": "DM-J4310P-2EC (48V)",
+    "waist_yaw_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "waist_roll_joint": "DM-J6248P-2EC",
+    "right_hip_pitch_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_hip_roll_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_hip_yaw_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_knee_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_ankle_motor_a": "DM-J4310P-2EC (48V)",
+    "right_ankle_motor_b": "DM-J4310P-2EC (48V)",
+    "head_motor_a": "DM-J3507-2EC (48V)",
+    "head_motor_b": "DM-J3507-2EC (48V)",
+    "left_shoulder_pitch_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_shoulder_roll_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "left_shoulder_yaw_joint": "DM-J4310P-2EC (48V)",
+    "left_elbow_joint": "DM-J4310P-2EC (48V)",
+    "left_wrist_yaw_joint": "DM-J4310P-2EC (48V)",
+    "left_wrist_pitch_joint": "DM-J3507-2EC (48V)",
+    "left_wrist_roll_joint": "DM-J3507-2EC (48V)",
+    "head_yaw_joint": "DM-J3507-2EC (48V)",
+    "right_shoulder_pitch_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_shoulder_roll_joint": "DM-J4340P-2EC V1.1 (48V)",
+    "right_shoulder_yaw_joint": "DM-J4310P-2EC (48V)",
+    "right_elbow_joint": "DM-J4310P-2EC (48V)",
+    "right_wrist_yaw_joint": "DM-J4310P-2EC (48V)",
+    "right_wrist_pitch_joint": "DM-J3507-2EC (48V)",
+    "right_wrist_roll_joint": "DM-J3507-2EC (48V)",
 }
 
 MOTOR_REQUIRED_FIELDS = (
@@ -419,6 +456,7 @@ def validate_hardware_inventory(
             _validate_known_motor_profile(str(label), record, direct, coupled, errors)
             endpoint_role = direct if direct is not None else str(label)
             expected_endpoint = CONFIRMED_CAN_ENDPOINTS.get(endpoint_role)
+            expected_model = CONFIRMED_MOTOR_MODELS.get(endpoint_role)
             actual_endpoint = (record.get("can_channel"), record.get("can_id"))
             if expected_endpoint is None:
                 errors.append(f"motor_map.{label} has no confirmed Sprite0825 CAN endpoint")
@@ -426,6 +464,12 @@ def validate_hardware_inventory(
                 errors.append(
                     f"motor_map.{label} CAN endpoint must be channel "
                     f"{expected_endpoint[0]} ID 0x{expected_endpoint[1]:02x}"
+                )
+            if expected_model is None:
+                errors.append(f"motor_map.{label} has no confirmed Sprite0825 motor model")
+            elif record.get("model") != expected_model:
+                errors.append(
+                    f"motor_map.{label}.model must be {expected_model}"
                 )
         if direct is not None:
             direct_counts[direct] = direct_counts.get(direct, 0) + 1
@@ -491,6 +535,16 @@ def validate_hardware_inventory(
         ):
             if field not in imu or imu[field] is None:
                 errors.append(f"imu.{field} is missing")
+        if "sensor_to_body_matrix" in imu:
+            matrix = np.asarray(imu["sensor_to_body_matrix"], dtype=float)
+            if matrix.shape != (3, 3):
+                errors.append("imu.sensor_to_body_matrix must be 3x3")
+            elif not np.all(np.isfinite(matrix)):
+                errors.append("imu.sensor_to_body_matrix contains non-finite values")
+            elif not np.allclose(matrix.T @ matrix, np.eye(3), atol=1.0e-6):
+                errors.append("imu.sensor_to_body_matrix is not orthonormal")
+            elif not math.isclose(float(np.linalg.det(matrix)), 1.0, abs_tol=1.0e-6):
+                errors.append("imu.sensor_to_body_matrix is not a proper rotation")
     estop = hardware.get("estop", {})
     if not isinstance(estop, dict) or estop.get("configured") is not True:
         errors.append("independent hardware e-stop is not configured")
@@ -601,7 +655,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         ):
             record.update(
                 {
-                    "model": "DM-J4340P-2EC",
+                    "model": "DM-J4340P-2EC V1.1 (48V)",
                     "rated_torque_nm": 14.0,
                     "peak_torque_nm": 40.0,
                     "rated_speed_rad_s": 3.77,
@@ -615,7 +669,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             record = base_record()
             record.update(
                 {
-                    "model": "DM-J4310P-2EC",
+                    "model": "DM-J4310P-2EC (48V)",
                     "rated_torque_nm": 3.5,
                     "peak_torque_nm": 12.5,
                     "rated_speed_rad_s": 12.56,
@@ -636,6 +690,7 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
         record.update(
             {
+                "model": CONFIRMED_MOTOR_MODELS[endpoint_role],
                 "can_channel": channel,
                 "can_id": can_id,
                 "master_id": can_id + 0x10,
@@ -672,13 +727,29 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
         },
         "imu": {
             "configured": False,
-            "mount_link": None,
-            "body_to_sensor_quaternion_wxyz": None,
+            "vendor": "Yahboom",
+            "model": "high_precision_9_axis",
+            "transport": "usb_serial_ch340",
+            "device_path": None,
+            "baud_rate": None,
+            "mount_link": "pelvis",
+            "mounting_description": "rear pelvis; sensor +Z backward; sensor +X down; sensor +Y right",
+            "sensor_to_body_matrix": [[0, 0, -1], [0, -1, 0], [-1, 0, 0]],
+            "body_to_sensor_quaternion_wxyz": [0.0, 0.7071067811865476, 0.0, -0.7071067811865476],
             "gyro_units": "rad_s",
-            "quaternion_order": None,
+            "acceleration_units": "m_s2",
+            "quaternion_order": "wxyz",
+            "orientation_convention": None,
+            "expected_update_hz": 100.0,
             "update_hz": None,
             "timestamp_source": None,
+            "maximum_sample_age_ms": 30.0,
+            "maximum_sample_gap_ms": 30.0,
+            "yaw_source": "integrated_body_gyro_z",
+            "stand_resets_yaw": True,
+            "magnetometer_yaw_safety_role": "monitor_only",
             "measured_yaw_drift_deg_per_min": None,
+            "vendor_protocol_verified": False,
         },
         "estop": {
             "configured": False,

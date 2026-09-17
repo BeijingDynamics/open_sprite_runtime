@@ -6,5 +6,8 @@ build/
 dist/
 logs/
 captures/
+/backups/
+/reports/
+*.bin
 config/hardware.local.json
 artifacts/*.bundle

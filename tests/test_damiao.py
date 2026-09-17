@@ -10,9 +10,12 @@ from open_sprite_runtime.damiao import (
     DamiaoMitRanges,
     DamiaoRxAudit,
     collect_receive_only_audit,
+    collect_zero_gain_group_position_echo,
+    collect_zero_gain_position_echo,
     decode_damiao_feedback,
     endpoints_from_hardware_config,
     encode_damiao_mit_command,
+    encode_zero_gain_position_echo,
 )
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
@@ -58,6 +61,89 @@ def frame(data: bytes, **changes) -> ReceivedCanFrame:
 
 
 class DamiaoFeedbackTests(unittest.TestCase):
+    def test_zero_gain_group_requires_one_bus_and_at_most_eight_motors(self) -> None:
+        poller = SimpleNamespace(
+            interface="can2",
+            send_zero_gain_poll=lambda *_args: None,
+        )
+        configured = [
+            endpoint(
+                motor_name=f"motor_{index}",
+                can_id=index + 1,
+                master_id=index + 0x11,
+            )
+            for index in range(9)
+        ]
+        with self.assertRaisesRegex(ValueError, "between one and eight"):
+            collect_zero_gain_group_position_echo(
+                poller, configured, configured, 1.0, 50.0
+            )
+
+        mixed = (
+            configured[0],
+            endpoint(
+                motor_name="other_bus",
+                interface="can3",
+                can_id=2,
+                master_id=0x12,
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "poller interface"):
+            collect_zero_gain_group_position_echo(
+                poller, mixed, mixed, 1.0, 50.0
+            )
+
+    def test_zero_gain_group_allows_500hz_only_with_valid_remaining_limits(self) -> None:
+        selected = endpoint()
+        poller = SimpleNamespace(
+            interface=selected.interface,
+            send_zero_gain_poll=lambda *_args: None,
+        )
+        with self.assertRaisesRegex(ValueError, "feedback_timeout_s"):
+            collect_zero_gain_group_position_echo(
+                poller,
+                [selected],
+                [selected],
+                1.0,
+                500.0,
+                feedback_timeout_s=2.0,
+            )
+        with self.assertRaisesRegex(ValueError, r"\(0, 500\]"):
+            collect_zero_gain_group_position_echo(
+                poller, [selected], [selected], 1.0, 500.1
+            )
+
+    def test_zero_gain_probe_extended_duration_requires_explicit_limit(self) -> None:
+        poller = SimpleNamespace(
+            interface="wrong",
+            send_zero_gain_poll=lambda *_args: None,
+        )
+        with self.assertRaisesRegex(ValueError, r"\(0, 10\]"):
+            collect_zero_gain_position_echo(
+                poller, endpoint(), [endpoint()], 120.0, 50.0
+            )
+        with self.assertRaisesRegex(ValueError, "poller interface"):
+            collect_zero_gain_position_echo(
+                poller,
+                endpoint(),
+                [endpoint()],
+                120.0,
+                50.0,
+                maximum_duration_s=120.0,
+            )
+
+    def test_zero_gain_position_echo_keeps_only_position_nonzero(self) -> None:
+        encoded = encode_zero_gain_position_echo(endpoint(), 1.25)
+        velocity_raw = (encoded.data[2] << 4) | (encoded.data[3] >> 4)
+        kp_raw = ((encoded.data[3] & 0x0F) << 8) | encoded.data[4]
+        kd_raw = (encoded.data[5] << 4) | (encoded.data[6] >> 4)
+        torque_raw = ((encoded.data[6] & 0x0F) << 8) | encoded.data[7]
+        self.assertEqual(velocity_raw, 2047)
+        self.assertEqual(kp_raw, 0)
+        self.assertEqual(kd_raw, 0)
+        self.assertEqual(torque_raw, 2047)
+        self.assertNotEqual(encoded.data[:2], bytes.fromhex("7fff"))
+
     def test_encodes_official_mit_zero_vector_without_transport(self) -> None:
         encoded = encode_damiao_mit_command(
             endpoint(),
@@ -150,6 +236,16 @@ class DamiaoFeedbackTests(unittest.TestCase):
     def test_rejects_unverified_ranges(self) -> None:
         with self.assertRaisesRegex(ValueError, "motor_register_readback"):
             DamiaoMitRanges((-12.5, 12.5), (-20, 20), (-28, 28), "sdk_default")
+
+    def test_operator_confirmed_ranges_are_decode_only(self) -> None:
+        declared = DamiaoMitRanges(
+            (-12.5, 12.5),
+            (-20, 20),
+            (-28, 28),
+            "operator_confirmed_drive_configuration",
+        )
+        self.assertFalse(declared.register_readback_verified)
+        self.assertTrue(ranges().register_readback_verified)
 
     def test_decoder_maps_by_interface_and_master_id(self) -> None:
         decoder = DamiaoFeedbackDecoder([endpoint()])

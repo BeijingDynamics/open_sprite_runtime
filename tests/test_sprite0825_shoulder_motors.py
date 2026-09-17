@@ -2,7 +2,11 @@ import json
 import unittest
 from pathlib import Path
 
-from open_sprite_runtime.hardware import make_hardware_template, validate_hardware_inventory
+from open_sprite_runtime.hardware import (
+    CONFIRMED_MOTOR_MODELS,
+    make_hardware_template,
+    validate_hardware_inventory,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +35,7 @@ class Sprite0825ShoulderMotorContractTest(unittest.TestCase):
         }
         for name in expected:
             motor = motor_map[name]
-            self.assertEqual(motor["model"], "DM-J4340P-2EC")
+            self.assertEqual(motor["model"], "DM-J4340P-2EC V1.1 (48V)")
             self.assertEqual(motor["rated_torque_nm"], 14.0)
             self.assertEqual(motor["peak_torque_nm"], 40.0)
             self.assertEqual(motor["rated_speed_rad_s"], 3.77)
@@ -48,14 +52,14 @@ class Sprite0825ShoulderMotorContractTest(unittest.TestCase):
             "right_wrist_yaw_motor",
         }
         for name in distal:
-            self.assertNotEqual(motor_map[name]["model"], "DM-J4340P-2EC")
+            self.assertEqual(motor_map[name]["model"], "DM-J4310P-2EC (48V)")
 
     def test_generated_template_preserves_upgraded_shoulders(self) -> None:
         generated = make_hardware_template(self.policy_joint_names())
         for side in ("left", "right"):
             for axis in ("pitch", "roll"):
                 motor = generated["motor_map"][f"{side}_shoulder_{axis}_motor"]
-                self.assertEqual(motor["model"], "DM-J4340P-2EC")
+                self.assertEqual(motor["model"], "DM-J4340P-2EC V1.1 (48V)")
                 self.assertEqual(motor["rated_torque_nm"], 14.0)
                 self.assertEqual(motor["peak_torque_nm"], 40.0)
                 self.assertEqual(motor["max_speed_rad_s"], 9.3)
@@ -69,6 +73,19 @@ class Sprite0825ShoulderMotorContractTest(unittest.TestCase):
             any("left_shoulder_pitch_motor shoulder pitch/roll motor must be DM-J4340P-2EC" in error for error in report.errors),
             report.errors,
         )
+
+    def test_all_31_installed_motor_models_are_frozen(self) -> None:
+        motor_map = json.loads(HARDWARE.read_text(encoding="utf-8"))["motor_map"]
+        self.assertEqual(len(CONFIRMED_MOTOR_MODELS), 31)
+        for label, motor in motor_map.items():
+            role = motor.get("policy_joint", label)
+            self.assertEqual(motor["model"], CONFIRMED_MOTOR_MODELS[role])
+
+    def test_generated_template_preserves_all_installed_models(self) -> None:
+        generated = make_hardware_template(self.policy_joint_names())
+        for label, motor in generated["motor_map"].items():
+            role = motor.get("policy_joint", label)
+            self.assertEqual(motor["model"], CONFIRMED_MOTOR_MODELS[role])
 
 
 if __name__ == "__main__":

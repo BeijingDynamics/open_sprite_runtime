@@ -361,16 +361,22 @@ class SpriteMotorMap:
 
 
 def motor_map_from_hardware_config(
-    hardware: Mapping[str, Any], policy_joint_names: Iterable[str]
+    hardware: Mapping[str, Any],
+    policy_joint_names: Iterable[str],
+    *,
+    require_armable: bool = True,
 ) -> SpriteMotorMap:
-    """Build an exact coordinate map only from a complete measured inventory."""
+    """Build the coordinate map, optionally for receive-only commissioning."""
     hardware_dict = dict(hardware)
     policy_order = tuple(policy_joint_names)
-    if hardware_dict.get("configured") is not True:
-        raise ValueError("hardware configured=true is required for a motor map")
-    report = validate_hardware_inventory(hardware_dict, policy_order)
-    if not report.valid:
-        raise ValueError("hardware inventory is invalid: " + "; ".join(report.errors))
+    if require_armable:
+        if hardware_dict.get("configured") is not True:
+            raise ValueError("hardware configured=true is required for a motor map")
+        report = validate_hardware_inventory(hardware_dict, policy_order)
+        if not report.valid:
+            raise ValueError("hardware inventory is invalid: " + "; ".join(report.errors))
+    elif len(hardware_dict.get("motor_map", {})) != 31:
+        raise ValueError("receive-only motor map requires exactly 31 physical motors")
     records = hardware_dict["motor_map"]
     direct: dict[str, DirectMotorMap] = {}
     for motor_name, record in records.items():

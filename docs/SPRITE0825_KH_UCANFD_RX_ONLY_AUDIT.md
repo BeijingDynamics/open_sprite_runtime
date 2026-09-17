@@ -83,3 +83,29 @@ non-zero raw hardware timestamp and a kernel software receive timestamp; the
 implementation deliberately fails closed if either is missing. Opening is
 rejected unless the same interface appears in a passing listen-only preflight
 report.
+
+## Direct Jetson MuJoCo display
+
+The same receive-only collector can display the decoded physical posture on the
+Jetson display. MuJoCo is kinematic in this mode: the runtime writes decoded
+joint positions and calls `mj_forward`; it does not step physics and has no CAN
+send/enable API. Camera movement remains under normal MuJoCo viewer control.
+
+```bash
+DISPLAY=:1 sprite-runtime damiao-rx-audit \
+  --hardware-config config/hardware.sprite0825.measurement.json \
+  --snapshot reports/kh_socketcan_snapshot.json \
+  --duration 600 \
+  --output reports/damiao_rx_view_600s.json \
+  --viewer \
+  --contract /home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate/deploy/contract.json \
+  --mjcf /home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate/assets/mujoco/sprite0825_v5_4340_shoulders/sprite0825_v5_external_pd.xml
+```
+
+Left and right ankle pitch/roll use their independently measured differential
+matrices. Any uncalibrated differential is visibly reported and frozen at zero;
+currently this applies to head pitch/roll. Operator-confirmed PMAX/VMAX/TMAX
+may be used for this non-armable visual diagnostic, but the resulting audit has
+`qualification_passed=false` until every drive range is register-readback
+verified. Receive-only display also requires existing feedback traffic from a
+separate controller; it never polls a silent motor bus.

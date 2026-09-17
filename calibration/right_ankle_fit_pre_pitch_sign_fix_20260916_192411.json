@@ -1,0 +1,34 @@
+{
+  "mode": "unloaded_differential_pair_calibration_no_hardware_tx",
+  "pair": "right_ankle",
+  "source": "/home/tony/sprite/backups/open_sprite_runtime_worktree_20260909/calibration/right_ankle.csv",
+  "joint_to_motor_matrix": [
+    [
+      1.3055003739519502,
+      -1.011683046199467
+    ],
+    [
+      -1.3051579126920603,
+      -1.012140973324761
+    ]
+  ],
+  "motor_zero_rad": [
+    0.014480000000000048,
+    -0.01324000000000014
+  ],
+  "determinant": -2.641756552051208,
+  "excitation_condition_number": 5.727373103915989,
+  "matrix_condition_number": 1.2899630918719305,
+  "rms_residual_rad": [
+    0.011331825252859085,
+    0.010177708620379148
+  ],
+  "max_abs_residual_rad": [
+    0.030417943920328705,
+    0.025627691863592705
+  ],
+  "sample_count": 25,
+  "maximum_rms_residual_rad": 0.012,
+  "maximum_condition_number": 100.0,
+  "passed": true
+}

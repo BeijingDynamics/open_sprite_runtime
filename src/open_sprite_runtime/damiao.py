@@ -50,8 +50,18 @@ class DamiaoMitRanges:
             self, "velocity_rad_s", _validate_range("velocity_rad_s", self.velocity_rad_s)
         )
         object.__setattr__(self, "torque_nm", _validate_range("torque_nm", self.torque_nm))
-        if self.source != "motor_register_readback":
-            raise ValueError("MIT ranges must come from a motor_register_readback snapshot")
+        if self.source not in {
+            "motor_register_readback",
+            "operator_confirmed_drive_configuration",
+        }:
+            raise ValueError(
+                "MIT ranges must use motor_register_readback or an explicitly "
+                "operator_confirmed_drive_configuration source"
+            )
+
+    @property
+    def register_readback_verified(self) -> bool:
+        return self.source == "motor_register_readback"
 
 
 @dataclass(frozen=True)
@@ -274,6 +284,34 @@ def encode_damiao_mit_command(
     )
 
 
+def encode_zero_gain_position_echo(
+    endpoint: DamiaoFeedbackEndpoint,
+    position_rad: float,
+) -> EncodedDamiaoMitCommand:
+    """Encode position plus v/Kp/Kd/tau=0; nominal MIT output torque is zero."""
+    protocol = endpoint.ranges
+    maximum_velocity = min(abs(value) for value in protocol.velocity_rad_s)
+    maximum_torque = min(abs(value) for value in protocol.torque_nm)
+    state = DamiaoMitState(position_rad=position_rad, velocity_rad_s=0.0)
+    return encode_damiao_mit_command(
+        endpoint,
+        DamiaoMitCommand(
+            position_rad=position_rad,
+            velocity_rad_s=0.0,
+            kp=0.0,
+            kd=0.0,
+            feedforward_torque_nm=0.0,
+        ),
+        state,
+        DamiaoMitCommandEnvelope(
+            position_rad=protocol.position_rad,
+            maximum_velocity_rad_s=maximum_velocity,
+            maximum_feedforward_torque_nm=maximum_torque,
+            maximum_output_torque_nm=maximum_torque,
+        ),
+    )
+
+
 def command_profiles_from_hardware_config(
     hardware: Mapping[str, Any],
     policy_joint_names: Iterable[str],
@@ -423,6 +461,325 @@ class DamiaoFeedbackDecoder:
                 f"unconfigured Damiao feedback endpoint: {frame.interface}:{frame.can_id}"
             )
         return decode_damiao_feedback(frame, endpoint)
+
+
+@dataclass(frozen=True)
+class DamiaoZeroGainProbeReport:
+    motor_name: str
+    interface: str
+    can_id: int
+    master_id: int
+    requested_duration_s: float
+    requested_rate_hz: float
+    elapsed_s: float
+    tx_count: int
+    rx_count: int
+    first_position_rad: float | None
+    last_position_rad: float | None
+    minimum_position_rad: float | None
+    maximum_position_rad: float | None
+    status_codes: tuple[int, ...]
+    errors: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return not self.errors and self.tx_count > 0 and self.rx_count > 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "passed": self.passed}
+
+
+@dataclass(frozen=True)
+class DamiaoZeroGainGroupProbeReport:
+    interface: str
+    motor_names: tuple[str, ...]
+    requested_duration_s: float
+    requested_rate_hz_per_motor: float
+    elapsed_s: float
+    tx_count: int
+    minimum_sample_coverage: float
+    rx_count_by_motor: dict[str, int]
+    sample_coverage_by_motor: dict[str, float]
+    first_position_rad_by_motor: dict[str, float | None]
+    last_position_rad_by_motor: dict[str, float | None]
+    status_codes_by_motor: dict[str, tuple[int, ...]]
+    errors: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return (
+            not self.errors
+            and self.tx_count > 0
+            and all(
+                self.sample_coverage_by_motor.get(name, 0.0)
+                >= self.minimum_sample_coverage
+                for name in self.motor_names
+            )
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "passed": self.passed}
+
+
+def collect_zero_gain_position_echo(
+    poller: Any,
+    endpoint: DamiaoFeedbackEndpoint,
+    configured_endpoints: Iterable[DamiaoFeedbackEndpoint],
+    duration_s: float,
+    rate_hz: float,
+    *,
+    feedback_timeout_s: float = 0.2,
+    selector_factory: Callable[[], Any] = selectors.DefaultSelector,
+    monotonic: Callable[[], float] = time.monotonic,
+    on_feedback: Callable[[DamiaoFeedback], None] | None = None,
+    keep_running: Callable[[], bool] | None = None,
+    maximum_duration_s: float = 10.0,
+) -> DamiaoZeroGainProbeReport:
+    """Run a finite single-motor position-echo probe through a restricted poller."""
+    if not math.isfinite(maximum_duration_s) or not 0.0 < maximum_duration_s <= 120.0:
+        raise ValueError("maximum_duration_s must be finite and in (0, 120]")
+    if not math.isfinite(duration_s) or not 0.0 < duration_s <= maximum_duration_s:
+        raise ValueError(
+            f"duration_s must be finite and in (0, {maximum_duration_s:g}]"
+        )
+    if not math.isfinite(rate_hz) or not 0.0 < rate_hz <= 100.0:
+        raise ValueError("rate_hz must be finite and in (0, 100]")
+    if not math.isfinite(feedback_timeout_s) or not 0.0 < feedback_timeout_s <= 1.0:
+        raise ValueError("feedback_timeout_s must be finite and in (0, 1]")
+    if poller.interface != endpoint.interface:
+        raise ValueError("poller interface does not match selected endpoint")
+    if not hasattr(poller, "send_zero_gain_poll"):
+        raise ValueError("restricted zero-gain poller is required")
+
+    endpoint_list = tuple(configured_endpoints)
+    decoder = DamiaoFeedbackDecoder(endpoint_list)
+    known_command_keys = {(item.interface, item.can_id) for item in endpoint_list}
+    known_feedback_keys = {(item.interface, item.master_id) for item in endpoint_list}
+    period_s = 1.0 / rate_hz
+    start = monotonic()
+    next_send = start
+    last_selected_feedback = start
+    target_position = 0.0
+    feedback_values: list[DamiaoFeedback] = []
+    errors: list[str] = []
+
+    with selector_factory() as selector:
+        selector.register(poller, selectors.EVENT_READ, poller)
+        while True:
+            now = monotonic()
+            if keep_running is not None and not keep_running():
+                break
+            if now - start >= duration_s:
+                break
+            if now >= next_send:
+                command = encode_zero_gain_position_echo(endpoint, target_position)
+                poller.send_zero_gain_poll(command.can_id, command.data)
+                next_send += period_s
+                if next_send <= now:
+                    next_send = now + period_s
+            timeout = min(max(0.0, next_send - monotonic()), 0.02)
+            for key, _mask in selector.select(timeout=timeout):
+                frame = key.data.receive()
+                frame_key = (frame.interface, frame.can_id)
+                if frame_key in known_command_keys:
+                    continue
+                if frame_key not in known_feedback_keys:
+                    errors.append(f"unexpected CAN endpoint: {frame.interface}:{frame.can_id:#x}")
+                    continue
+                feedback = decoder.decode(frame)
+                if feedback.motor_name != endpoint.motor_name:
+                    continue
+                if not frame.is_fd or not frame.bit_rate_switch:
+                    errors.append("selected feedback was not CAN-FD with bit-rate switching")
+                    break
+                feedback_values.append(feedback)
+                target_position = feedback.position_rad
+                last_selected_feedback = monotonic()
+                if feedback.status_code not in (0x0, 0x1):
+                    errors.append(f"motor fault: {feedback.status_name}")
+                    break
+                if on_feedback is not None:
+                    on_feedback(feedback)
+            if errors:
+                break
+            if monotonic() - last_selected_feedback > feedback_timeout_s:
+                errors.append(
+                    f"no selected-motor feedback within {feedback_timeout_s:.3f} s"
+                )
+                break
+
+    elapsed = monotonic() - start
+    positions = [item.position_rad for item in feedback_values]
+    return DamiaoZeroGainProbeReport(
+        motor_name=endpoint.motor_name,
+        interface=endpoint.interface,
+        can_id=endpoint.can_id,
+        master_id=endpoint.master_id,
+        requested_duration_s=duration_s,
+        requested_rate_hz=rate_hz,
+        elapsed_s=elapsed,
+        tx_count=int(poller.hardware_tx_attempts),
+        rx_count=len(feedback_values),
+        first_position_rad=positions[0] if positions else None,
+        last_position_rad=positions[-1] if positions else None,
+        minimum_position_rad=min(positions) if positions else None,
+        maximum_position_rad=max(positions) if positions else None,
+        status_codes=tuple(sorted({item.status_code for item in feedback_values})),
+        errors=tuple(errors),
+    )
+
+
+def collect_zero_gain_group_position_echo(
+    poller: Any,
+    endpoints: Iterable[DamiaoFeedbackEndpoint],
+    configured_endpoints: Iterable[DamiaoFeedbackEndpoint],
+    duration_s: float,
+    rate_hz_per_motor: float,
+    *,
+    feedback_timeout_s: float = 0.2,
+    selector_factory: Callable[[], Any] = selectors.DefaultSelector,
+    monotonic: Callable[[], float] = time.monotonic,
+    on_feedback: Callable[[DamiaoFeedback], None] | None = None,
+    keep_running: Callable[[], bool] | None = None,
+    maximum_duration_s: float = 10.0,
+    minimum_sample_coverage: float = 0.95,
+) -> DamiaoZeroGainGroupProbeReport:
+    """Poll up to eight motors on one CAN-FD bus using only zero-gain MIT frames."""
+    selected = tuple(endpoints)
+    if not 1 <= len(selected) <= 8:
+        raise ValueError("zero-gain group must contain between one and eight motors")
+    if len({item.motor_name for item in selected}) != len(selected):
+        raise ValueError("zero-gain group contains duplicate motor names")
+    if len({item.can_id for item in selected}) != len(selected):
+        raise ValueError("zero-gain group contains duplicate command CAN IDs")
+    interfaces = {item.interface for item in selected}
+    if interfaces != {poller.interface}:
+        raise ValueError("all selected motors must use the poller interface")
+    if not hasattr(poller, "send_zero_gain_poll"):
+        raise ValueError("restricted zero-gain poller is required")
+    if not math.isfinite(maximum_duration_s) or not 0.0 < maximum_duration_s <= 120.0:
+        raise ValueError("maximum_duration_s must be finite and in (0, 120]")
+    if not math.isfinite(duration_s) or not 0.0 < duration_s <= maximum_duration_s:
+        raise ValueError(
+            f"duration_s must be finite and in (0, {maximum_duration_s:g}]"
+        )
+    if not math.isfinite(rate_hz_per_motor) or not 0.0 < rate_hz_per_motor <= 500.0:
+        raise ValueError("rate_hz_per_motor must be finite and in (0, 500]")
+    if not math.isfinite(feedback_timeout_s) or not 0.0 < feedback_timeout_s <= 1.0:
+        raise ValueError("feedback_timeout_s must be finite and in (0, 1]")
+    if (
+        not math.isfinite(minimum_sample_coverage)
+        or not 0.0 < minimum_sample_coverage <= 1.0
+    ):
+        raise ValueError("minimum_sample_coverage must be finite and in (0, 1]")
+
+    configured = tuple(configured_endpoints)
+    decoder = DamiaoFeedbackDecoder(configured)
+    known_command_keys = {(item.interface, item.can_id) for item in configured}
+    known_feedback_keys = {(item.interface, item.master_id) for item in configured}
+    selected_names = {item.motor_name for item in selected}
+    period_s = 1.0 / rate_hz_per_motor
+    start = monotonic()
+    next_send = start
+    last_feedback = {item.motor_name: start for item in selected}
+    targets = {item.motor_name: 0.0 for item in selected}
+    feedback_values: dict[str, list[DamiaoFeedback]] = {
+        item.motor_name: [] for item in selected
+    }
+    errors: list[str] = []
+
+    with selector_factory() as selector:
+        selector.register(poller, selectors.EVENT_READ, poller)
+        while True:
+            now = monotonic()
+            if keep_running is not None and not keep_running():
+                break
+            if now - start >= duration_s:
+                break
+            if now >= next_send:
+                for endpoint in selected:
+                    command = encode_zero_gain_position_echo(
+                        endpoint, targets[endpoint.motor_name]
+                    )
+                    poller.send_zero_gain_poll(command.can_id, command.data)
+                next_send += period_s
+                if next_send <= now:
+                    next_send = now + period_s
+            timeout = min(max(0.0, next_send - monotonic()), 0.02)
+            for key, _mask in selector.select(timeout=timeout):
+                frame = key.data.receive()
+                frame_key = (frame.interface, frame.can_id)
+                if frame_key in known_command_keys:
+                    continue
+                if frame_key not in known_feedback_keys:
+                    errors.append(
+                        f"unexpected CAN endpoint: {frame.interface}:{frame.can_id:#x}"
+                    )
+                    continue
+                feedback = decoder.decode(frame)
+                if feedback.motor_name not in selected_names:
+                    continue
+                if not frame.is_fd or not frame.bit_rate_switch:
+                    errors.append(
+                        f"{feedback.motor_name} feedback was not CAN-FD with bit-rate switching"
+                    )
+                    break
+                feedback_values[feedback.motor_name].append(feedback)
+                targets[feedback.motor_name] = feedback.position_rad
+                last_feedback[feedback.motor_name] = monotonic()
+                if feedback.status_code not in (0x0, 0x1):
+                    errors.append(
+                        f"{feedback.motor_name} motor fault: {feedback.status_name}"
+                    )
+                    break
+                if on_feedback is not None:
+                    on_feedback(feedback)
+            if errors:
+                break
+            now = monotonic()
+            stale = [
+                name
+                for name, last_seen in last_feedback.items()
+                if now - last_seen > feedback_timeout_s
+            ]
+            if stale:
+                errors.append(
+                    "no feedback within "
+                    f"{feedback_timeout_s:.3f} s from: {', '.join(sorted(stale))}"
+                )
+                break
+
+    elapsed = monotonic() - start
+    expected_samples_per_motor = max(1, int(elapsed * rate_hz_per_motor))
+    rx_counts = {name: len(values) for name, values in feedback_values.items()}
+    coverage = {
+        name: min(1.0, count / expected_samples_per_motor)
+        for name, count in rx_counts.items()
+    }
+    return DamiaoZeroGainGroupProbeReport(
+        interface=poller.interface,
+        motor_names=tuple(item.motor_name for item in selected),
+        requested_duration_s=duration_s,
+        requested_rate_hz_per_motor=rate_hz_per_motor,
+        elapsed_s=elapsed,
+        tx_count=int(poller.hardware_tx_attempts),
+        minimum_sample_coverage=minimum_sample_coverage,
+        rx_count_by_motor=rx_counts,
+        sample_coverage_by_motor=coverage,
+        first_position_rad_by_motor={
+            name: values[0].position_rad if values else None
+            for name, values in feedback_values.items()
+        },
+        last_position_rad_by_motor={
+            name: values[-1].position_rad if values else None
+            for name, values in feedback_values.items()
+        },
+        status_codes_by_motor={
+            name: tuple(sorted({item.status_code for item in values}))
+            for name, values in feedback_values.items()
+        },
+        errors=tuple(errors),
+    )
 
 
 def endpoints_from_hardware_config(
@@ -669,6 +1026,8 @@ def collect_receive_only_audit(
     *,
     selector_factory: Callable[[], Any] = selectors.DefaultSelector,
     monotonic: Callable[[], float] = time.monotonic,
+    on_feedback: Callable[[DamiaoFeedback], None] | None = None,
+    keep_running: Callable[[], bool] | None = None,
 ) -> DamiaoRxAuditReport:
     """Collect from already-open receive-only sockets for a finite duration."""
     if not math.isfinite(duration_s) or duration_s <= 0.0:
@@ -684,9 +1043,13 @@ def collect_receive_only_audit(
                 raise ValueError("collector accepts receive-only interfaces only")
             selector.register(receiver, selectors.EVENT_READ, receiver)
         while True:
+            if keep_running is not None and not keep_running():
+                break
             remaining = duration_s - (monotonic() - start)
             if remaining <= 0.0:
                 break
             for key, _mask in selector.select(timeout=min(remaining, 0.1)):
-                audit.ingest_bus_frame(key.data.receive())
+                feedback = audit.ingest_bus_frame(key.data.receive())
+                if feedback is not None and on_feedback is not None:
+                    on_feedback(feedback)
     return audit.report()

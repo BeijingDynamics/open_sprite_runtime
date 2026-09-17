@@ -38,6 +38,21 @@ class SocketCanRxPreflightReport:
 
 
 @dataclass(frozen=True)
+class SocketCanActiveFdPreflightReport:
+    interface: str
+    arbitration_bitrate: int
+    data_bitrate: int
+    errors: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        return not self.errors
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "passed": self.passed}
+
+
+@dataclass(frozen=True)
 class ReceivedCanFrame:
     interface: str
     can_id: int
@@ -109,6 +124,59 @@ def audit_socketcan_rx_snapshot(
         expected_interfaces=expected,
         observed_interfaces=tuple(sorted(entries)),
         listen_only_interfaces=tuple(listen_only),
+        errors=tuple(errors),
+    )
+
+
+def audit_socketcan_active_fd_snapshot(
+    snapshot: Any,
+    interface: str,
+    *,
+    arbitration_bitrate: int = 1_000_000,
+    data_bitrate: int = 5_000_000,
+) -> SocketCanActiveFdPreflightReport:
+    """Require one active CAN-FD+BRS interface with exact measured bitrates."""
+    errors: list[str] = []
+    entries = {
+        entry.get("ifname"): entry
+        for entry in snapshot
+        if isinstance(entry, dict) and isinstance(entry.get("ifname"), str)
+    } if isinstance(snapshot, list) else {}
+    entry = entries.get(interface)
+    if entry is None:
+        errors.append(f"{interface}: interface is missing")
+    else:
+        flags = {str(value).upper() for value in entry.get("flags", [])}
+        if "UP" not in flags:
+            errors.append(f"{interface}: interface is not UP")
+        modes = _ctrlmodes(entry)
+        if "LISTEN-ONLY" in modes:
+            errors.append(f"{interface}: LISTEN-ONLY must be disabled for the active probe")
+        if "FD" not in modes:
+            errors.append(f"{interface}: CAN FD is not enabled")
+        linkinfo = entry.get("linkinfo")
+        info = linkinfo.get("info_data") if isinstance(linkinfo, dict) else None
+        info = info if isinstance(info, dict) else {}
+        nominal = info.get("bittiming")
+        data = info.get("data_bittiming")
+        observed_nominal = nominal.get("bitrate") if isinstance(nominal, dict) else None
+        observed_data = data.get("bitrate") if isinstance(data, dict) else None
+        if observed_nominal != arbitration_bitrate:
+            errors.append(
+                f"{interface}: arbitration bitrate must be {arbitration_bitrate}, "
+                f"observed {observed_nominal}"
+            )
+        if observed_data != data_bitrate:
+            errors.append(
+                f"{interface}: data bitrate must be {data_bitrate}, observed {observed_data}"
+            )
+        state = str(info.get("state", "")).upper()
+        if state and state != "ERROR-ACTIVE":
+            errors.append(f"{interface}: CAN state must be ERROR-ACTIVE, observed {state}")
+    return SocketCanActiveFdPreflightReport(
+        interface=interface,
+        arbitration_bitrate=arbitration_bitrate,
+        data_bitrate=data_bitrate,
         errors=tuple(errors),
     )
 
@@ -214,6 +282,80 @@ class SocketCanReceiver:
         return self._socket.fileno()
 
     def __enter__(self) -> "SocketCanReceiver":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
+def _validate_zero_gain_mit_payload(data: bytes) -> None:
+    if len(data) != 8:
+        raise ValueError("zero-gain MIT poll must contain exactly eight bytes")
+    velocity_raw = (data[2] << 4) | (data[3] >> 4)
+    kp_raw = ((data[3] & 0x0F) << 8) | data[4]
+    kd_raw = (data[5] << 4) | (data[6] >> 4)
+    torque_raw = ((data[6] & 0x0F) << 8) | data[7]
+    if kp_raw != 0 or kd_raw != 0:
+        raise ValueError("zero-gain MIT poll requires raw Kp=Kd=0")
+    if velocity_raw not in (2047, 2048) or torque_raw not in (2047, 2048):
+        raise ValueError("zero-gain MIT poll requires encoded velocity=torque=0")
+
+
+class SocketCanZeroGainPoller:
+    """CAN-FD+BRS transceiver that can emit only validated zero-gain MIT polls."""
+
+    def __init__(self, interface: str, raw_socket: Any, *, clock_ns: Any = time.time_ns):
+        self.interface = interface
+        self._socket = raw_socket
+        self._receiver = SocketCanReceiver(interface, raw_socket, clock_ns=clock_ns)
+        self.hardware_tx_attempts = 0
+
+    @classmethod
+    def open(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanZeroGainPoller":
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            timestamp_flags = (
+                SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
+                | SOF_TIMESTAMPING_SOFTWARE
+                | SOF_TIMESTAMPING_RAW_HARDWARE
+            )
+            raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
+            raw_socket.bind((interface,))
+        except BaseException:
+            raw_socket.close()
+            raise
+        return cls(interface, raw_socket)
+
+    def send_zero_gain_poll(self, can_id: int, data: bytes) -> None:
+        if not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF:
+            raise ValueError("zero-gain poll requires an 11-bit standard CAN ID")
+        _validate_zero_gain_mit_payload(data)
+        frame = CANFD_FRAME.pack(can_id, 8, 0x01, 0, 0, data.ljust(64, b"\0"))
+        sent = self._socket.send(frame)
+        self.hardware_tx_attempts += 1
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+    def receive(self) -> ReceivedCanFrame:
+        return self._receiver.receive()
+
+    def fileno(self) -> int:
+        return self._socket.fileno()
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def __enter__(self) -> "SocketCanZeroGainPoller":
         return self
 
     def __exit__(self, *_exc: object) -> None:

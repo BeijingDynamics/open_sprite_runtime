@@ -9,6 +9,7 @@ from open_sprite_runtime.damiao import (
 from open_sprite_runtime.hardware import (
     ANKLE_PAIRS,
     CONFIRMED_CAN_ENDPOINTS,
+    CONFIRMED_MOTOR_MODELS,
     DIFFERENTIAL_JOINTS,
     DIFFERENTIAL_PAIRS,
     make_hardware_template,
@@ -94,6 +95,7 @@ def complete_hardware() -> dict:
     for label, row in records.items():
         endpoint_role = row.get("policy_joint", label)
         channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
+        row["model"] = CONFIRMED_MOTOR_MODELS[endpoint_role]
         row["can_channel"] = channel
         row["can_id"] = can_id
         row["master_id"] = can_id + 0x10
@@ -213,6 +215,7 @@ class HardwareInventoryTest(unittest.TestCase):
             channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
             self.assertEqual((record["can_channel"], record["can_id"]), (channel, can_id))
             self.assertEqual(record["master_id"], can_id + 0x10)
+            self.assertEqual(record["model"], CONFIRMED_MOTOR_MODELS[endpoint_role])
         report = validate_hardware_inventory(template, JOINTS)
         self.assertFalse(report.valid)
         self.assertFalse(report.missing_policy_joints)

@@ -1,0 +1,34 @@
+{
+  "mode": "unloaded_differential_pair_calibration_no_hardware_tx",
+  "pair": "left_ankle",
+  "source": "/home/tony/open_sprite_runtime/calibration/left_ankle.csv",
+  "joint_to_motor_matrix": [
+    [
+      1.3046986734546604,
+      -1.0115688924461708
+    ],
+    [
+      -1.3049296051854675,
+      -1.0113392728274706
+    ]
+  ],
+  "motor_zero_rad": [
+    -0.014520000000000251,
+    0.012999999999999935
+  ],
+  "determinant": -2.6395192031082844,
+  "excitation_condition_number": 5.727373103915986,
+  "matrix_condition_number": 1.290037936531264,
+  "rms_residual_rad": [
+    0.01132627233587641,
+    0.010090759094425365
+  ],
+  "max_abs_residual_rad": [
+    0.030617897733982047,
+    0.025137553960610348
+  ],
+  "sample_count": 25,
+  "maximum_rms_residual_rad": 0.012,
+  "maximum_condition_number": 100.0,
+  "passed": true
+}

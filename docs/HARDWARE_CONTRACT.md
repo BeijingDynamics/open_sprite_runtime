@@ -88,6 +88,24 @@ channel order. Every Damiao `master_id` is frozen as `can_id + 0x10`.
 | CANFD3 | 2 | left shoulder pitch, left shoulder roll, left shoulder yaw, left elbow, left wrist yaw, left wrist pitch, left wrist roll, head yaw |
 | CANFD4 | 3 | right shoulder pitch, right shoulder roll, right shoulder yaw, right elbow, right wrist yaw, right wrist pitch, right wrist roll; ID 8 unused |
 
+## Frozen installed motor models
+
+The model variant is part of the endpoint identity and is validated together
+with the bus and CAN ID. `V1.1 (48V)` is retained where it was explicitly
+confirmed on the installed hardware; it must not be shortened to a generic SDK
+enum in the physical inventory.
+
+| Bus | ID 1-8 motor models |
+|---|---|
+| CANFD1 | J4340P V1.1 48V, J4340P V1.1 48V, J4340P V1.1 48V, J4340P V1.1 48V, J4310P 48V, J4310P 48V, J4340P V1.1 48V, J6248P |
+| CANFD2 | J4340P V1.1 48V, J4340P V1.1 48V, J4340P V1.1 48V, J4340P V1.1 48V, J4310P 48V, J4310P 48V, J3507 48V, J3507 48V |
+| CANFD3 | J4340P V1.1 48V, J4340P V1.1 48V, J4310P 48V, J4310P 48V, J4310P 48V, J3507 48V, J3507 48V, J3507 48V |
+| CANFD4 | J4340P V1.1 48V, J4340P V1.1 48V, J4310P 48V, J4310P 48V, J4310P 48V, J3507 48V, J3507 48V; ID 8 unused |
+
+This table identifies hardware only. MIT `PMAX/VMAX/TMAX` still comes from
+per-drive register readback, while rated/peak torque, current, speed, and
+temperature limits come from the matching nameplate/manual plus qualification.
+
 In runtime naming, hardware motor `1`/`2` for each differential corresponds to
 motor `a`/`b`. The inventory validator rejects changes to any confirmed channel,
 command ID, or master ID.

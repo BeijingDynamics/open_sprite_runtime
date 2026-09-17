@@ -12,6 +12,62 @@ from .contracts import PolicyContract
 from .safety import RuntimeMode, SafetyInputs, SafetyLimits, SafetySupervisor
 
 
+class _Actor:
+    """Small backend-neutral wrapper for a frozen deterministic actor."""
+
+    def __init__(self, backend: str, run):
+        self.backend = backend
+        self._run = run
+
+    def run(self, observation: np.ndarray) -> np.ndarray:
+        action = np.asarray(self._run(observation), dtype=np.float32)
+        if action.ndim == 2 and action.shape[0] == 1:
+            action = action[0]
+        if action.ndim != 1 or not np.all(np.isfinite(action)):
+            raise ValueError(f"{self.backend} actor produced an invalid action")
+        return action
+
+
+def _load_actor(contract: PolicyContract) -> _Actor:
+    """Load ONNX when available, otherwise the contract-pinned TorchScript actor."""
+    contract_dir = contract.path.parent
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        ort = None
+    if ort is not None:
+        policy_path = contract_dir / Path(contract.data["policy_onnx"])
+        session = ort.InferenceSession(str(policy_path), providers=["CPUExecutionProvider"])
+        input_name = session.get_inputs()[0].name
+        return _Actor(
+            "onnxruntime_cpu",
+            lambda observation: session.run(None, {input_name: observation[None, :]})[0],
+        )
+
+    try:
+        import torch
+    except ImportError as exc:
+        raise RuntimeError(
+            "policy replay requires onnxruntime or torch for the contract-pinned TorchScript actor"
+        ) from exc
+    policy_jit = contract.data.get("policy_jit")
+    if not policy_jit:
+        raise RuntimeError("onnxruntime is unavailable and the policy contract has no policy_jit")
+    policy_path = contract_dir / Path(policy_jit)
+    module = torch.jit.load(str(policy_path), map_location="cpu")
+    module.eval()
+
+    def run_torchscript(observation: np.ndarray) -> np.ndarray:
+        tensor = torch.from_numpy(np.ascontiguousarray(observation[None, :]))
+        with torch.inference_mode():
+            output = module(tensor)
+        if isinstance(output, (tuple, list)):
+            output = output[0]
+        return output.detach().cpu().numpy()
+
+    return _Actor("torchscript_cpu", run_torchscript)
+
+
 def expand_zero_order_hold(actions: np.ndarray, updates_per_policy: int) -> np.ndarray:
     """Expand policy-rate rows into state-rate held targets."""
     values = np.asarray(actions)
@@ -27,22 +83,11 @@ def replay_mujoco_trace(
     trace_path: str | Path,
     sample_stride: int = 10,
 ) -> dict[str, object]:
-    try:
-        import onnxruntime as ort
-    except ImportError as exc:
-        raise RuntimeError(
-            "trace replay requires onnxruntime; install the declared project dependency"
-        ) from exc
     if sample_stride <= 0:
         raise ValueError("sample_stride must be positive")
     contract = PolicyContract.load(contract_path)
-    contract_dir = contract.path.parent
-    policy_path = Path(contract.data["policy_onnx"])
-    if not policy_path.is_absolute():
-        policy_path = contract_dir / policy_path
     trace = json.loads(Path(trace_path).read_text(encoding="utf-8"))
-    session = ort.InferenceSession(str(policy_path), providers=["CPUExecutionProvider"])
-    input_name = session.get_inputs()[0].name
+    actor = _load_actor(contract)
     max_abs = 0.0
     rms_sum = 0.0
     value_count = 0
@@ -66,7 +111,7 @@ def replay_mujoco_trace(
             raise ValueError("trace contains non-finite policy data")
         command = observation[command_slice["start"] : command_slice["end"]]
         np.testing.assert_allclose(command, row["command"], atol=1.0e-6, rtol=0.0)
-        actual_action = session.run(None, {input_name: observation[None, :]})[0][0]
+        actual_action = actor.run(observation)
         error = actual_action - expected_action
         max_abs = max(max_abs, float(np.max(np.abs(error))))
         rms_sum += float(error @ error)
@@ -74,6 +119,7 @@ def replay_mujoco_trace(
         sampled += 1
     return {
         "mode": "shadow_replay_no_hardware_tx",
+        "inference_backend": actor.backend,
         "trace_rows": len(trace),
         "sample_stride": sample_stride,
         "sampled_policy_ticks": sampled,
@@ -84,6 +130,9 @@ def replay_mujoco_trace(
         "horizontal_base_velocity_present": bool(
             contract.data["observation_has_horizontal_base_velocity"]
         ),
+        "policy_action_max_abs_error": max_abs,
+        "policy_action_rms_error": float(np.sqrt(rms_sum / max(value_count, 1))),
+        # Backward-compatible report fields retained for existing qualification tooling.
         "onnx_action_max_abs_error": max_abs,
         "onnx_action_rms_error": float(np.sqrt(rms_sum / max(value_count, 1))),
         "passed": max_abs <= 1.0e-4,
@@ -101,12 +150,6 @@ def replay_multirate_mujoco_trace(
     maximum_policy_overrun_ms: float,
 ) -> dict[str, object]:
     """Exercise every recorded policy tick and every synthetic 500 Hz safety tick."""
-    try:
-        import onnxruntime as ort
-    except ImportError as exc:
-        raise RuntimeError(
-            "trace replay requires onnxruntime; install the declared project dependency"
-        ) from exc
     if policy_hz <= 0 or state_hz <= 0 or state_hz % policy_hz:
         raise ValueError("state_hz must be an integer multiple of policy_hz")
     contract = PolicyContract.load(contract_path)
@@ -121,13 +164,8 @@ def replay_multirate_mujoco_trace(
     )
     supervisor = SafetySupervisor(RuntimeMode.SHADOW, limits)
 
-    contract_dir = contract.path.parent
-    policy_path = Path(contract.data["policy_onnx"])
-    if not policy_path.is_absolute():
-        policy_path = contract_dir / policy_path
     trace = json.loads(Path(trace_path).read_text(encoding="utf-8"))
-    session = ort.InferenceSession(str(policy_path), providers=["CPUExecutionProvider"])
-    input_name = session.get_inputs()[0].name
+    actor = _load_actor(contract)
     handoff_seconds = float(contract.data.get("deployment_handoff_seconds", 0.0))
     rows = [row for row in trace if float(row.get("time_s", 0.0)) >= handoff_seconds]
     if not rows:
@@ -135,7 +173,7 @@ def replay_multirate_mujoco_trace(
 
     # Warm the execution provider before measuring policy latency.
     first_observation = np.asarray(rows[0]["observation"], dtype=np.float32)
-    session.run(None, {input_name: first_observation[None, :]})
+    actor.run(first_observation)
     actions: list[np.ndarray] = []
     target_rows: list[np.ndarray] = []
     inference_ms: list[float] = []
@@ -150,7 +188,7 @@ def replay_multirate_mujoco_trace(
         if not np.all(np.isfinite(observation)):
             raise ValueError("trace contains non-finite observations")
         started_ns = time.perf_counter_ns()
-        action = session.run(None, {input_name: observation[None, :]})[0][0]
+        action = actor.run(observation)
         finished_ns = time.perf_counter_ns()
         duration_ms = (finished_ns - started_ns) / 1.0e6
         inference_ms.append(duration_ms)
@@ -212,6 +250,7 @@ def replay_multirate_mujoco_trace(
     )
     return {
         "mode": "deterministic_multirate_shadow_no_hardware_tx",
+        "inference_backend": actor.backend,
         "policy_hz": policy_hz,
         "state_hz": state_hz,
         "state_updates_per_policy": updates_per_policy,
@@ -221,6 +260,8 @@ def replay_multirate_mujoco_trace(
         "target_hold_max_abs_delta": hold_max_abs_delta,
         "hardware_tx_permitted_count": tx_permitted_count,
         "unexpected_safety_blockers": sorted(unexpected_blockers),
+        "policy_action_max_abs_error": max_abs_action_error,
+        # Backward-compatible report field retained for existing qualification tooling.
         "onnx_action_max_abs_error": max_abs_action_error,
         "policy_inference_ms": {
             "p50": float(np.quantile(latency, 0.50)),

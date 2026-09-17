@@ -36,13 +36,30 @@
   },
   "imu": {
     "configured": false,
-    "mount_link": null,
-    "body_to_sensor_quaternion_wxyz": null,
+    "vendor": "Yahboom",
+    "model": "high_precision_9_axis",
+    "transport": "usb_serial_ch340",
+    "device_path": null,
+    "device_selection": "/dev/serial/by-id required",
+    "baud_rate": null,
+    "mount_link": "pelvis",
+    "mounting_description": "rear pelvis; sensor +Z backward; sensor +X down; sensor +Y right",
+    "sensor_to_body_matrix": [[0, 0, -1], [0, -1, 0], [-1, 0, 0]],
+    "body_to_sensor_quaternion_wxyz": [0.0, 0.7071067811865476, 0.0, -0.7071067811865476],
     "gyro_units": "rad_s",
-    "quaternion_order": null,
+    "acceleration_units": "m_s2",
+    "quaternion_order": "wxyz",
+    "orientation_convention": null,
+    "expected_update_hz": 100.0,
     "update_hz": null,
     "timestamp_source": null,
-    "measured_yaw_drift_deg_per_min": null
+    "maximum_sample_age_ms": 30.0,
+    "maximum_sample_gap_ms": 30.0,
+    "yaw_source": "integrated_body_gyro_z",
+    "stand_resets_yaw": true,
+    "magnetometer_yaw_safety_role": "monitor_only",
+    "measured_yaw_drift_deg_per_min": null,
+    "vendor_protocol_verified": false
   },
   "estop": {
     "configured": false,
@@ -51,15 +68,15 @@
   },
   "motor_map": {
     "left_hip_pitch_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 1,
       "master_id": 17,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -70,26 +87,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_pitch_joint",
       "policy_to_motor_sign": 1
     },
     "right_hip_pitch_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 1,
       "master_id": 17,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -100,26 +132,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_pitch_joint",
       "policy_to_motor_sign": 1
     },
     "waist_roll_motor": {
-      "model": null,
+      "model": "DM-J6248P-2EC",
       "firmware": null,
       "can_channel": 0,
       "can_id": 8,
       "master_id": 24,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -130,26 +177,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -120.0,
+          120.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "waist_roll_joint",
       "policy_to_motor_sign": 1
     },
     "left_hip_roll_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 2,
       "master_id": 18,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -160,26 +222,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_roll_joint",
       "policy_to_motor_sign": 1
     },
     "right_hip_roll_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 2,
       "master_id": 18,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -190,26 +267,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_roll_joint",
       "policy_to_motor_sign": 1
     },
     "waist_yaw_motor": {
-      "model": null,
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 7,
       "master_id": 23,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -220,26 +312,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "waist_yaw_joint",
       "policy_to_motor_sign": -1
     },
     "left_hip_yaw_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 3,
       "master_id": 19,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -250,26 +357,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "right_hip_yaw_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 3,
       "master_id": 19,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -280,26 +402,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "left_shoulder_pitch_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 1,
       "master_id": 17,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -310,26 +447,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_pitch_joint",
       "policy_to_motor_sign": 1
     },
     "right_shoulder_pitch_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 1,
       "master_id": 17,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -340,26 +492,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_pitch_joint",
       "policy_to_motor_sign": 1
     },
     "left_knee_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 4,
       "master_id": 20,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -370,26 +537,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_knee_joint",
       "policy_to_motor_sign": 1
     },
     "right_knee_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 4,
       "master_id": 20,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -400,26 +582,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_knee_joint",
       "policy_to_motor_sign": 1
     },
     "left_shoulder_roll_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 2,
       "master_id": 18,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -430,26 +627,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_roll_joint",
       "policy_to_motor_sign": 1
     },
     "right_shoulder_roll_motor": {
-      "model": "DM-J4340P-2EC",
+      "model": "DM-J4340P-2EC V1.1 (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 2,
       "master_id": 18,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 14.0,
@@ -460,26 +672,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -20.0,
+          20.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -28.0,
+          28.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_roll_joint",
       "policy_to_motor_sign": 1
     },
     "head_yaw_motor": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 8,
       "master_id": 24,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -490,26 +717,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "head_yaw_joint",
       "policy_to_motor_sign": -1
     },
     "left_shoulder_yaw_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 3,
       "master_id": 19,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -520,26 +762,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "right_shoulder_yaw_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 3,
       "master_id": 19,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -550,26 +807,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "left_elbow_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 4,
       "master_id": 20,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -580,26 +852,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_elbow_joint",
       "policy_to_motor_sign": 1
     },
     "right_elbow_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 4,
       "master_id": 20,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -610,26 +897,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_elbow_joint",
       "policy_to_motor_sign": 1
     },
     "left_wrist_yaw_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 5,
       "master_id": 21,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -640,26 +942,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "right_wrist_yaw_motor": {
-      "model": null,
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 5,
       "master_id": 21,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -670,26 +987,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_yaw_joint",
       "policy_to_motor_sign": 1
     },
     "left_wrist_pitch_motor": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 6,
       "master_id": 22,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -700,26 +1032,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_pitch_joint",
       "policy_to_motor_sign": -1
     },
     "right_wrist_pitch_motor": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 6,
       "master_id": 22,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -730,26 +1077,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_pitch_joint",
       "policy_to_motor_sign": 1
     },
     "left_wrist_roll_motor": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 2,
       "can_id": 7,
       "master_id": 23,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -760,26 +1122,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_roll_joint",
       "policy_to_motor_sign": -1
     },
     "right_wrist_roll_motor": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 3,
       "can_id": 7,
       "master_id": 23,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -790,26 +1167,41 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_roll_joint",
       "policy_to_motor_sign": -1
     },
     "left_ankle_motor_a": {
-      "model": "DM-J4310P-2EC",
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 5,
       "master_id": 21,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 3.5,
@@ -820,12 +1212,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -833,15 +1240,15 @@
       ]
     },
     "left_ankle_motor_b": {
-      "model": "DM-J4310P-2EC",
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 0,
       "can_id": 6,
       "master_id": 22,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 3.5,
@@ -852,12 +1259,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -865,15 +1287,15 @@
       ]
     },
     "right_ankle_motor_a": {
-      "model": "DM-J4310P-2EC",
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 5,
       "master_id": 21,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 3.5,
@@ -884,12 +1306,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",
@@ -897,15 +1334,15 @@
       ]
     },
     "right_ankle_motor_b": {
-      "model": "DM-J4310P-2EC",
+      "model": "DM-J4310P-2EC (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 6,
       "master_id": 22,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": 3.5,
@@ -916,12 +1353,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.5,
+          12.5
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -10.0,
+          10.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",
@@ -929,15 +1381,15 @@
       ]
     },
     "head_motor_a": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 7,
       "master_id": 23,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -948,12 +1400,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "head_pitch_joint",
@@ -961,15 +1428,15 @@
       ]
     },
     "head_motor_b": {
-      "model": null,
+      "model": "DM-J3507-2EC (48V)",
       "firmware": null,
       "can_channel": 1,
       "can_id": 8,
       "master_id": 24,
-      "motor_zero_rad": null,
-      "encoder_sign": null,
-      "reduction_ratio": null,
-      "linkage_ratio": null,
+      "motor_zero_rad": 0.0,
+      "encoder_sign": 1,
+      "reduction_ratio": 1.0,
+      "linkage_ratio": 1.0,
       "soft_limit_rad": null,
       "hard_limit_rad": null,
       "rated_torque_nm": null,
@@ -980,12 +1447,27 @@
       "peak_current_a": null,
       "temperature_limit_c": null,
       "mit_ranges": {
-        "position_rad": null,
-        "velocity_rad_s": null,
-        "kp": null,
-        "kd": null,
-        "torque_nm": null,
-        "source": null
+        "position_rad": [
+          -12.566,
+          12.566
+        ],
+        "velocity_rad_s": [
+          -50.0,
+          50.0
+        ],
+        "kp": [
+          0.0,
+          500.0
+        ],
+        "kd": [
+          0.0,
+          5.0
+        ],
+        "torque_nm": [
+          -5.0,
+          5.0
+        ],
+        "source": "operator_confirmed_drive_configuration"
       },
       "coupled_joints": [
         "head_pitch_joint",
@@ -995,7 +1477,7 @@
   },
   "differentials": {
     "left_ankle": {
-      "calibrated": false,
+      "calibrated": true,
       "joint_order": [
         "left_ankle_pitch_joint",
         "left_ankle_roll_joint"
@@ -1006,22 +1488,22 @@
       ],
       "joint_to_motor_matrix": [
         [
-          1.0,
-          1.0
+          1.3046986734546604,
+          -1.0115688924461708
         ],
         [
-          1.0,
-          -1.0
+          -1.3049296051854675,
+          -1.0113392728274706
         ]
       ],
       "motor_zero_rad": [
-        0.0,
-        0.0
+        -0.014520000000000251,
+        0.012999999999999935
       ],
-      "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM"
+      "source": "calibration/left_ankle_fit.json; 25 unloaded samples; RMS gate 0.012 rad; pitch convention corrected by physical MuJoCo audit 2026-09-16"
     },
     "right_ankle": {
-      "calibrated": false,
+      "calibrated": true,
       "joint_order": [
         "right_ankle_pitch_joint",
         "right_ankle_roll_joint"
@@ -1032,22 +1514,22 @@
       ],
       "joint_to_motor_matrix": [
         [
-          1.0,
-          1.0
+          -1.3055003739519506,
+          -1.0116830461994673
         ],
         [
-          1.0,
-          -1.0
+          1.3051579126920607,
+          -1.0121409733247608
         ]
       ],
       "motor_zero_rad": [
-        0.0,
-        0.0
+        0.014480000000000024,
+        -0.013240000000000036
       ],
-      "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM"
+      "source": "calibration/right_ankle_fit.json; 25 unloaded samples; RMS gate 0.012 rad; pitch convention corrected by physical MuJoCo audit 2026-09-16"
     },
     "head": {
-      "calibrated": false,
+      "calibrated": true,
       "joint_order": [
         "head_pitch_joint",
         "head_roll_joint"
@@ -1058,19 +1540,19 @@
       ],
       "joint_to_motor_matrix": [
         [
-          1.0,
-          1.0
+          1.0046960492304464,
+          0.6147743823232256
         ],
         [
-          1.0,
-          -1.0
+          -1.0046960492304462,
+          0.6147743823232253
         ]
       ],
       "motor_zero_rad": [
-        0.0,
-        0.0
+        -4.0000000000040004e-05,
+        3.999999999992898e-05
       ],
-      "source": "IDEAL_PLACEHOLDER_DO_NOT_ARM"
+      "source": "calibration/head_fit.json; 25 unloaded samples; RMS gate 0.01 rad; passed 2026-09-16"
     }
   }
 }

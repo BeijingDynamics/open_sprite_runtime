@@ -7,6 +7,8 @@ from open_sprite_runtime.socketcan import (
     SO_TIMESTAMPING_LINUX_64,
     SOF_TIMESTAMPING_RX_SOFTWARE,
     SocketCanReceiver,
+    SocketCanZeroGainPoller,
+    audit_socketcan_active_fd_snapshot,
     audit_socketcan_rx_snapshot,
 )
 
@@ -19,7 +21,15 @@ def entry(name: str, *, up: bool = True, listen_only: bool = True) -> dict:
         "ifname": name,
         "flags": ["NOARP", "UP"] if up else ["NOARP"],
         "link_type": "can",
-        "linkinfo": {"info_kind": "can", "info_data": {"ctrlmode": modes}},
+        "linkinfo": {
+            "info_kind": "can",
+            "info_data": {
+                "ctrlmode": modes,
+                "state": "ERROR-ACTIVE",
+                "bittiming": {"bitrate": 1_000_000},
+                "data_bittiming": {"bitrate": 5_000_000},
+            },
+        },
     }
 
 
@@ -58,6 +68,7 @@ class FakeSocket:
         self.options = []
         self.address = None
         self.closed = False
+        self.sent = []
 
     def setsockopt(self, level, name, value):
         self.options.append((level, name, value))
@@ -70,6 +81,10 @@ class FakeSocket:
 
     def close(self):
         self.closed = True
+
+    def send(self, payload):
+        self.sent.append(payload)
+        return len(payload)
 
     def fileno(self):
         return 17
@@ -130,6 +145,33 @@ class SocketCanReceiverTests(unittest.TestCase):
             SocketCanReceiver(
                 "can0", FakeSocket(frame, ancillary), clock_ns=lambda: 2_000_000_000
             ).receive()
+
+
+class SocketCanZeroGainPollerTests(unittest.TestCase):
+    def test_active_preflight_requires_1m_5m_fd_and_not_listen_only(self) -> None:
+        report = audit_socketcan_active_fd_snapshot(
+            [entry("can0", listen_only=False)], "can0"
+        )
+        self.assertTrue(report.passed, report.errors)
+        failed = audit_socketcan_active_fd_snapshot([entry("can0")], "can0")
+        self.assertFalse(failed.passed)
+
+    def test_poller_can_send_only_zero_gain_fd_brs_frames(self) -> None:
+        preflight = audit_socketcan_active_fd_snapshot(
+            [entry("can0", listen_only=False)], "can0"
+        )
+        fake = FakeSocket()
+        poller = SocketCanZeroGainPoller.open(
+            "can0", preflight, socket_factory=lambda *_: fake
+        )
+        zero_gain = bytes.fromhex("7fff7ff0000007ff")
+        poller.send_zero_gain_poll(3, zero_gain)
+        self.assertEqual(poller.hardware_tx_attempts, 1)
+        raw_id, length, flags, _, _, data = CANFD_FRAME.unpack(fake.sent[0])
+        self.assertEqual((raw_id, length, flags), (3, 8, 0x01))
+        self.assertEqual(data[:8], zero_gain)
+        with self.assertRaisesRegex(ValueError, "Kp=Kd=0"):
+            poller.send_zero_gain_poll(3, bytes.fromhex("7fff7ff0010007ff"))
 
     def test_receive_rejects_missing_kernel_software_timestamp(self) -> None:
         frame = CANFD_FRAME.pack(0x123, 1, 0, 0, 0, b"x".ljust(64, b"\0"))

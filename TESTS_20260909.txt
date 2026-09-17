@@ -1,0 +1,53 @@
+test_calibration_recovers_affine_map (test_ankle.DifferentialAnkleTests.test_calibration_recovers_affine_map) ... ok
+test_calibration_rejects_single_axis_excitation (test_ankle.DifferentialAnkleTests.test_calibration_rejects_single_axis_excitation) ... ok
+test_equal_joint_gains_are_diagonal_in_ideal_motor_space (test_ankle.DifferentialAnkleTests.test_equal_joint_gains_are_diagonal_in_ideal_motor_space) ... ok
+test_position_round_trip (test_ankle.DifferentialAnkleTests.test_position_round_trip) ... ok
+test_torque_round_trip (test_ankle.DifferentialAnkleTests.test_torque_round_trip) ... ok
+test_transform_preserves_power (test_ankle.DifferentialAnkleTests.test_transform_preserves_power) ... ok
+test_unequal_joint_gains_require_cross_coupling (test_ankle.DifferentialAnkleTests.test_unequal_joint_gains_require_cross_coupling) ... ok
+test_accepts_complete_50hz_hardware_contract (test_contracts.PolicyContractTests.test_accepts_complete_50hz_hardware_contract) ... ok
+test_rejects_global_or_horizontal_state (test_contracts.PolicyContractTests.test_rejects_global_or_horizontal_state) ... ok
+test_rejects_joint_vector_or_ankle_contract_drift (test_contracts.PolicyContractTests.test_rejects_joint_vector_or_ankle_contract_drift) ... ok
+test_rejects_observation_slice_or_order_drift (test_contracts.PolicyContractTests.test_rejects_observation_slice_or_order_drift) ... ok
+test_default_safety_state_cannot_arm (test_contracts.RuntimeTimingTests.test_default_safety_state_cannot_arm) ... ok
+test_qualified_multirate_plan (test_contracts.RuntimeTimingTests.test_qualified_multirate_plan) ... ok
+test_rejects_non_integer_rate_relationship (test_contracts.RuntimeTimingTests.test_rejects_non_integer_rate_relationship) ... ok
+test_rejects_policy_target_interpolation (test_contracts.RuntimeTimingTests.test_rejects_policy_target_interpolation) ... ok
+test_ankle_must_use_two_coupled_motors_per_side (test_hardware.HardwareInventoryTest.test_ankle_must_use_two_coupled_motors_per_side) ... ok
+test_complete_inventory_passes (test_hardware.HardwareInventoryTest.test_complete_inventory_passes) ... ok
+test_duplicate_can_and_missing_mapping_are_rejected (test_hardware.HardwareInventoryTest.test_duplicate_can_and_missing_mapping_are_rejected) ... ok
+test_empty_example_fails_closed (test_hardware.HardwareInventoryTest.test_empty_example_fails_closed) ... ok
+test_generated_template_has_physical_topology_and_known_leg_ratings (test_hardware.HardwareInventoryTest.test_generated_template_has_physical_topology_and_known_leg_ratings) ... ok
+test_leg_speed_above_frozen_envelope_is_rejected (test_hardware.HardwareInventoryTest.test_leg_speed_above_frozen_envelope_is_rejected) ... ok
+test_unqualified_bus_voltage_is_rejected (test_hardware.HardwareInventoryTest.test_unqualified_bus_voltage_is_rejected) ... ok
+test_heading_correction_matches_isaac_and_clips (test_heading.HeadingControllerTests.test_heading_correction_matches_isaac_and_clips) ... ok
+test_invalid_values_fail_closed (test_heading.HeadingControllerTests.test_invalid_values_fail_closed) ... ok
+test_manual_turn_is_limited_and_reacquires_current_heading (test_heading.HeadingControllerTests.test_manual_turn_is_limited_and_reacquires_current_heading) ... ok
+test_runtime_contract_rejects_global_yaw_or_missing_stand_reset (test_heading.HeadingControllerTests.test_runtime_contract_rejects_global_yaw_or_missing_stand_reset) ... ok
+test_stand_resets_heading (test_heading.HeadingControllerTests.test_stand_resets_heading) ... ok
+test_wrap_to_pi (test_heading.HeadingControllerTests.test_wrap_to_pi) ... ok
+test_command_timeout_forces_hold_without_latching (test_safety.SafetySupervisorTests.test_command_timeout_forces_hold_without_latching) ... ok
+test_estop_and_policy_overrun_latch (test_safety.SafetySupervisorTests.test_estop_and_policy_overrun_latch) ... ok
+test_future_timestamp_is_rejected (test_safety.SafetySupervisorTests.test_future_timestamp_is_rejected) ... ok
+test_healthy_armed_state_permits_tx (test_safety.SafetySupervisorTests.test_healthy_armed_state_permits_tx) ... ok
+test_motor_limit_latches (test_safety.SafetySupervisorTests.test_motor_limit_latches) ... ok
+test_shadow_mode_never_permits_tx (test_safety.SafetySupervisorTests.test_shadow_mode_never_permits_tx) ... ok
+test_stale_state_latches_and_requires_explicit_clear (test_safety.SafetySupervisorTests.test_stale_state_latches_and_requires_explicit_clear) ... ok
+test_invalid_shape_and_rate_are_rejected (test_shadow.MultirateShadowTests.test_invalid_shape_and_rate_are_rejected) ... ok
+test_zero_order_hold_expands_each_policy_target_ten_times (test_shadow.MultirateShadowTests.test_zero_order_hold_expands_each_policy_target_ten_times) ... ok
+test_distal_arm_motors_are_not_reclassified (test_sprite0825_shoulder_motors.Sprite0825ShoulderMotorContractTest.test_distal_arm_motors_are_not_reclassified) ... ok
+test_generated_template_preserves_upgraded_shoulders (test_sprite0825_shoulder_motors.Sprite0825ShoulderMotorContractTest.test_generated_template_preserves_upgraded_shoulders) ... ok
+test_inventory_rejects_legacy_motor_on_upgraded_shoulder (test_sprite0825_shoulder_motors.Sprite0825ShoulderMotorContractTest.test_inventory_rejects_legacy_motor_on_upgraded_shoulder) ... ok
+test_proximal_shoulders_are_j4340p (test_sprite0825_shoulder_motors.Sprite0825ShoulderMotorContractTest.test_proximal_shoulders_are_j4340p) ... ok
+test_healthy_sample_has_positive_margins (test_telemetry.MotorTelemetryTests.test_healthy_sample_has_positive_margins) ... ok
+test_motor_bank_requires_exact_inventory (test_telemetry.MotorTelemetryTests.test_motor_bank_requires_exact_inventory) ... ok
+test_nameplate_record_builds_conservative_envelope (test_telemetry.MotorTelemetryTests.test_nameplate_record_builds_conservative_envelope) ... ok
+test_nonfinite_fails_closed (test_telemetry.MotorTelemetryTests.test_nonfinite_fails_closed) ... ok
+test_torque_speed_envelope_is_enforced (test_telemetry.MotorTelemetryTests.test_torque_speed_envelope_is_enforced) ... ok
+test_rejects_negative_duration (test_timing.TimingMonitorTests.test_rejects_negative_duration) ... ok
+test_reports_jitter_and_overruns (test_timing.TimingMonitorTests.test_reports_jitter_and_overruns) ... ok
+
+----------------------------------------------------------------------
+Ran 48 tests in 0.013s
+
+OK
