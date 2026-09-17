@@ -5,15 +5,21 @@
 | Layer | Rate | Responsibility |
 |---|---:|---|
 | Damiao internal loop | 1 kHz | Motor current/MIT impedance loop |
-| SBC state and setpoint layer | 500 Hz | CAN RX aggregation, safety, ankle transform, held-target refresh |
-| Deployment policy | 50 Hz | Build deployment observation and run ONNX actor |
+| SBC state and ankle-PD layer | 500 Hz | CAN RX, safety, ankle joint PD, `A^-T` motor torque, ankle MIT `tau_ff` |
+| Deployment policy and other motors | 50 Hz | ONNX actor and position/velocity/Kp/Kd updates for the other 27 motors |
 
 Each 50 Hz policy target is held for ten 500 Hz state-layer ticks. This
 zero-order hold matches Isaac Lab and the qualified MuJoCo runtime. The 500 Hz
-layer must not linearly interpolate between policy targets. It may repeatedly
-send the held position/velocity/Kp/Kd target and calculate the differential
-ankle's cross-coupled feed-forward torque. The motor's 1 kHz loop executes two
-internal cycles per SBC tick.
+layer must not linearly interpolate between policy targets. For each ankle it
+computes pitch/roll joint PD torque from fresh feedback, applies the calibrated
+linear transmission Jacobian `tau_motor = A^-T tau_joint`, and sends both ankle
+motors with MIT `Kp=Kd=0` and feed-forward torque. The other 27 motors receive
+position/velocity/Kp/Kd updates only at 50 Hz and use the motor's internal PD.
+The motor's 1 kHz loop executes two internal cycles per ankle-control tick.
+
+The current ankle transform is deliberately the measured constant linear map.
+Replacing it with a configuration-dependent linkage Jacobian is a later
+refinement and must preserve the same virtual-work and limit tests.
 
 The qualified `model1050` baseline uses 15 frames at 100 Hz, covering 150 ms.
 Calling that actor at 50 Hz would change the window to 300 ms and is forbidden.
