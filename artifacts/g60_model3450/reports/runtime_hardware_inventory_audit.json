@@ -1,0 +1,111 @@
+{
+  "mode": "inspection_only_no_can_backend",
+  "contract": {
+    "policy_hz": 50,
+    "history_frames": 8,
+    "history_window_ms": 160.0,
+    "observation_dim": 795,
+    "action_dim": 31,
+    "horizontal_base_velocity": false
+  },
+  "deployment_contract_valid": true,
+  "deployment_validation_error": null,
+  "timing": {
+    "policy_hz": 50,
+    "state_hz": 500,
+    "motor_internal_hz": 1000,
+    "state_updates_per_policy": 10,
+    "policy_target_semantics": "zero_order_hold_for_20ms"
+  },
+  "heading_controller": {
+    "valid": true,
+    "stiffness": 0.5,
+    "yaw_rate_limit_rad_s": 0.2,
+    "actor_receives_global_yaw": false
+  },
+  "ankles": {
+    "left": {
+      "calibrated": false,
+      "determinant": -2.0,
+      "ideal_equal_joint_kp_to_motor_kp": [
+        7.1061153411865,
+        7.1061153411865
+      ],
+      "ideal_equal_joint_kd_to_motor_kd": [
+        0.452389329672,
+        0.452389329672
+      ]
+    },
+    "right": {
+      "calibrated": false,
+      "determinant": -2.0,
+      "ideal_equal_joint_kp_to_motor_kp": [
+        7.1061153411865,
+        7.1061153411865
+      ],
+      "ideal_equal_joint_kd_to_motor_kd": [
+        0.452389329672,
+        0.452389329672
+      ]
+    }
+  },
+  "hardware_inventory": {
+    "physical_motor_count": 0,
+    "expected_motor_count": 31,
+    "direct_policy_joints": [],
+    "missing_policy_joints": [
+      "head_pitch_joint",
+      "head_roll_joint",
+      "head_yaw_joint",
+      "left_elbow_joint",
+      "left_hip_pitch_joint",
+      "left_hip_roll_joint",
+      "left_hip_yaw_joint",
+      "left_knee_joint",
+      "left_shoulder_pitch_joint",
+      "left_shoulder_roll_joint",
+      "left_shoulder_yaw_joint",
+      "left_wrist_pitch_joint",
+      "left_wrist_roll_joint",
+      "left_wrist_yaw_joint",
+      "right_elbow_joint",
+      "right_hip_pitch_joint",
+      "right_hip_roll_joint",
+      "right_hip_yaw_joint",
+      "right_knee_joint",
+      "right_shoulder_pitch_joint",
+      "right_shoulder_roll_joint",
+      "right_shoulder_yaw_joint",
+      "right_wrist_pitch_joint",
+      "right_wrist_roll_joint",
+      "right_wrist_yaw_joint",
+      "waist_roll_joint",
+      "waist_yaw_joint"
+    ],
+    "duplicate_policy_joints": [],
+    "can_endpoints": [],
+    "errors": [
+      "missing direct motor mappings for: head_pitch_joint, head_roll_joint, head_yaw_joint, left_elbow_joint, left_hip_pitch_joint, left_hip_roll_joint, left_hip_yaw_joint, left_knee_joint, left_shoulder_pitch_joint, left_shoulder_roll_joint, left_shoulder_yaw_joint, left_wrist_pitch_joint, left_wrist_roll_joint, left_wrist_yaw_joint, right_elbow_joint, right_hip_pitch_joint, right_hip_roll_joint, right_hip_yaw_joint, right_knee_joint, right_shoulder_pitch_joint, right_shoulder_roll_joint, right_shoulder_yaw_joint, right_wrist_pitch_joint, right_wrist_roll_joint, right_wrist_yaw_joint, waist_roll_joint, waist_yaw_joint",
+      "left ankle requires exactly two coupled motor records",
+      "right ankle requires exactly two coupled motor records",
+      "motor_map has 0 physical motors; expected 31",
+      "pelvis IMU is not configured",
+      "independent hardware e-stop is not configured",
+      "left differential ankle is not calibrated",
+      "right differential ankle is not calibrated"
+    ],
+    "warnings": [
+      "hardware remains intentionally unconfigured and must not arm"
+    ],
+    "valid": false
+  },
+  "hardware_arm_blockers": [
+    "allow_hardware_tx",
+    "hardware_configured",
+    "left_ankle_calibrated",
+    "right_ankle_calibrated",
+    "imu_valid",
+    "estop_healthy",
+    "state_fresh"
+  ]
+}

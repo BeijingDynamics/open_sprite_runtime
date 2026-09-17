@@ -1,0 +1,34 @@
+{
+  "mode": "unloaded_differential_pair_calibration_no_hardware_tx",
+  "pair": "head",
+  "source": "/home/tony/sprite/backups/open_sprite_runtime_worktree_20260909/calibration/head.csv",
+  "joint_to_motor_matrix": [
+    [
+      1.0046960492304464,
+      0.6147743823232256
+    ],
+    [
+      -1.0046960492304462,
+      0.6147743823232253
+    ]
+  ],
+  "motor_zero_rad": [
+    -4.0000000000040004e-05,
+    3.999999999992898e-05
+  ],
+  "determinant": 1.2353227861764653,
+  "excitation_condition_number": 5.727373103915989,
+  "matrix_condition_number": 1.634251650879972,
+  "rms_residual_rad": [
+    0.0010769084426210363,
+    0.0010769084426210354
+  ],
+  "max_abs_residual_rad": [
+    0.0018805232703081598,
+    0.0018805232703080488
+  ],
+  "sample_count": 25,
+  "maximum_rms_residual_rad": 0.01,
+  "maximum_condition_number": 100.0,
+  "passed": true
+}

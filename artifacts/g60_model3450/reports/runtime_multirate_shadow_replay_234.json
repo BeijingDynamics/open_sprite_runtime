@@ -1,0 +1,24 @@
+{
+  "mode": "deterministic_multirate_shadow_no_hardware_tx",
+  "policy_hz": 50,
+  "state_hz": 500,
+  "state_updates_per_policy": 10,
+  "policy_ticks": 2998,
+  "state_ticks": 29980,
+  "target_semantics": "zero_order_hold",
+  "target_hold_max_abs_delta": 0.0,
+  "hardware_tx_permitted_count": 0,
+  "unexpected_safety_blockers": [],
+  "onnx_action_max_abs_error": 0.0,
+  "policy_inference_ms": {
+    "p50": 0.0153525,
+    "p95": 0.0192672,
+    "p99": 0.04028063000000004,
+    "max": 0.204379,
+    "limit": 2.0,
+    "overrun_count": 0,
+    "host_diagnostic_only_not_sbc_certification": true
+  },
+  "horizontal_base_velocity_present": false,
+  "passed": true
+}

@@ -1,0 +1,105 @@
+# Open Sprite Runtime
+
+Safety-gated Sim2Real runtime work for Sprite0825. The current deployment
+candidate is the native-50 Hz G74 `model3000`, qualified after the proximal
+shoulder pitch/roll motors were changed to J4340P. Its frozen actor, contract,
+and Isaac/MuJoCo qualification evidence are distributed in the external G74
+Sim2Real candidate package. G59 `model2999` remains the pre-upgrade rollback
+baseline; the qualified 100 Hz `model1050` release remains a teacher and
+comparison baseline only.
+
+This repository is intentionally **not ready to arm the complete robot yet**.
+It includes receive-only inspection and explicitly acknowledged, finite-duration
+zero-gain position-echo commissioning tools. It does not contain an armable
+whole-robot policy transmit loop. Full hardware transmission remains disabled
+until the IMU convention, watchdog, emergency stop, and final integrated safety
+gates are measured and accepted. Motor mapping, directions, mechanical limits,
+the four 500 Hz CAN-FD bus tests, and the left ankle, right ankle, and head
+differential calibrations are recorded as completed commissioning milestones.
+
+## Timing contract
+
+- Deployment policy inference: **50 Hz** (`dt=0.02 s`)
+- SBC feedback, safety, ankle coupling, and held-target refresh: **500 Hz**
+- Damiao internal MIT/current loop: **1 kHz**
+
+The 50 Hz policy target uses a 20 ms zero-order hold, matching both the Isaac
+Lab decimation loop and the qualified MuJoCo runtime. The 500 Hz layer must not
+invent intermediate policy targets. It may refresh the held target and add the
+measured differential cross-coupling feed-forward terms.
+
+The qualified `model1050` actor remains a 100 Hz teacher/baseline and is not the
+hardware deployment policy. G74 `model3000` is trained natively at 50 Hz with
+a 160 ms observation window. Contract validation rejects a 100 Hz actor when
+the runtime is configured for 50 Hz.
+
+## Development setup
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e '.[dev]'
+python -m unittest discover -s tests -v
+```
+
+Inspect a native-50 Hz candidate contract without touching hardware:
+
+```bash
+sprite-runtime inspect \
+  --contract <candidate>/deploy/contract.json \
+  --runtime-config config/runtime.example.json \
+  --hardware-config config/hardware.example.json
+```
+
+For a native 50 Hz candidate, run the fail-closed safety scenarios and a host
+scheduling probe before any CAN hardware is connected:
+
+```bash
+sprite-runtime safety-self-test --runtime-config config/runtime.example.json
+sprite-runtime heading-self-test --runtime-config config/runtime.example.json
+sprite-runtime timing-probe --duration 10 --state-hz 500
+```
+
+Once the measured motor map is complete, `sprite-runtime damiao-rx-audit`
+collects a finite, hardware-timestamped four-bus shadow trace with kernel
+listen-only mode. It contains no transmit path and fails on missing or unknown
+motors, feedback-rate/gap/queue-age violations, or Damiao fault status.
+
+The heading controller follows Isaac Lab's PM01 command interface: while
+walking straight it computes `wz = clip(0.5 * wrap(target_yaw - imu_yaw),
+-0.2, 0.2)`. Standing resets the target to the current integrated IMU yaw;
+manual yaw-rate commands are passed through and the new heading is held when
+the operator releases the turn command. Global yaw remains outside the actor.
+
+Replay a MuJoCo observation trace through the exported ONNX actor. This mode
+never opens a CAN interface and checks that runtime inference reproduces the
+actions recorded by the qualified simulator:
+
+```bash
+sprite-runtime replay-trace \
+  --contract <candidate>/deploy/contract.json \
+  --trace <candidate>/evaluation/mujoco_matrix/straight_60s_trace.json \
+  --sample-stride 10
+```
+
+See [Sim2Real plan](docs/SIM2REAL_PLAN.md), [timing](docs/TIMING.md), and
+[hardware contract](docs/HARDWARE_CONTRACT.md). The candidate evidence and
+remaining blockers are summarized in [G60 model3450](docs/G60_MODEL3450.md),
+including the [robust heading audit](docs/G60_ROBUST_HEADING_AUDIT.md).
+The four-motor proximal-shoulder upgrade is documented in
+[Sprite0825 4340P shoulder revision](docs/SPRITE0825_4340_SHOULDER_REVISION.md);
+the receive-only Damiao frame contract and pinned manufacturer sources are in
+[Damiao protocol source audit](docs/SPRITE0825_DAMIAO_PROTOCOL_SOURCE_AUDIT.md).
+G74 model3000 is the frozen software candidate after independent-seed Isaac
+qualification and the unchanged seven-case MuJoCo gate matrix. G59 model2999
+remains the pre-upgrade rollback baseline.
+
+The provisional Yahboom 9-axis pelvis IMU mount, frame transform, read-only
+serial capture, and hardware-arrival checklist are documented in
+[Sprite0825 Yahboom IMU integration](docs/SPRITE0825_YAHBOOM_IMU_INTEGRATION.md).
+The Jetson's existing high-performance CH340 driver is a prerequisite and is
+not modified by this project.
+
+## License
+
+GNU Affero General Public License v3.0 only (`AGPL-3.0-only`).
