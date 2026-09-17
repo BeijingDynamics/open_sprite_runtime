@@ -219,13 +219,12 @@ the inverse transpose, not the position map:
 tau_motor = A^-T tau_joint
 ```
 
-This preserves instantaneous mechanical power. For the ideal matrix and equal
-pitch/roll gains, embedded motor gains are half the joint gains. With unequal
-joint gains or a non-ideal measured Jacobian, the exact motor impedance contains
-cross terms. Independent motor PD alone then cannot reproduce the trained joint
-impedance; the 500 Hz layer must supply the cross-coupled correction through
-MIT feed-forward torque, or the policy must be requalified with the realizable
-impedance.
+This preserves instantaneous mechanical power. The active ankle design does
+not approximate the coupled impedance with embedded diagonal gains: the 500 Hz
+host controller computes the complete pitch/roll PD torque, applies `A^-T`, and
+sends the resulting motor torques with MIT `Kp=Kd=0`. The head uses the same
+calibrated position/feedback transform but remains non-actuating until a head
+control path is separately qualified.
 
 Collect at least six unloaded poses per mechanism spanning independent positive
 and negative pitch and roll. Record a CSV with
