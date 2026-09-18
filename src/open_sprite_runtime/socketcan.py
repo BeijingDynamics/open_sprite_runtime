@@ -22,6 +22,10 @@ CANFD_FRAME = struct.Struct("=IBBBB64s")
 CAN_FRAME = struct.Struct("=IB3x8s")
 
 
+class SocketCanTimestampError(RuntimeError):
+    """A received frame lacked the timestamp evidence required by the runtime."""
+
+
 @dataclass(frozen=True)
 class SocketCanRxPreflightReport:
     expected_interfaces: tuple[str, ...]
@@ -188,18 +192,20 @@ def _socket_timestamps_ns(
         if level != socket.SOL_SOCKET or kind != SO_TIMESTAMPING_LINUX_64:
             continue
         if len(payload) < 6 * 8:
-            raise RuntimeError("SCM_TIMESTAMPING payload is shorter than three timespec values")
+            raise SocketCanTimestampError(
+                "SCM_TIMESTAMPING payload is shorter than three timespec values"
+            )
         values = struct.unpack_from("=6q", payload)
         software_ns = values[0] * 1_000_000_000 + values[1]
         raw_hardware_ns = values[4] * 1_000_000_000 + values[5]
         if software_ns <= 0:
-            raise RuntimeError("kernel software RX timestamp is missing")
+            raise SocketCanTimestampError("kernel software RX timestamp is missing")
         if raw_hardware_ns <= 0:
-            raise RuntimeError(
+            raise SocketCanTimestampError(
                 "raw hardware RX timestamp is missing; software fallback is forbidden"
             )
         return software_ns, raw_hardware_ns
-    raise RuntimeError("SCM_TIMESTAMPING evidence is missing")
+    raise SocketCanTimestampError("SCM_TIMESTAMPING evidence is missing")
 
 
 class SocketCanReceiver:

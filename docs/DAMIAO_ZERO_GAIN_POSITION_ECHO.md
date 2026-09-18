@@ -31,6 +31,11 @@ nominal MIT torque equation. The transport accepts only an eight-byte frame
 whose raw gain fields are zero and whose encoded velocity and torque fields are
 zero. It always transmits as CAN FD with bit-rate switching.
 
+An isolated RX frame without complete kernel software plus raw-hardware
+timestamp evidence is discarded and counted as `discarded_timestamp_frames`.
+No fallback timestamp is invented. Persistent timestamp loss still fails via
+the feedback-timeout or minimum sample-coverage gates.
+
 During the probe, the terminal prints live `RX` lines at 10 Hz with position,
 velocity, estimated torque, MOS/rotor temperatures, and drive status. The CAN
 request/reply loop remains at the separately configured rate, normally 50 Hz.

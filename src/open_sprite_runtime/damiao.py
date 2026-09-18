@@ -9,7 +9,7 @@ import time
 from typing import Any, Callable, Iterable, Mapping
 
 from .hardware import DAMIAO_PROJECT_MAX_EMBEDDED_KD, validate_hardware_inventory
-from .socketcan import ReceivedCanFrame
+from .socketcan import ReceivedCanFrame, SocketCanTimestampError
 from .telemetry import MotorTelemetryLimits, limits_from_hardware_record
 
 
@@ -495,6 +495,7 @@ class DamiaoZeroGainProbeReport:
     minimum_position_rad: float | None
     maximum_position_rad: float | None
     status_codes: tuple[int, ...]
+    discarded_timestamp_frames: int
     errors: tuple[str, ...]
 
     @property
@@ -519,6 +520,7 @@ class DamiaoZeroGainGroupProbeReport:
     first_position_rad_by_motor: dict[str, float | None]
     last_position_rad_by_motor: dict[str, float | None]
     status_codes_by_motor: dict[str, tuple[int, ...]]
+    discarded_timestamp_frames: int
     errors: tuple[str, ...]
 
     @property
@@ -577,6 +579,7 @@ def collect_zero_gain_position_echo(
     last_selected_feedback = start
     target_position = 0.0
     feedback_values: list[DamiaoFeedback] = []
+    discarded_timestamp_frames = 0
     errors: list[str] = []
 
     with selector_factory() as selector:
@@ -595,7 +598,11 @@ def collect_zero_gain_position_echo(
                     next_send = now + period_s
             timeout = min(max(0.0, next_send - monotonic()), 0.02)
             for key, _mask in selector.select(timeout=timeout):
-                frame = key.data.receive()
+                try:
+                    frame = key.data.receive()
+                except SocketCanTimestampError:
+                    discarded_timestamp_frames += 1
+                    continue
                 frame_key = (frame.interface, frame.can_id)
                 if frame_key in known_command_keys:
                     continue
@@ -641,6 +648,7 @@ def collect_zero_gain_position_echo(
         minimum_position_rad=min(positions) if positions else None,
         maximum_position_rad=max(positions) if positions else None,
         status_codes=tuple(sorted({item.status_code for item in feedback_values})),
+        discarded_timestamp_frames=discarded_timestamp_frames,
         errors=tuple(errors),
     )
 
@@ -702,6 +710,7 @@ def collect_zero_gain_group_position_echo(
     feedback_values: dict[str, list[DamiaoFeedback]] = {
         item.motor_name: [] for item in selected
     }
+    discarded_timestamp_frames = 0
     errors: list[str] = []
 
     with selector_factory() as selector:
@@ -723,7 +732,11 @@ def collect_zero_gain_group_position_echo(
                     next_send = now + period_s
             timeout = min(max(0.0, next_send - monotonic()), 0.02)
             for key, _mask in selector.select(timeout=timeout):
-                frame = key.data.receive()
+                try:
+                    frame = key.data.receive()
+                except SocketCanTimestampError:
+                    discarded_timestamp_frames += 1
+                    continue
                 frame_key = (frame.interface, frame.can_id)
                 if frame_key in known_command_keys:
                     continue
@@ -794,6 +807,7 @@ def collect_zero_gain_group_position_echo(
             name: tuple(sorted({item.status_code for item in values}))
             for name, values in feedback_values.items()
         },
+        discarded_timestamp_frames=discarded_timestamp_frames,
         errors=tuple(errors),
     )
 

@@ -17,7 +17,7 @@ from open_sprite_runtime.damiao import (
     encode_damiao_mit_command,
     encode_zero_gain_position_echo,
 )
-from open_sprite_runtime.socketcan import ReceivedCanFrame
+from open_sprite_runtime.socketcan import ReceivedCanFrame, SocketCanTimestampError
 
 
 def ranges() -> DamiaoMitRanges:
@@ -112,6 +112,67 @@ class DamiaoFeedbackTests(unittest.TestCase):
             collect_zero_gain_group_position_echo(
                 poller, [selected], [selected], 1.0, 500.1
             )
+
+    def test_zero_gain_group_discards_one_untrusted_timestamp_frame(self) -> None:
+        selected = endpoint()
+
+        class Poller:
+            interface = selected.interface
+            hardware_tx_attempts = 0
+
+            def __init__(self):
+                self.items = [
+                    SocketCanTimestampError("kernel software RX timestamp is missing"),
+                    frame(
+                        bytes([0x03, 0x80, 0, 0x80, 0x08, 0, 30, 31]),
+                        is_fd=True,
+                        bit_rate_switch=True,
+                    ),
+                ]
+
+            def send_zero_gain_poll(self, *_args):
+                self.hardware_tx_attempts += 1
+
+            def receive(self):
+                item = self.items.pop(0)
+                if isinstance(item, BaseException):
+                    raise item
+                return item
+
+        class Selector:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def register(self, _fileobj, _events, data):
+                self.data = data
+
+            def select(self, timeout):
+                if self.data.items:
+                    return [(SimpleNamespace(data=self.data), 1)]
+                return []
+
+        class Clock:
+            value = 0.0
+
+            def __call__(self):
+                self.value += 0.001
+                return self.value
+
+        report = collect_zero_gain_group_position_echo(
+            Poller(),
+            [selected],
+            [selected],
+            0.02,
+            50.0,
+            selector_factory=Selector,
+            monotonic=Clock(),
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.discarded_timestamp_frames, 1)
+        self.assertEqual(report.rx_count_by_motor[selected.motor_name], 1)
 
     def test_zero_gain_probe_extended_duration_requires_explicit_limit(self) -> None:
         poller = SimpleNamespace(
