@@ -174,6 +174,66 @@ class DamiaoFeedbackTests(unittest.TestCase):
         self.assertEqual(report.discarded_timestamp_frames, 1)
         self.assertEqual(report.rx_count_by_motor[selected.motor_name], 1)
 
+    def test_zero_gain_group_staggers_eight_motor_transmit_slots(self) -> None:
+        selected = tuple(
+            endpoint(
+                motor_name=f"motor_{index}",
+                can_id=index + 1,
+                master_id=index + 0x11,
+            )
+            for index in range(8)
+        )
+
+        class Clock:
+            value = 0.0
+
+            def __call__(self):
+                self.value += 0.00005
+                return self.value
+
+        clock = Clock()
+
+        class Poller:
+            interface = "can2"
+            hardware_tx_attempts = 0
+
+            def __init__(self):
+                self.sent = []
+
+            def send_zero_gain_poll(self, can_id, _data):
+                self.hardware_tx_attempts += 1
+                self.sent.append((can_id, clock.value))
+
+        class Selector:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return None
+
+            def register(self, _fileobj, _events, data):
+                self.data = data
+
+            def select(self, timeout):
+                return []
+
+        poller = Poller()
+        collect_zero_gain_group_position_echo(
+            poller,
+            selected,
+            selected,
+            0.005,
+            500.0,
+            selector_factory=Selector,
+            monotonic=clock,
+            minimum_sample_coverage=0.01,
+        )
+        first_cycle = poller.sent[:8]
+        self.assertEqual([can_id for can_id, _ in first_cycle], list(range(1, 9)))
+        self.assertTrue(
+            all(first_cycle[index][1] < first_cycle[index + 1][1] for index in range(7))
+        )
+
     def test_zero_gain_probe_extended_duration_requires_explicit_limit(self) -> None:
         poller = SimpleNamespace(
             interface="wrong",

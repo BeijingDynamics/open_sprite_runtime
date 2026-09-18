@@ -36,6 +36,11 @@ timestamp evidence is discarded and counted as `discarded_timestamp_frames`.
 No fallback timestamp is invented. Persistent timestamp loss still fails via
 the feedback-timeout or minimum sample-coverage gates.
 
+For a multi-motor 500 Hz probe, transmissions are evenly staggered across the
+control period. Eight motors therefore produce one frame every 250 us instead
+of an eight-frame burst every 2 ms. If scheduling falls behind, stale slots are
+skipped rather than replayed into the actuator bus.
+
 During the probe, the terminal prints live `RX` lines at 10 Hz with position,
 velocity, estimated torque, MOS/rotor temperatures, and drive status. The CAN
 request/reply loop remains at the separately configured rate, normally 50 Hz.

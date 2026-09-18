@@ -702,9 +702,13 @@ def collect_zero_gain_group_position_echo(
     known_command_keys = {(item.interface, item.can_id) for item in configured}
     known_feedback_keys = {(item.interface, item.master_id) for item in configured}
     selected_names = {item.motor_name for item in selected}
-    period_s = 1.0 / rate_hz_per_motor
+    # Spread one cycle across the bus instead of bursting every motor at the
+    # same instant. At 8 x 500 Hz this emits one frame every 250 us and avoids
+    # overflowing the small SocketCAN TX queue when the viewer briefly stalls.
+    send_slot_s = 1.0 / (rate_hz_per_motor * len(selected))
     start = monotonic()
     next_send = start
+    next_motor_index = 0
     last_feedback = {item.motor_name: start for item in selected}
     targets = {item.motor_name: 0.0 for item in selected}
     feedback_values: dict[str, list[DamiaoFeedback]] = {
@@ -722,14 +726,24 @@ def collect_zero_gain_group_position_echo(
             if now - start >= duration_s:
                 break
             if now >= next_send:
-                for endpoint in selected:
-                    command = encode_zero_gain_position_echo(
-                        endpoint, targets[endpoint.motor_name]
-                    )
+                endpoint = selected[next_motor_index]
+                command = encode_zero_gain_position_echo(
+                    endpoint, targets[endpoint.motor_name]
+                )
+                try:
                     poller.send_zero_gain_poll(command.can_id, command.data)
-                next_send += period_s
+                except OSError as exc:
+                    errors.append(
+                        f"SocketCAN transmit failed for {endpoint.motor_name}: {exc}"
+                    )
+                    break
+                next_motor_index = (next_motor_index + 1) % len(selected)
+                next_send += send_slot_s
                 if next_send <= now:
-                    next_send = now + period_s
+                    # Never replay a backlog into a real-time actuator bus.
+                    next_send = now + send_slot_s
+            if errors:
+                break
             timeout = min(max(0.0, next_send - monotonic()), 0.02)
             for key, _mask in selector.select(timeout=timeout):
                 try:
