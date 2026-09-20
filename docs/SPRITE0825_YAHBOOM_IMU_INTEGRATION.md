@@ -42,9 +42,11 @@ PYTHONPATH=src python3 -m open_sprite_runtime.cli imu-mount-self-test
    CH341 driver exposes `/dev/ttyCH341USB0`. This unit has no unique USB serial
    number and therefore no `/dev/serial/by-id` entry; the production alias must
    match its physical USB path and use a dedicated `/dev/sprite-imu` symlink.
-2. The measured serial configuration is 115200 8N1. A 10-second read-only capture
-   produced exactly 250 complete update groups (25 Hz), with 750/750 valid frame
-   checksums. This is below the 50 Hz policy rate and is not deployment-qualified.
+2. The measured serial configuration is 115200 8N1. At the factory-default 25 Hz
+   output rate, a 10-second read-only capture produced exactly 250 complete update
+   groups with 750/750 valid frame checksums. The module supports adjustment up to
+   100 Hz; Sprite deployment uses 100 Hz so each 50 Hz policy interval receives
+   two fresh IMU samples.
 3. The verified serial frame is `7E 23 LENGTH FUNCTION PAYLOAD CHECKSUM`, where
    `LENGTH` includes the entire frame and `CHECKSUM` is the low byte of the sum of
    all preceding bytes. The observed functions are raw IMU `0x04`, quaternion
@@ -65,8 +67,8 @@ PYTHONPATH=src python3 -m open_sprite_runtime.cli imu-serial-capture \
 
 5. Use `open_sprite_runtime.yahboom_imu.YahboomStreamDecoder` against captured
    bytes, then verify orientation convention with six static face tests.
-6. Configure and verify a sensor output rate of at least 50 Hz. Never upsample a
-   25 Hz stream and describe it as 50 Hz feedback.
+6. Configure and verify the sensor's native 100 Hz output rate. Never upsample a
+   25 Hz stream and describe it as 50 Hz or 100 Hz feedback.
 7. Measure sample gaps, host receive age, stationary gyro bias,
    and yaw drift. Only then fill the remaining IMU fields and set
    `imu.configured` true.
