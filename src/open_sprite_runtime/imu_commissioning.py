@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import gc
 import math
 from pathlib import Path
 import time
@@ -208,39 +209,46 @@ def run_mujoco_imu_viewer(
     minimum_sync_s = 1.0 / refresh_hz
     last_sync = 0.0
 
-    with _open_serial(device, baud_rate) as port, mujoco.viewer.launch_passive(
-        model, data
-    ) as viewer:
-        viewer.cam.lookat[:] = (0.0, 0.0, 0.45)
-        viewer.cam.distance = 1.8
-        viewer.cam.azimuth = 90.0
-        viewer.cam.elevation = -8.0
-        while time.monotonic_ns() < deadline_ns and viewer.is_running():
-            payload = port.read(max(port.in_waiting, 1))
-            if not payload:
-                continue
-            for packet in decoder.feed(payload):
-                if not isinstance(packet, YahboomQuaternion):
+    with _open_serial(device, baud_rate) as port:
+        viewer = mujoco.viewer.launch_passive(model, data)
+        try:
+            viewer.cam.lookat[:] = (0.0, 0.0, 0.45)
+            viewer.cam.distance = 1.8
+            viewer.cam.azimuth = 90.0
+            viewer.cam.elevation = -8.0
+            while time.monotonic_ns() < deadline_ns and viewer.is_running():
+                payload = port.read(max(port.in_waiting, 1))
+                if not payload:
                     continue
-                world_from_body = body_orientation_matrix(packet.wxyz, mount)
-                if initial_world_from_body is None:
-                    initial_world_from_body = world_from_body
-                if orientation_mode == "absolute":
-                    display_rotation = world_from_body
-                else:
-                    relative = relative_body_orientation(
-                        initial_world_from_body, world_from_body
+                for packet in decoder.feed(payload):
+                    if not isinstance(packet, YahboomQuaternion):
+                        continue
+                    world_from_body = body_orientation_matrix(packet.wxyz, mount)
+                    if initial_world_from_body is None:
+                        initial_world_from_body = world_from_body
+                    if orientation_mode == "absolute":
+                        display_rotation = world_from_body
+                    else:
+                        relative = relative_body_orientation(
+                            initial_world_from_body, world_from_body
+                        )
+                        display_rotation = model_neutral_rotation @ relative
+                    data.qpos[root_qpos + 3 : root_qpos + 7] = (
+                        matrix_to_quaternion_wxyz(display_rotation)
                     )
-                    display_rotation = model_neutral_rotation @ relative
-                data.qpos[root_qpos + 3 : root_qpos + 7] = matrix_to_quaternion_wxyz(
-                    display_rotation
-                )
-                quaternion_count += 1
-            now = time.monotonic()
-            if now - last_sync >= minimum_sync_s:
-                mujoco.mj_forward(model, data)
-                viewer.sync()
-                last_sync = now
+                    quaternion_count += 1
+                now = time.monotonic()
+                if now - last_sync >= minimum_sync_s:
+                    mujoco.mj_forward(model, data)
+                    viewer.sync()
+                    last_sync = now
+        finally:
+            # On Jetson/aarch64, deferring the passive viewer wrapper to Python
+            # interpreter shutdown can make GLFW teardown segfault.  Destroy it
+            # while MuJoCo and GLFW are still fully alive.
+            viewer.close()
+            del viewer
+            gc.collect()
     elapsed_s = (time.monotonic_ns() - start_ns) / 1.0e9
     return {
         "mode": f"read_only_imu_to_mujoco_{orientation_mode}_attitude_no_tx",
