@@ -30,6 +30,7 @@ from .imu_serial import (
     capture_serial_read_only,
     configure_report_rate,
 )
+from .imu_commissioning import collect_static_imu_audit, run_mujoco_imu_viewer
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -117,6 +118,35 @@ def imu_set_report_rate(args) -> None:
     print(json.dumps(result, indent=2))
     if not report.passed:
         raise SystemExit("IMU report-rate verification failed closed")
+
+
+def imu_static_audit(args) -> None:
+    report = collect_static_imu_audit(
+        device=args.device,
+        baud_rate=args.baud,
+        duration_s=args.duration,
+    )
+    result = report.to_dict()
+    output = Path(args.report).expanduser().resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not report.passed:
+        raise SystemExit("stationary IMU audit failed closed")
+
+
+def imu_mujoco_view(args) -> None:
+    result = run_mujoco_imu_viewer(
+        device=args.device,
+        baud_rate=args.baud,
+        duration_s=args.duration,
+        mjcf_path=args.mjcf,
+        root_height_m=args.root_height,
+        refresh_hz=args.viewer_hz,
+    )
+    print(json.dumps(result, indent=2))
+    if not result["passed"]:
+        raise SystemExit("IMU MuJoCo viewer failed closed")
 
 
 def load_json(path: str | Path) -> dict:
@@ -823,6 +853,26 @@ def main() -> None:
         help=f"must equal {HARDWARE_TX_CONFIRMATION}",
     )
     imu_rate_parser.set_defaults(handler=imu_set_report_rate)
+    imu_audit_parser = subparsers.add_parser(
+        "imu-static-audit",
+        help="audit a stationary Yahboom IMU stream without serial transmission",
+    )
+    imu_audit_parser.add_argument("--device", required=True)
+    imu_audit_parser.add_argument("--baud", type=int, default=115200)
+    imu_audit_parser.add_argument("--duration", type=float, default=20.0)
+    imu_audit_parser.add_argument("--report", required=True)
+    imu_audit_parser.set_defaults(handler=imu_static_audit)
+    imu_view_parser = subparsers.add_parser(
+        "imu-mujoco-view",
+        help="show relative IMU attitude on the MuJoCo floating base without TX",
+    )
+    imu_view_parser.add_argument("--device", required=True)
+    imu_view_parser.add_argument("--baud", type=int, default=115200)
+    imu_view_parser.add_argument("--duration", type=float, default=120.0)
+    imu_view_parser.add_argument("--mjcf", required=True)
+    imu_view_parser.add_argument("--root-height", type=float, default=0.52)
+    imu_view_parser.add_argument("--viewer-hz", type=float, default=50.0)
+    imu_view_parser.set_defaults(handler=imu_mujoco_view)
     safety_parser = subparsers.add_parser(
         "safety-self-test",
         help="exercise timing, e-stop, telemetry, and command-envelope gates",
