@@ -54,6 +54,39 @@ PYTHONPATH=src python3 -m open_sprite_runtime.cli imu-mount-self-test
    `raw * 16/32767 g`, angular velocity as `raw * 2000/32767 deg/s`, magnetic
    field as `raw * 800/32767 uT`, quaternion order as `wxyz`, and Euler units as
    radians.
+
+### Output-rate configuration
+
+The vendor serial protocol defines function `0x60` for setting the automatic
+report rate. Parameter 1 is the integer rate in Hz (10--100), parameter 2 is the
+fixed guard byte `0x5F`, and this command has no protocol response. The 100 Hz
+command is:
+
+```text
+7E 23 07 60 64 5F CB
+```
+
+`CB` is the low byte of the additive sum of all preceding bytes. Neither the
+protocol nor the vendor Python library states whether the setting survives a
+power cycle, so persistence remains an explicit commissioning test.
+
+The following command requires an exact hardware-TX confirmation, measures the
+raw-IMU frame rate before and after the one-time write, and fails closed unless
+the measured result is within 5 percent (minimum tolerance 2 Hz):
+
+```bash
+PYTHONPATH=src .venv/bin/python -m open_sprite_runtime.cli imu-set-report-rate \
+  --device /dev/ttyCH341USB0 \
+  --baud 115200 \
+  --rate 100 \
+  --verification-duration 3 \
+  --report reports/yahboom_imu_set_100hz.json \
+  --confirm-hardware-tx WRITE_IMU_CONFIGURATION
+```
+
+After a full USB power cycle, repeat the read-only capture and measure 100 Hz
+again before setting `imu.configured` to true.
+
 4. Capture raw bytes without transmitting protocol data:
 
 ```bash
@@ -75,6 +108,6 @@ PYTHONPATH=src python3 -m open_sprite_runtime.cli imu-serial-capture \
 8. Re-run the fail-closed hardware inventory and policy observation tests before
    any motor-enable experiment.
 
-The raw serial command never calls `write()`. Opening a USB UART may change DTR
-or RTS, so both are held inactive. The current code deliberately contains no
-guessed Yahboom packet decoder.
+The raw serial capture command never calls `write()`. Opening a USB UART may
+change DTR or RTS, so both are held inactive. The decoder accepts only the three
+documented frame types and rejects bad lengths or checksums.

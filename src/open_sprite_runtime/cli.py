@@ -25,7 +25,11 @@ from .damiao import (
 from .heading import HeadingCommandController, HeadingControllerConfig
 from .hardware import make_hardware_template, validate_hardware_inventory
 from .imu import ImuMount, quaternion_wxyz_to_matrix
-from .imu_serial import capture_serial_read_only
+from .imu_serial import (
+    HARDWARE_TX_CONFIRMATION,
+    capture_serial_read_only,
+    configure_report_rate,
+)
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -96,6 +100,23 @@ def imu_serial_capture(args) -> None:
     print(json.dumps(result, indent=2))
     if not report.passed:
         raise SystemExit("no serial bytes received; IMU capture failed closed")
+
+
+def imu_set_report_rate(args) -> None:
+    report = configure_report_rate(
+        device=args.device,
+        baud_rate=args.baud,
+        rate_hz=args.rate,
+        verification_duration_s=args.verification_duration,
+        confirmation=args.confirm_hardware_tx,
+    )
+    result = report.to_dict()
+    output = Path(args.report).expanduser().resolve()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not report.passed:
+        raise SystemExit("IMU report-rate verification failed closed")
 
 
 def load_json(path: str | Path) -> dict:
@@ -786,6 +807,22 @@ def main() -> None:
     imu_capture_parser.add_argument("--raw-output", required=True)
     imu_capture_parser.add_argument("--report", required=True)
     imu_capture_parser.set_defaults(handler=imu_serial_capture)
+    imu_rate_parser = subparsers.add_parser(
+        "imu-set-report-rate",
+        help="explicitly configure and verify Yahboom IMU serial report rate",
+    )
+    imu_rate_parser.add_argument("--device", required=True)
+    imu_rate_parser.add_argument("--baud", type=int, default=115200)
+    imu_rate_parser.add_argument("--rate", required=True, type=int)
+    imu_rate_parser.add_argument("--verification-duration", type=float, default=3.0)
+    imu_rate_parser.add_argument("--report", required=True)
+    imu_rate_parser.add_argument(
+        "--confirm-hardware-tx",
+        required=True,
+        metavar=HARDWARE_TX_CONFIRMATION,
+        help=f"must equal {HARDWARE_TX_CONFIRMATION}",
+    )
+    imu_rate_parser.set_defaults(handler=imu_set_report_rate)
     safety_parser = subparsers.add_parser(
         "safety-self-test",
         help="exercise timing, e-stop, telemetry, and command-envelope gates",

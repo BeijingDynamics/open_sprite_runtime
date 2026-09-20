@@ -7,6 +7,7 @@ from open_sprite_runtime.yahboom_imu import (
     YahboomQuaternion,
     YahboomRawImu,
     YahboomStreamDecoder,
+    build_report_rate_command,
     decode_frame,
 )
 
@@ -20,6 +21,19 @@ def frame(function: int, payload: bytes) -> bytes:
 
 
 class YahboomImuTests(unittest.TestCase):
+    def test_builds_vendor_documented_100_hz_command(self):
+        self.assertEqual(
+            build_report_rate_command(100),
+            bytes.fromhex("7e 23 07 60 64 5f cb"),
+        )
+
+    def test_report_rate_command_rejects_invalid_values(self):
+        for invalid in (9, 101):
+            with self.assertRaises(ValueError):
+                build_report_rate_command(invalid)
+        with self.assertRaises(TypeError):
+            build_report_rate_command(25.5)
+
     def test_decodes_observed_raw_frame_with_documented_units(self):
         packet = decode_frame(
             bytes.fromhex(

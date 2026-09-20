@@ -11,6 +11,8 @@ FRAME_HEADER = b"\x7e\x23"
 FUNCTION_RAW_IMU = 0x04
 FUNCTION_QUATERNION = 0x16
 FUNCTION_EULER = 0x26
+FUNCTION_REPORT_RATE = 0x60
+CONFIGURATION_GUARD = 0x5F
 
 STANDARD_GRAVITY_M_S2 = 9.80665
 ACCELERATION_SCALE_G = 16.0 / 32767.0
@@ -44,6 +46,19 @@ class YahboomEuler:
 
 
 YahboomPacket = YahboomRawImu | YahboomQuaternion | YahboomEuler
+
+
+def build_report_rate_command(rate_hz: int) -> bytes:
+    """Build the vendor-documented serial command for a 10--100 Hz report rate."""
+    if isinstance(rate_hz, bool) or not isinstance(rate_hz, int):
+        raise TypeError("rate_hz must be an integer")
+    if not 10 <= rate_hz <= 100:
+        raise ValueError("rate_hz must be in [10, 100]")
+    frame = bytearray(
+        (*FRAME_HEADER, 0x07, FUNCTION_REPORT_RATE, rate_hz, CONFIGURATION_GUARD)
+    )
+    frame.append(sum(frame) & 0xFF)
+    return bytes(frame)
 
 
 def decode_frame(frame: bytes) -> YahboomPacket:
