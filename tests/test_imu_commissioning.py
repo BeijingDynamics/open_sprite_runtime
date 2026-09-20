@@ -18,6 +18,18 @@ class ImuCommissioningTests(unittest.TestCase):
         body_to_world = body_orientation_matrix(tuple(quaternion), mount)
         np.testing.assert_allclose(body_to_world, np.eye(3), atol=1.0e-9)
 
+    def test_flat_sensor_does_not_hide_incorrect_mount(self):
+        mount = ImuMount.sprite0825_rear_pelvis()
+        body_to_world = body_orientation_matrix((1.0, 0.0, 0.0, 0.0), mount)
+        np.testing.assert_allclose(
+            body_to_world, mount.sensor_to_body_matrix.T, atol=1.0e-9
+        )
+        np.testing.assert_allclose(
+            body_to_world @ np.array([1.0, 0.0, 0.0]),
+            np.array([0.0, 0.0, -1.0]),
+            atol=1.0e-9,
+        )
+
     def test_relative_orientation_starts_at_identity_and_tracks_yaw(self):
         mount = ImuMount.sprite0825_rear_pelvis()
         initial = np.eye(3)

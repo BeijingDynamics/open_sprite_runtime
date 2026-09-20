@@ -174,12 +174,15 @@ def run_mujoco_imu_viewer(
     *,
     root_height_m: float = 0.52,
     refresh_hz: float = 50.0,
+    orientation_mode: str = "absolute",
 ) -> dict:
     """Drive only the MuJoCo floating-base attitude from a read-only IMU stream."""
     if not math.isfinite(duration_s) or not 0.0 < duration_s <= 600.0:
         raise ValueError("duration must be finite and in (0, 600] seconds")
     if not math.isfinite(refresh_hz) or not 1.0 <= refresh_hz <= 100.0:
         raise ValueError("refresh_hz must be finite and in [1, 100]")
+    if orientation_mode not in {"absolute", "relative"}:
+        raise ValueError("orientation_mode must be 'absolute' or 'relative'")
     path = Path(mjcf_path).expanduser().resolve()
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -222,8 +225,13 @@ def run_mujoco_imu_viewer(
                 world_from_body = body_orientation_matrix(packet.wxyz, mount)
                 if initial_world_from_body is None:
                     initial_world_from_body = world_from_body
-                relative = relative_body_orientation(initial_world_from_body, world_from_body)
-                display_rotation = model_neutral_rotation @ relative
+                if orientation_mode == "absolute":
+                    display_rotation = world_from_body
+                else:
+                    relative = relative_body_orientation(
+                        initial_world_from_body, world_from_body
+                    )
+                    display_rotation = model_neutral_rotation @ relative
                 data.qpos[root_qpos + 3 : root_qpos + 7] = matrix_to_quaternion_wxyz(
                     display_rotation
                 )
@@ -235,7 +243,8 @@ def run_mujoco_imu_viewer(
                 last_sync = now
     elapsed_s = (time.monotonic_ns() - start_ns) / 1.0e9
     return {
-        "mode": "read_only_imu_to_mujoco_relative_attitude_no_tx",
+        "mode": f"read_only_imu_to_mujoco_{orientation_mode}_attitude_no_tx",
+        "orientation_mode": orientation_mode,
         "device": device,
         "mjcf": str(path),
         "elapsed_s": elapsed_s,

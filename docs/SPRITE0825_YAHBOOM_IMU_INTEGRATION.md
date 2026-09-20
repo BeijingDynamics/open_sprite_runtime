@@ -116,14 +116,20 @@ PYTHONPATH=src .venv/bin/python -m open_sprite_runtime.cli imu-static-audit \
   --report reports/yahboom_imu_static.json
 ```
 
-To inspect live axis direction on the Jetson display, run the relative-attitude
-MuJoCo viewer. It keeps all joints at the model neutral pose, does not step
-physics, and performs no serial or CAN transmission:
+To validate the physical mounting and live axis direction on the Jetson display,
+run the absolute-attitude MuJoCo viewer. Correct mounting displays the robot
+upright. A sensor lying flat with sensor +Z upward must not display upright. The
+viewer keeps all joints at the model neutral pose, does not step physics, and
+performs no serial or CAN transmission:
 
 ```bash
 cd /home/tony/open_sprite_runtime
 ./review_sprite0825_imu_mujoco_on_253.sh 120
 ```
+
+Startup-relative display remains available only as an explicit diagnostic mode
+using `imu-mujoco-view --orientation-mode relative`; it must not be used to
+qualify the physical installation.
 
 The raw serial capture command never calls `write()`. Opening a USB UART may
 change DTR or RTS, so both are held inactive. The decoder accepts only the three

@@ -143,6 +143,7 @@ def imu_mujoco_view(args) -> None:
         mjcf_path=args.mjcf,
         root_height_m=args.root_height,
         refresh_hz=args.viewer_hz,
+        orientation_mode=args.orientation_mode,
     )
     print(json.dumps(result, indent=2))
     if not result["passed"]:
@@ -872,6 +873,12 @@ def main() -> None:
     imu_view_parser.add_argument("--mjcf", required=True)
     imu_view_parser.add_argument("--root-height", type=float, default=0.52)
     imu_view_parser.add_argument("--viewer-hz", type=float, default=50.0)
+    imu_view_parser.add_argument(
+        "--orientation-mode",
+        choices=("absolute", "relative"),
+        default="absolute",
+        help="absolute validates the physical mount; relative zeros startup attitude",
+    )
     imu_view_parser.set_defaults(handler=imu_mujoco_view)
     safety_parser = subparsers.add_parser(
         "safety-self-test",
