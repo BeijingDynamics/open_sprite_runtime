@@ -188,23 +188,38 @@ def run_head_yaw_low_gain_hold(
     except BaseException as exc:
         errors.append(str(exc))
     finally:
-        for _ in range(3):
+        # A control reply already in the RX queue can still report enabled after
+        # the first disable. Keep every verification poll zero-gain and require
+        # a fresh disabled reply instead of classifying one stale frame.
+        poll_position = target_position if target_position is not None else 0.0
+        shutdown_deadline = monotonic() + 0.5
+        shutdown_error: str | None = None
+        shutdown_attempts = 0
+        while shutdown_attempts < 3 or (
+            final_status != "disabled" and monotonic() < shutdown_deadline
+        ):
+            shutdown_attempts += 1
             try:
                 writer.send_disable()
+                sleep(0.01)
+                writer.send_command(encode_zero_gain_position_echo(endpoint, poll_position))
+                final = _receive_selected(
+                    writer,
+                    endpoint,
+                    feedback_timeout_s,
+                    monotonic=monotonic,
+                    sleep=sleep,
+                )
+                final_status = final.status_name
+                if writer.disable_attempts >= 3 and final_status == "disabled":
+                    break
             except BaseException as exc:
-                errors.append(f"disable write failed: {exc}")
-            sleep(0.01)
-        try:
-            poll_position = target_position if target_position is not None else 0.0
-            writer.send_command(encode_zero_gain_position_echo(endpoint, poll_position))
-            final = _receive_selected(
-                writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
+                shutdown_error = str(exc)
+        if final_status != "disabled":
+            detail = f": {shutdown_error}" if shutdown_error else ""
+            errors.append(
+                f"final disabled verification timed out at status {final_status}{detail}"
             )
-            final_status = final.status_name
-            if final_status != "disabled":
-                errors.append(f"final status is {final_status}, not disabled")
-        except BaseException as exc:
-            errors.append(f"final disabled verification failed: {exc}")
 
     return SingleJointHoldReport(
         motor_name=endpoint.motor_name,

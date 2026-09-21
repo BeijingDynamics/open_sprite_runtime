@@ -23,7 +23,7 @@ echo "ACTIVE HARDWARE CONTROL: exactly one motor"
 echo "MOTOR head_yaw_motor; kcan3 ID 0x08; feedback 0x18; DM-J3507"
 echo "HOLD measured position for 2.0s at 50Hz; Kp=0.2 Kd=0.05 tau=0"
 echo "GUARDS error<=0.05rad speed<=0.2rad/s estimated_torque<=0.1Nm"
-echo "FINALLY sends disable three times and verifies disabled feedback"
+echo "FINALLY sends disable at least three times and polls zero-gain until disabled"
 echo "NO mode switch; NO set-zero; NO other motor command"
 echo "OUTPUT $OUTPUT"
 

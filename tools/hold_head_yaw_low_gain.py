@@ -89,7 +89,7 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     if not report["passed"]:
-        raise SystemExit("head-yaw low-gain hold failed closed")
+        raise SystemExit("head-yaw low-gain hold failed safety qualification")
 
 
 if __name__ == "__main__":

@@ -20,13 +20,14 @@ class Clock:
 class FakeWriter:
     interface = "kcan3"
 
-    def __init__(self, endpoint, *, torque_raw=2048):
+    def __init__(self, endpoint, *, torque_raw=2048, stale_enabled_after_disable=0):
         self.endpoint = endpoint
         self.status = 0
         self.torque_raw = torque_raw
         self.command_tx_attempts = 0
         self.enable_attempts = 0
         self.disable_attempts = 0
+        self.stale_enabled_after_disable = stale_enabled_after_disable
 
     def send_command(self, command):
         self.command_tx_attempts += 1
@@ -42,8 +43,12 @@ class FakeWriter:
     def receive(self):
         position_raw = 32768
         velocity_raw = 2048
+        reported_status = self.status
+        if self.status == 0 and self.enable_attempts and self.stale_enabled_after_disable:
+            reported_status = 1
+            self.stale_enabled_after_disable -= 1
         data = bytes((
-            (self.status << 4) | self.endpoint.can_id,
+            (reported_status << 4) | self.endpoint.can_id,
             position_raw >> 8,
             position_raw & 0xFF,
             velocity_raw >> 4,
@@ -91,6 +96,17 @@ class SingleJointHoldTests(unittest.TestCase):
         self.assertFalse(report.passed)
         self.assertTrue(any("torque guard" in value for value in report.errors))
         self.assertGreaterEqual(report.disable_attempts, 3)
+        self.assertEqual(report.final_status, "disabled")
+
+    def test_shutdown_drains_stale_enabled_feedback_until_disabled(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint(), stale_enabled_after_disable=3)
+        report = run_head_yaw_low_gain_hold(
+            writer, endpoint(), soft_position_rad=(-1.0, 1.0),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.disable_attempts, 4)
         self.assertEqual(report.final_status, "disabled")
 
     def test_rejects_every_other_motor(self):
