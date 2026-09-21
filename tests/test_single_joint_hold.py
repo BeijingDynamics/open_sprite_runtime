@@ -1,7 +1,11 @@
 import unittest
 
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
-from open_sprite_runtime.single_joint_hold import run_head_yaw_low_gain_hold
+from open_sprite_runtime.single_joint_hold import (
+    _quintic_smoothstep,
+    run_head_yaw_low_gain_hold,
+    run_head_yaw_low_gain_motion,
+)
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
 
@@ -28,9 +32,11 @@ class FakeWriter:
         self.enable_attempts = 0
         self.disable_attempts = 0
         self.stale_enabled_after_disable = stale_enabled_after_disable
+        self.commands = []
 
     def send_command(self, command):
         self.command_tx_attempts += 1
+        self.commands.append(command)
 
     def send_enable(self):
         self.enable_attempts += 1
@@ -118,6 +124,81 @@ class SingleJointHoldTests(unittest.TestCase):
             run_head_yaw_low_gain_hold(
                 FakeWriter(wrong), wrong, soft_position_rad=(-1.0, 1.0)
             )
+
+
+class SingleJointMotionTests(unittest.TestCase):
+    def test_quintic_smoothstep_has_zero_endpoint_velocity(self):
+        self.assertEqual(_quintic_smoothstep(0.0), (0.0, 0.0))
+        self.assertEqual(_quintic_smoothstep(1.0), (1.0, 0.0))
+        position, derivative = _quintic_smoothstep(0.5)
+        self.assertAlmostEqual(position, 0.5)
+        self.assertAlmostEqual(derivative, 1.875)
+
+    def test_frozen_motion_disables_and_passes(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint())
+        report = run_head_yaw_low_gain_motion(
+            writer, endpoint(), soft_position_rad=(-1.0, 1.0),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.duration_s, 4.5)
+        self.assertEqual(report.enable_attempts, 1)
+        self.assertGreaterEqual(report.disable_attempts, 3)
+        self.assertEqual(report.final_status, "disabled")
+        self.assertGreater(report.command_count, 200)
+        positions = []
+        low, high = endpoint().ranges.position_rad
+        for command in writer.commands:
+            raw = (command.data[0] << 8) | command.data[1]
+            positions.append(low + raw / 65535.0 * (high - low))
+        self.assertGreater(max(positions) - report.initial_position_rad, 0.019)
+        self.assertLess(min(positions) - report.initial_position_rad, -0.019)
+
+    def test_motion_torque_guard_fails_closed_and_disables(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint(), torque_raw=2200)
+        report = run_head_yaw_low_gain_motion(
+            writer, endpoint(), soft_position_rad=(-1.0, 1.0),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertFalse(report.passed)
+        self.assertTrue(any("torque guard" in value for value in report.errors))
+        self.assertGreaterEqual(report.disable_attempts, 3)
+        self.assertEqual(report.final_status, "disabled")
+
+    def test_motion_shutdown_drains_stale_enabled_feedback(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint(), stale_enabled_after_disable=3)
+        report = run_head_yaw_low_gain_motion(
+            writer, endpoint(), soft_position_rad=(-1.0, 1.0),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.disable_attempts, 4)
+
+    def test_motion_rejects_gain_or_excursion_changes(self):
+        with self.assertRaisesRegex(ValueError, "frozen"):
+            run_head_yaw_low_gain_motion(
+                FakeWriter(endpoint()), endpoint(), soft_position_rad=(-1.0, 1.0), kp=1.1
+            )
+        with self.assertRaisesRegex(ValueError, "frozen"):
+            run_head_yaw_low_gain_motion(
+                FakeWriter(endpoint()), endpoint(), soft_position_rad=(-1.0, 1.0),
+                excursion_rad=0.03,
+            )
+
+    def test_motion_rejects_insufficient_soft_limit_margin(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint())
+        report = run_head_yaw_low_gain_motion(
+            writer, endpoint(), soft_position_rad=(-0.01, 0.01),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertFalse(report.passed)
+        self.assertTrue(any("soft-limit margin" in value for value in report.errors))
+        self.assertEqual(report.enable_attempts, 0)
+        self.assertGreaterEqual(report.disable_attempts, 3)
 
 
 if __name__ == "__main__":

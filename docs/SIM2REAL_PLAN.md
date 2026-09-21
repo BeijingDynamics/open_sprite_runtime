@@ -130,8 +130,14 @@ required.
   DM-J3507 head-yaw motor. It captures measured position, uses frozen
   `Kp=0.2`, `Kd=0.05`, zero feedforward, applies strict 0.1 Nm/0.2 rad/s
   guards, and always sends and verifies disable on exit.
-- [ ] Execute and review the two-second head-yaw current-position hold with the
+- [x] Execute and review the two-second head-yaw current-position hold with the
   robot supported and the safety operator on the independent power cut-off.
+  The 2026-09-21 test completed 100/100 control/feedback cycles, held within
+  0.000384 rad and 0.003664 Nm, and verified disabled feedback after exit.
+- [x] Prepare a separately gated, fixed second test for the unloaded head-yaw
+  shaft: quintic `+0.02 -> -0.02 -> start` motion at 50 Hz with `Kp=1.0`,
+  `Kd=0.2`, zero feedforward, and the same fail-closed guards.
+- [ ] Execute and review the unloaded head-yaw smooth-motion test.
 - Single-joint unloaded tests, then whole-body zero pose in a lifting frame.
 - Low Kp/Kd and strict current limits first.
 - Stand, weight shift, one step, 0.15 m/s walk, stop, and restart.

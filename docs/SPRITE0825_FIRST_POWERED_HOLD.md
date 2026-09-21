@@ -37,5 +37,21 @@ cd /home/tony/open_sprite_runtime
 ```
 
 The JSON report is written under `reports/head_yaw_low_gain_hold_*.json`.
-Passing this hold does not authorize motion commands; the next test would be a
-separately reviewed smooth `+/-0.02 rad` head-yaw excursion.
+Passing this hold does not authorize motion commands. The separately gated second
+test uses the same one-motor allowlist and runs a frozen quintic trajectory:
+
+- measured position to `+0.02 rad` in 1.0 second, then dwell 0.5 second;
+- `+0.02 rad` to `-0.02 rad` in 1.0 second, then dwell 0.5 second;
+- return to the measured start in 1.0 second, then dwell 0.5 second;
+- `Kp=1.0`, `Kd=0.2`, feedforward torque zero, at 50 Hz;
+- the same 0.05 rad error, 0.2 rad/s speed, and 0.1 Nm torque guards;
+- verified disable on every return path.
+
+Run it only with the bare head-yaw shaft clear and the safety operator ready:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./move_sprite0825_head_yaw_low_gain_on_253.sh ENABLE_HEAD_YAW_LOW_GAIN_MOTION
+```
+
+The motion report is written under `reports/head_yaw_low_gain_motion_*.json`.
