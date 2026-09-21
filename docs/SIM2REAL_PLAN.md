@@ -72,8 +72,10 @@ required.
 - [x] Connect the 50 Hz Python/ONNX actor to the native layer through a versioned,
   sequence-numbered, stale-target-failing shadow interface and qualify it for
   120 seconds under full CAN and IMU load.
-- [ ] Qualify measured-pose handoff/ramp and command envelopes before any
-  nonzero motor command is permitted.
+- [x] Implement and qualify the frozen two-tick measured-pose-equivalent-action
+  smoothstep handoff in the live policy path, matching the MuJoCo deployment.
+- [ ] Qualify complete command envelopes before any nonzero motor command is
+  permitted.
 
 ## Gate 4: protected actuation
 

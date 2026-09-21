@@ -12,6 +12,7 @@ import numpy as np
 
 from .contracts import PolicyContract
 from .damiao import DamiaoFeedback, DamiaoMitState
+from .handoff import MeasuredPoseActionHandoff
 from .imu import ImuMount, RawImuSample, transform_pelvis_sample
 from .motor_mapping import SpriteMotorMap
 from .multirate_control import JointImpedanceTarget, SpriteMultiRateController
@@ -182,6 +183,7 @@ class LivePolicyShadow:
             raise ValueError("command must be finite [vx, vy, yaw_rate]")
         self.actor = load_actor(contract)
         self.history = PolicyObservationHistory(contract)
+        self.handoff = MeasuredPoseActionHandoff(contract)
         self.mount = ImuMount.sprite0825_rear_pelvis()
         self.clock_ns = clock_ns
         self.motor_states: dict[str, DamiaoMitState] = {}
@@ -276,10 +278,11 @@ class LivePolicyShadow:
         )
         observation = self.history.observation(self.command)
         started = self.clock_ns()
-        action = self.actor.run(observation)
+        raw_action = self.actor.run(observation)
         elapsed_ms = (self.clock_ns() - started) / 1.0e6
-        if action.shape != (31,):
-            raise ValueError(f"policy action has shape {action.shape}, expected (31,)")
+        if raw_action.shape != (31,):
+            raise ValueError(f"policy action has shape {raw_action.shape}, expected (31,)")
+        action = self.handoff.blend(raw_action, joint_pos)
         self._inference_ms.append(elapsed_ms)
         self._deadline_misses += int(elapsed_ms > 20.0)
         self._max_action = max(self._max_action, float(np.max(np.abs(action))))

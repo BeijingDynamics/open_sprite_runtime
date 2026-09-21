@@ -124,3 +124,25 @@ On 2026-09-21 the integrated runtime passed a 120-second live-hardware shadow:
 This still does not authorize actuation. Measured-pose handoff, full target
 envelopes, stale-target safe hold, and deliberate fault-injection tests remain
 required before any nonzero command path is implemented.
+
+## Measured-pose handoff qualification
+
+The live policy path now implements the frozen contract fields
+`deployment_handoff_seconds=0.04`,
+`deployment_handoff_mode=smoothstep_from_pose_equivalent_action`, and
+`deployment_initial_velocity_mode=zero`. The first measured 31-joint pose is
+converted through the frozen action offset/scale, then smoothstep blended to
+the policy output over exactly two 50 Hz ticks. The blended action is also fed
+back into action history, matching the qualified MuJoCo runtime.
+
+On 2026-09-21 this path passed all 145 offline tests and a 20-second powered,
+mechanically-supported, all-motors-disabled live shadow run. Every motor had
+100% feedback coverage; the native loop completed 10,000 500 Hz ticks with
+zero deadline misses; IMU decoding accepted 2,010 raw and 2,009 quaternion
+frames with zero rejected frames; and nonzero gain/torque TX, automatic enable,
+and automatic mode-switch counts all remained zero.
+
+This completes the measured-pose handoff gate only. The hardware inventory is
+still intentionally non-armable: physical soft/hard limits, drive register
+readback provenance, current/temperature thresholds, and the independent
+hardware e-stop must be completed before any nonzero actuation test.

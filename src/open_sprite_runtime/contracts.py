@@ -184,6 +184,19 @@ class PolicyContract:
             errors.append("quaternion_order must be wxyz")
         if self.data.get("command_layout") != ["vx", "vy", "yaw_rate"]:
             errors.append("command_layout must be [vx, vy, yaw_rate]")
+        try:
+            handoff_seconds = float(self.data["deployment_handoff_seconds"])
+        except (KeyError, TypeError, ValueError):
+            errors.append("deployment_handoff_seconds is missing or invalid")
+        else:
+            if not math.isfinite(handoff_seconds) or handoff_seconds < 0.0:
+                errors.append("deployment_handoff_seconds must be finite and non-negative")
+        if self.data.get("deployment_handoff_mode") != (
+            "smoothstep_from_pose_equivalent_action"
+        ):
+            errors.append("unsupported deployment_handoff_mode")
+        if self.data.get("deployment_initial_velocity_mode") != "zero":
+            errors.append("deployment_initial_velocity_mode must be zero")
 
         ankle = self.data.get("physical_ankle_differential")
         if not isinstance(ankle, dict) or ankle.get("enabled") is not True:

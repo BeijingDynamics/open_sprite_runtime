@@ -69,6 +69,9 @@ def valid_policy_data() -> dict:
         "projected_gravity_definition": "R_world_to_base @ [0, 0, -1]",
         "quaternion_order": "wxyz",
         "command_layout": ["vx", "vy", "yaw_rate"],
+        "deployment_handoff_seconds": 0.04,
+        "deployment_handoff_mode": "smoothstep_from_pose_equivalent_action",
+        "deployment_initial_velocity_mode": "zero",
         "physical_ankle_differential": {
             "enabled": True,
             "rated_torque_nm": 3.5,
