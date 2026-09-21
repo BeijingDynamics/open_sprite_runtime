@@ -297,3 +297,9 @@ error, zero ankle torque saturation, and no violating physical motor.
 This qualifies only the target-generation and IPC startup sequence. It does not
 authorize motor enable or nonzero gains. The next gate is a separately reviewed
 native writer with final per-motor mapping and dynamic torque-speed validation.
+
+The native feedback path now also decodes and checks both Damiao temperature
+bytes against the manual-derived model limits. A subsequent 10-second full-load
+zero-gain shadow observed a maximum MOS temperature of 40 C and maximum rotor
+temperature of 35 C across all 31 motors; all temperature and status guards
+remained clear.

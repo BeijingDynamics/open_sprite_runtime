@@ -48,3 +48,15 @@ conditions, mostly at 24 V, while Sprite0825 operates near 38 V. Until a reviewe
 writer must enforce position, protocol velocity, embedded Kd, feedforward
 torque, estimated peak torque, motor status, and temperature limits, but keep
 dynamic torque-speed qualification explicitly incomplete.
+
+## Native temperature guard
+
+The native motor TSV carries the manual-derived limits separately for MOS and
+rotor temperature. The C++ CAN receiver decodes bytes 6 and 7 of every official
+eight-byte feedback frame and fails closed at 120 C MOS or 100 C rotor. It also
+records per-motor maxima in every native report.
+
+The first full four-bus zero-gain qualification after enabling this guard ran
+for 10 seconds with all 31 motors reporting. The highest observed MOS
+temperature was 40 C and the highest rotor temperature was 35 C. There were no
+deadline misses, CAN actuation attempts, status faults, or temperature faults.

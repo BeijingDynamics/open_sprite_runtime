@@ -80,10 +80,14 @@ struct Motor {
   double velocity_max = 0.0;
   double torque_min = 0.0;
   double torque_max = 0.0;
+  double mos_temperature_limit = 0.0;
+  double rotor_temperature_limit = 0.0;
   int poll_rate_hz = 0;
   int poll_phase = 0;
   double last_position = 0.0;
   double last_velocity = 0.0;
+  int maximum_mos_temperature = 0;
+  int maximum_rotor_temperature = 0;
   std::size_t tx_count = 0;
   std::size_t rx_count = 0;
   bool seen = false;
@@ -207,7 +211,8 @@ std::vector<Motor> load_motors(const std::string& path) {
   const std::vector<std::string> expected_header = {
       "motor_name", "interface", "can_id", "master_id", "position_min_rad",
       "position_max_rad", "velocity_min_rad_s", "velocity_max_rad_s",
-      "torque_min_nm", "torque_max_nm", "poll_rate_hz"};
+      "torque_min_nm", "torque_max_nm", "mos_temperature_limit_c",
+      "rotor_temperature_limit_c", "poll_rate_hz"};
   if (split(line, '\t') != expected_header) {
     throw std::runtime_error("native motor config header mismatch");
   }
@@ -232,8 +237,11 @@ std::vector<Motor> load_motors(const std::string& path) {
     motor.velocity_max = number(fields[7]);
     motor.torque_min = number(fields[8]);
     motor.torque_max = number(fields[9]);
-    motor.poll_rate_hz = static_cast<int>(number(fields[10]));
+    motor.mos_temperature_limit = number(fields[10]);
+    motor.rotor_temperature_limit = number(fields[11]);
+    motor.poll_rate_hz = static_cast<int>(number(fields[12]));
     if (motor.can_id < 1 || motor.can_id > 8 || motor.master_id != motor.can_id + 0x10 ||
+        motor.mos_temperature_limit <= 0.0 || motor.rotor_temperature_limit <= 0.0 ||
         (motor.poll_rate_hz != 50 && motor.poll_rate_hz != 500)) {
       throw std::runtime_error("native motor config endpoint/rate invariant failed");
     }
@@ -582,9 +590,13 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
   std::ostringstream tx_counts;
   std::ostringstream rx_counts;
   std::ostringstream coverage_values;
+  std::ostringstream mos_temperatures;
+  std::ostringstream rotor_temperatures;
   tx_counts << "  \"tx_count_by_motor\": {\n";
   rx_counts << "  \"rx_count_by_motor\": {\n";
   coverage_values << "  \"sample_coverage_by_motor\": {\n";
+  mos_temperatures << "  \"maximum_mos_temperature_c_by_motor\": {\n";
+  rotor_temperatures << "  \"maximum_rotor_temperature_c_by_motor\": {\n";
   for (std::size_t i = 0; i < motors.size(); ++i) {
     const auto& motor = motors[i];
     const double coverage = motor.tx_count > 0
@@ -595,10 +607,16 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
     tx_counts << "    \"" << motor.name << "\": " << motor.tx_count << suffix;
     rx_counts << "    \"" << motor.name << "\": " << motor.rx_count << suffix;
     coverage_values << "    \"" << motor.name << "\": " << coverage << suffix;
+    mos_temperatures << "    \"" << motor.name << "\": "
+                     << motor.maximum_mos_temperature << suffix;
+    rotor_temperatures << "    \"" << motor.name << "\": "
+                       << motor.maximum_rotor_temperature << suffix;
   }
   tx_counts << "  },\n";
   rx_counts << "  },\n";
   coverage_values << "  },\n";
+  mos_temperatures << "  },\n";
+  rotor_temperatures << "  },\n";
   const bool ipc_enabled = ipc != nullptr;
   const double target_coverage = ipc_enabled && ipc->state_sequence > 0
       ? static_cast<double>(ipc->target_count) / static_cast<double>(ipc->state_sequence)
@@ -640,6 +658,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << tx_counts.str()
       << rx_counts.str()
       << coverage_values.str()
+      << mos_temperatures.str()
+      << rotor_temperatures.str()
       << "  \"coverage_passed\": " << (coverage_passed ? "true" : "false") << ",\n"
       << "  \"passed\": " << (passed ? "true" : "false") << "\n}\n";
   return out.str();
@@ -731,6 +751,14 @@ int main(int argc, char** argv) {
           const auto raw_velocity = (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
           motor.last_position = decode_uint(raw_position, motor.position_min, motor.position_max, 16);
           motor.last_velocity = decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
+          motor.maximum_mos_temperature =
+              std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
+          motor.maximum_rotor_temperature =
+              std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
+          if (frame.data[6] >= motor.mos_temperature_limit ||
+              frame.data[7] >= motor.rotor_temperature_limit) {
+            throw std::runtime_error("motor temperature invariant failed for " + motor.name);
+          }
           ++motor.rx_count;
           motor.seen = true;
         }
@@ -772,6 +800,14 @@ int main(int argc, char** argv) {
         const auto raw_velocity = (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
         motor.last_position = decode_uint(raw_position, motor.position_min, motor.position_max, 16);
         motor.last_velocity = decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
+        motor.maximum_mos_temperature =
+            std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
+        motor.maximum_rotor_temperature =
+            std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
+        if (frame.data[6] >= motor.mos_temperature_limit ||
+            frame.data[7] >= motor.rotor_temperature_limit) {
+          throw std::runtime_error("final motor temperature invariant failed for " + motor.name);
+        }
         ++motor.rx_count;
         motor.seen = true;
       }

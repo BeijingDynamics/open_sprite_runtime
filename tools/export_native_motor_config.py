@@ -20,6 +20,8 @@ FIELDS = (
     "velocity_max_rad_s",
     "torque_min_nm",
     "torque_max_nm",
+    "mos_temperature_limit_c",
+    "rotor_temperature_limit_c",
     "poll_rate_hz",
 )
 
@@ -31,9 +33,11 @@ def main() -> None:
     args = parser.parse_args()
     hardware = json.loads(args.hardware.read_text(encoding="utf-8"))
     interfaces = hardware["can_adapter"]["interfaces"]
+    model_specs = hardware["motor_model_specs"]
     rows = []
     for name, motor in hardware["motor_map"].items():
         ranges = motor["mit_ranges"]
+        specs = model_specs[motor["model"]]
         rows.append(
             {
                 "motor_name": name,
@@ -46,6 +50,12 @@ def main() -> None:
                 "velocity_max_rad_s": float(ranges["velocity_rad_s"][1]),
                 "torque_min_nm": float(ranges["torque_nm"][0]),
                 "torque_max_nm": float(ranges["torque_nm"][1]),
+                "mos_temperature_limit_c": float(
+                    specs["drive_shutdown_temperature_c"]
+                ),
+                "rotor_temperature_limit_c": float(
+                    specs["recommended_motor_temperature_limit_c"]
+                ),
                 "poll_rate_hz": 500 if "ankle_motor" in name else 50,
             }
         )
