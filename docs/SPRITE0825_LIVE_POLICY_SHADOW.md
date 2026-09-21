@@ -194,5 +194,43 @@ joint position target. The trace contains no hardware command frames.
 The first 10-second capture on 2026-09-21 contained 500 complete ticks and was
 replayed through the frozen ONNX actor with a maximum absolute action error of
 exactly zero. The trace SHA256 is recorded both in the actor report and the
-artifact manifest. A 120-second trace and per-motor command-margin analysis are
-still required to close the command-envelope gate.
+artifact manifest.
+
+The subsequent 120-second capture contained 6,000 complete policy ticks and
+again replayed with exactly zero action error. The native process completed
+60,000 500 Hz ticks with zero deadline misses; all 31 motors had 100% feedback
+coverage; and the Python actor accepted 12,007 raw IMU and 12,006 quaternion
+packets with zero rejected frames. ONNX inference was 2.042 ms P99 and 7.526 ms
+maximum. The trace SHA256 is
+`be33c2476ff7fab1bef142e14681864ec479ca39c546983e96e6d3a720373f48`.
+
+## Physical-command margin finding
+
+The 120-second trace was expanded into the exact proposed physical motor
+commands without transmitting them. The unmodified contract correctly failed
+the command-margin audit. This does not invalidate the policy or shadow timing:
+the robot remained disabled and motionless, so position error accumulated as
+the policy target moved. It does expose two deployment issues that must be
+handled before actuation:
+
+- the frozen 0.04-second handoff has two policy steps and its first output is
+  already a 50% smoothstep blend, rather than an exact measured-pose hold;
+- actor targets exceeded the URDF-derived soft limits for both elbows and both
+  ankle-pitch joints. A simulator can rely on physics joint constraints, but a
+  hardware runtime must explicitly project targets before motor mapping.
+
+At the original gains, the stationary-trace estimate exceeded both the MIT
+TMAX and mechanical peak on left/right hip pitch. The most severe small-motor
+case was head yaw at 20.17 Nm estimated output versus 5 Nm protocol TMAX and
+3 Nm mechanical peak. These values are counterfactual disabled-shadow demands,
+not measured motor torque, but they prove that raw policy targets must never be
+passed directly to the drive.
+
+An offline protected-actuation candidate was then audited using joint-space
+URDF soft-limit projection and a uniform `gain_scale=0.1`. It passed all 6,000
+ticks with no motor position, velocity, embedded-Kd, MIT torque, or mechanical
+peak violation and no ankle joint-torque saturation. Maximum estimated head-yaw
+output was 2.02 Nm (67.2% of its 3 Nm mechanical peak); maximum ankle joint
+demands were 1.33 Nm pitch and 0.46 Nm roll. This establishes a conservative
+starting envelope for a supported single-joint/pose-hold test only. It does not
+authorize walking or prove that 0.1 gains are dynamically sufficient.

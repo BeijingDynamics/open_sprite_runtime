@@ -94,11 +94,22 @@ required.
   target; verify all injected faults against the native process.
 - [ ] Qualify complete command envelopes before any nonzero motor command is
   permitted.
-- [ ] Record and deterministically replay a per-policy-tick live trace containing
+- [x] Record and deterministically replay a per-policy-tick live trace containing
   measured joint state, IMU-derived actor inputs, observation history, raw
   actor action, handoff action, proposed joint targets, and command margins.
-  The 10-second/500-tick trace path is implemented and replayed with zero actor
-  error; extend it to 120 seconds and add per-motor command margins.
+  The 120-second/6,000-tick trace replayed with exactly zero actor error. Its
+  unmodified physical-command audit intentionally fails closed: the disabled,
+  suspended robot cannot follow the proposed targets, the two-tick handoff
+  applies 50% policy blend on its first tick, and four policy joint targets
+  exceed URDF-derived soft limits.
+- [x] Demonstrate an offline protected-actuation candidate against the same
+  live trace. Joint-space soft-limit projection plus `gain_scale=0.1` produced
+  zero position/velocity/Kd/torque violations and zero ankle torque saturation.
+  This is an initial suspended-test setting, not a walking gain qualification.
+- [ ] Implement the protected-actuation projector in the native command path,
+  separate the physical startup pose/ramp from the frozen two-tick MuJoCo
+  handoff, and fault instead of transmitting whenever the final encoded motor
+  command leaves its dynamic envelope.
 
 ## Gate 4: protected actuation
 
