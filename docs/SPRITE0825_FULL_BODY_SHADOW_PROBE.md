@@ -17,6 +17,17 @@ motor-enable command.
 
 ## Run on Jetson 253
 
+Configure all four KH SocketCAN interfaces after connecting or rebooting the
+adapter:
+
+```bash
+cd /home/tony
+./setup_sprite0825_kcanfd_on_253.sh
+```
+
+The setup script first requires all four interfaces to exist, then configures
+1 Mbps arbitration, 5 Mbps data, CAN FD, and a 1000-frame transmit queue.
+
 The first argument is duration in seconds and the second is the per-motor polling
 rate. Start with ten seconds:
 
