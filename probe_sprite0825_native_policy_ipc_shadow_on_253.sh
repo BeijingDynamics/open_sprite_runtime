@@ -21,6 +21,11 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
   --output "$ROOT/build/native/motors.tsv"
+PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
+  "$ROOT/tools/export_native_kinematics_config.py" \
+  --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
+  --contract "$CANDIDATE/deploy/contract.json" \
+  --output "$ROOT/build/native/kinematics.tsv"
 
 JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   'import json,sys; from open_sprite_runtime.native_ipc import ordered_name_hash; d=json.load(open(sys.argv[1])); print(hex(ordered_name_hash(d["joint_names"])))' \
@@ -67,6 +72,7 @@ echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS
   --output "$NATIVE_REPORT" \
   --ipc-socket "$SOCKET" \
   --policy-joint-hash "$JOINT_HASH" \
+  --kinematics-config "$ROOT/build/native/kinematics.tsv" \
   "${NATIVE_SAFETY_ARGS[@]}" \
   --acknowledge-hardware-tx ZERO_GAIN_NATIVE_SHADOW \
   --all-motors-disabled-confirmed >"$NATIVE_LOG" 2>&1 &

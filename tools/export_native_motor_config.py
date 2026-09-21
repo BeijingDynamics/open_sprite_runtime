@@ -20,6 +20,12 @@ FIELDS = (
     "velocity_max_rad_s",
     "torque_min_nm",
     "torque_max_nm",
+    "soft_position_min_rad",
+    "soft_position_max_rad",
+    "hard_position_min_rad",
+    "hard_position_max_rad",
+    "deployment_velocity_max_rad_s",
+    "mechanical_peak_torque_nm",
     "mos_temperature_limit_c",
     "rotor_temperature_limit_c",
     "poll_rate_hz",
@@ -38,6 +44,15 @@ def main() -> None:
     for name, motor in hardware["motor_map"].items():
         ranges = motor["mit_ranges"]
         specs = model_specs[motor["model"]]
+        configured_speed = motor.get("max_speed_rad_s")
+        deployment_speed = min(
+            float(ranges["velocity_rad_s"][1]),
+            float(
+                configured_speed
+                if configured_speed is not None
+                else specs["maximum_no_load_speed_rad_s_at_48v"]
+            ),
+        )
         rows.append(
             {
                 "motor_name": name,
@@ -50,6 +65,12 @@ def main() -> None:
                 "velocity_max_rad_s": float(ranges["velocity_rad_s"][1]),
                 "torque_min_nm": float(ranges["torque_nm"][0]),
                 "torque_max_nm": float(ranges["torque_nm"][1]),
+                "soft_position_min_rad": float(motor["soft_limit_rad"][0]),
+                "soft_position_max_rad": float(motor["soft_limit_rad"][1]),
+                "hard_position_min_rad": float(motor["hard_limit_rad"][0]),
+                "hard_position_max_rad": float(motor["hard_limit_rad"][1]),
+                "deployment_velocity_max_rad_s": deployment_speed,
+                "mechanical_peak_torque_nm": float(motor["peak_torque_nm"]),
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]
                 ),

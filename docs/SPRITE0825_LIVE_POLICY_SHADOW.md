@@ -294,9 +294,27 @@ velocity, Kp, Kd, and feedforward arrays instead of reconstructing fixed gains
 from the contract. The 500-tick trace passed with zero joint-reconstruction
 error, zero ankle torque saturation, and no violating physical motor.
 
-This qualifies only the target-generation and IPC startup sequence. It does not
-authorize motor enable or nonzero gains. The next gate is a separately reviewed
-native writer with final per-motor mapping and dynamic torque-speed validation.
+The native process now independently loads a dense, order-checked affine map
+covering all 31 policy joints and all 31 physical motors. At 500 Hz it
+reconstructs measured joint state and previews the two host-torque ankle pairs;
+at 50 Hz it previews the direct motors and the coupled head pitch/roll pair.
+Every preview is checked against motor soft/hard/protocol position, deployment
+speed, embedded `Kp/Kd`, protocol torque, mechanical peak torque, status, and
+temperature limits. The active CAN writer remains the restricted zero-gain
+position-echo writer, so these commands cannot reach hardware.
+
+The final 10-second qualification on 2026-09-21 completed 4,985 command-preview
+ticks, 5,000 native state ticks, and 500 policy ticks with zero deadline misses,
+100% motor feedback coverage, and no guard violation. Maximum embedded `Kd` was
+0.3, maximum estimated motor torque was 6.4713 Nm, and the largest ankle motor
+torque was 0.7198 Nm. An independent Python trace audit reproduced the critical
+maxima (left hip pitch 6.4713 Nm and right hip pitch 5.2432 Nm), with no violating
+motor and no ankle joint-torque saturation.
+
+This still does not authorize motor enable or nonzero gains. A conservative
+38 V dynamic torque-speed/current envelope remains unresolved because the
+available manuals do not contain enough 38 V curve data. The next actuation
+writer must be separately reviewed and must reuse these final-command guards.
 
 The native feedback path now also decodes and checks both Damiao temperature
 bytes against the manual-derived model limits. A subsequent 10-second full-load

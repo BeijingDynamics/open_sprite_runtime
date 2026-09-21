@@ -118,6 +118,7 @@ def audit(
             "minimum_hard_position_margin_rad": float("inf"),
             "minimum_mit_position_margin_rad": float("inf"),
             "maximum_abs_target_velocity_rad_s": 0.0,
+            "maximum_deployment_velocity_ratio": 0.0,
             "maximum_embedded_kp": 0.0,
             "maximum_embedded_kd": 0.0,
             "maximum_abs_feedforward_torque_nm": 0.0,
@@ -131,6 +132,7 @@ def audit(
                 "hard_position": 0,
                 "mit_position": 0,
                 "mit_velocity": 0,
+                "deployment_velocity": 0,
                 "embedded_kd": 0,
                 "feedforward_torque": 0,
                 "estimated_mit_torque": 0,
@@ -221,6 +223,17 @@ def audit(
             hard_low, hard_high = map(float, record["hard_limit_rad"])
             mit_low, mit_high = map(float, record["mit_ranges"]["position_rad"])
             protocol_velocity = _minimum_symmetric_range(record["mit_ranges"]["velocity_rad_s"])
+            configured_velocity = record.get("max_speed_rad_s")
+            deployment_velocity = min(
+                protocol_velocity,
+                float(
+                    configured_velocity
+                    if configured_velocity is not None
+                    else hardware["motor_model_specs"][record["model"]][
+                        "maximum_no_load_speed_rad_s_at_48v"
+                    ]
+                ),
+            )
             protocol_torque = _minimum_symmetric_range(record["mit_ranges"]["torque_nm"])
             peak_torque = float(record["peak_torque_nm"])
             soft_margin = min(command.position_rad - soft_low, soft_high - command.position_rad)
@@ -246,6 +259,10 @@ def audit(
             row["minimum_hard_position_margin_rad"] = min(row["minimum_hard_position_margin_rad"], hard_margin)
             row["minimum_mit_position_margin_rad"] = min(row["minimum_mit_position_margin_rad"], mit_margin)
             row["maximum_abs_target_velocity_rad_s"] = max(row["maximum_abs_target_velocity_rad_s"], abs(command.velocity_rad_s))
+            row["maximum_deployment_velocity_ratio"] = max(
+                row["maximum_deployment_velocity_ratio"],
+                abs(command.velocity_rad_s) / deployment_velocity,
+            )
             row["maximum_embedded_kp"] = max(row["maximum_embedded_kp"], command.kp)
             row["maximum_embedded_kd"] = max(row["maximum_embedded_kd"], command.kd)
             row["maximum_abs_feedforward_torque_nm"] = max(row["maximum_abs_feedforward_torque_nm"], abs(command.feedforward_torque_nm))
@@ -257,6 +274,7 @@ def audit(
                 "hard_position": hard_margin < 0.0,
                 "mit_position": mit_margin < 0.0,
                 "mit_velocity": abs(command.velocity_rad_s) > protocol_velocity,
+                "deployment_velocity": abs(command.velocity_rad_s) > deployment_velocity,
                 "embedded_kd": command.kd > kd_limit,
                 "feedforward_torque": abs(command.feedforward_torque_nm) > protocol_torque,
                 "estimated_mit_torque": abs(estimated_torque) > protocol_torque,

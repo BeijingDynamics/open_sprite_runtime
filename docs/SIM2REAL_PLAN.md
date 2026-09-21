@@ -92,8 +92,11 @@ required.
 - [x] Fail closed on invalid target ABI/order, future source sequence, stale
   timestamp, embedded `Kd > 3`, ordinary target timeout, and missing first
   target; verify all injected faults against the native process.
-- [ ] Qualify complete command envelopes before any nonzero motor command is
-  permitted.
+- [x] Export the frozen 31-joint/31-motor affine kinematics into C++, reconstruct
+  joint state there, and preview the exact final motor command at the real
+  500 Hz/50 Hz schedule. Enforce motor soft/hard/protocol position, deployment
+  speed, embedded gain, protocol torque, mechanical peak torque, status, and
+  temperature limits before any future writer boundary.
 - [x] Record and deterministically replay a per-policy-tick live trace containing
   measured joint state, IMU-derived actor inputs, observation history, raw
   actor action, handoff action, proposed joint targets, and command margins.
@@ -115,9 +118,11 @@ required.
   the measured pose, hold it for one second, then smoothstep both position and
   the protected gain tier over four seconds. The zero-gain live shadow completed
   this sequence with a maximum per-tick target change of 0.01881 rad.
+- [ ] Add an approved conservative 38 V dynamic torque-speed/current envelope;
+  the manuals do not provide enough 38 V curve data to infer one safely.
 - [ ] Carry only validated ramped targets into a separately reviewed nonzero
-  native writer and validate the final mapped motor command against its dynamic
-  torque-speed envelope immediately before transmission.
+  native writer. The current writer remains physically incapable of emitting
+  nonzero Kp, Kd, velocity, or feedforward torque.
 
 ## Gate 4: protected actuation
 

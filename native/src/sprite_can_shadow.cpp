@@ -80,6 +80,12 @@ struct Motor {
   double velocity_max = 0.0;
   double torque_min = 0.0;
   double torque_max = 0.0;
+  double soft_position_min = 0.0;
+  double soft_position_max = 0.0;
+  double hard_position_min = 0.0;
+  double hard_position_max = 0.0;
+  double deployment_velocity_max = 0.0;
+  double mechanical_peak_torque = 0.0;
   double mos_temperature_limit = 0.0;
   double rotor_temperature_limit = 0.0;
   int poll_rate_hz = 0;
@@ -91,6 +97,26 @@ struct Motor {
   std::size_t tx_count = 0;
   std::size_t rx_count = 0;
   bool seen = false;
+  double preview_maximum_abs_position = 0.0;
+  double preview_maximum_abs_velocity = 0.0;
+  double preview_maximum_kp = 0.0;
+  double preview_maximum_kd = 0.0;
+  double preview_maximum_abs_feedforward_torque = 0.0;
+  double preview_maximum_abs_estimated_torque = 0.0;
+  double preview_position = 0.0;
+  double preview_velocity = 0.0;
+  double preview_kp = 0.0;
+  double preview_kd = 0.0;
+  double preview_feedforward_torque = 0.0;
+  bool preview_initialized = false;
+};
+
+struct NativeKinematics {
+  std::array<std::string, kJointCount> joint_names{};
+  std::array<double, kJointCount> motor_offset{};
+  std::array<double, kJointCount> joint_effort_limit{};
+  std::array<std::array<double, kJointCount>, kJointCount> joint_to_motor{};
+  std::array<std::array<double, kJointCount>, kJointCount> motor_to_joint{};
 };
 
 struct JointSafety {
@@ -112,6 +138,7 @@ struct Options {
   bool all_disabled = false;
   std::string ipc_socket;
   std::string joint_safety_config;
+  std::string kinematics_config;
   std::uint64_t policy_joint_hash = 0;
   int realtime_priority = 0;
 };
@@ -130,6 +157,9 @@ struct IpcSocket {
   std::int64_t last_target_ns = 0;
   std::size_t target_count = 0;
   double maximum_target_age_ms = 0.0;
+  TargetPacket latest_target{};
+  bool has_target = false;
+  std::size_t motor_preview_count = 0;
 };
 
 std::int64_t monotonic_ns() {
@@ -198,6 +228,20 @@ std::uint64_t ordered_joint_name_hash(const std::vector<JointSafety>& limits) {
   return result;
 }
 
+std::uint64_t ordered_joint_name_hash(
+    const std::array<std::string, kJointCount>& names) {
+  std::uint64_t result = 0xCBF29CE484222325ULL;
+  for (const auto& name : names) {
+    for (const unsigned char byte : name) {
+      result ^= byte;
+      result *= 0x100000001B3ULL;
+    }
+    result ^= 0;
+    result *= 0x100000001B3ULL;
+  }
+  return result;
+}
+
 std::vector<Motor> load_motors(const std::string& path) {
   std::ifstream file(path);
   if (!file) {
@@ -211,8 +255,10 @@ std::vector<Motor> load_motors(const std::string& path) {
   const std::vector<std::string> expected_header = {
       "motor_name", "interface", "can_id", "master_id", "position_min_rad",
       "position_max_rad", "velocity_min_rad_s", "velocity_max_rad_s",
-      "torque_min_nm", "torque_max_nm", "mos_temperature_limit_c",
-      "rotor_temperature_limit_c", "poll_rate_hz"};
+      "torque_min_nm", "torque_max_nm", "soft_position_min_rad",
+      "soft_position_max_rad", "hard_position_min_rad", "hard_position_max_rad",
+      "deployment_velocity_max_rad_s", "mechanical_peak_torque_nm",
+      "mos_temperature_limit_c", "rotor_temperature_limit_c", "poll_rate_hz"};
   if (split(line, '\t') != expected_header) {
     throw std::runtime_error("native motor config header mismatch");
   }
@@ -237,10 +283,24 @@ std::vector<Motor> load_motors(const std::string& path) {
     motor.velocity_max = number(fields[7]);
     motor.torque_min = number(fields[8]);
     motor.torque_max = number(fields[9]);
-    motor.mos_temperature_limit = number(fields[10]);
-    motor.rotor_temperature_limit = number(fields[11]);
-    motor.poll_rate_hz = static_cast<int>(number(fields[12]));
+    motor.soft_position_min = number(fields[10]);
+    motor.soft_position_max = number(fields[11]);
+    motor.hard_position_min = number(fields[12]);
+    motor.hard_position_max = number(fields[13]);
+    motor.deployment_velocity_max = number(fields[14]);
+    motor.mechanical_peak_torque = number(fields[15]);
+    motor.mos_temperature_limit = number(fields[16]);
+    motor.rotor_temperature_limit = number(fields[17]);
+    motor.poll_rate_hz = static_cast<int>(number(fields[18]));
     if (motor.can_id < 1 || motor.can_id > 8 || motor.master_id != motor.can_id + 0x10 ||
+        motor.position_min >= motor.soft_position_min ||
+        motor.soft_position_min >= motor.soft_position_max ||
+        motor.soft_position_max >= motor.position_max ||
+        motor.hard_position_min >= motor.soft_position_min ||
+        motor.hard_position_max <= motor.soft_position_max ||
+        motor.deployment_velocity_max <= 0.0 ||
+        motor.deployment_velocity_max > motor.velocity_max ||
+        motor.mechanical_peak_torque <= 0.0 ||
         motor.mos_temperature_limit <= 0.0 || motor.rotor_temperature_limit <= 0.0 ||
         (motor.poll_rate_hz != 50 && motor.poll_rate_hz != 500)) {
       throw std::runtime_error("native motor config endpoint/rate invariant failed");
@@ -266,6 +326,70 @@ std::vector<Motor> load_motors(const std::string& path) {
     }
   }
   return motors;
+}
+
+NativeKinematics load_kinematics(const std::string& path,
+                                 const std::vector<Motor>& motors) {
+  std::ifstream file(path);
+  if (!file) throw std::runtime_error("cannot open native kinematics config: " + path);
+  std::string line;
+  if (!std::getline(file, line)) throw std::runtime_error("native kinematics config is empty");
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  std::vector<std::string> expected{"kind", "name", "offset_or_effort"};
+  for (std::size_t index = 0; index < kJointCount; ++index) {
+    expected.push_back("c" + std::to_string(index));
+  }
+  if (split(line, '\t') != expected) {
+    throw std::runtime_error("native kinematics config header mismatch");
+  }
+  NativeKinematics result;
+  std::size_t row = 0;
+  while (std::getline(file, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    const auto fields = split(line, '\t');
+    if (fields.size() != expected.size() || row >= 2 * kJointCount) {
+      throw std::runtime_error("native kinematics config row mismatch");
+    }
+    const bool motor_row = row < kJointCount;
+    const std::size_t index = motor_row ? row : row - kJointCount;
+    if (fields[0] != (motor_row ? "motor" : "joint")) {
+      throw std::runtime_error("native kinematics row kind/order mismatch");
+    }
+    if (motor_row) {
+      if (fields[1] != motors[index].name) {
+        throw std::runtime_error("native kinematics motor order mismatch");
+      }
+      result.motor_offset[index] = number(fields[2]);
+    } else {
+      result.joint_names[index] = fields[1];
+      result.joint_effort_limit[index] = number(fields[2]);
+      if (result.joint_effort_limit[index] <= 0.0) {
+        throw std::runtime_error("native kinematics joint effort must be positive");
+      }
+    }
+    for (std::size_t column = 0; column < kJointCount; ++column) {
+      (motor_row ? result.joint_to_motor[index][column]
+                 : result.motor_to_joint[index][column]) = number(fields[3 + column]);
+    }
+    ++row;
+  }
+  if (row != 2 * kJointCount) {
+    throw std::runtime_error("native kinematics config must contain 62 rows");
+  }
+  for (std::size_t i = 0; i < kJointCount; ++i) {
+    for (std::size_t j = 0; j < kJointCount; ++j) {
+      double product = 0.0;
+      for (std::size_t k = 0; k < kJointCount; ++k) {
+        product += result.motor_to_joint[i][k] * result.joint_to_motor[k][j];
+      }
+      const double expected_value = i == j ? 1.0 : 0.0;
+      if (std::abs(product - expected_value) > 1.0e-9) {
+        throw std::runtime_error("native kinematics inverse invariant failed");
+      }
+    }
+  }
+  return result;
 }
 
 std::vector<JointSafety> load_joint_safety(const std::string& path) {
@@ -338,6 +462,7 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--all-motors-disabled-confirmed") result.all_disabled = true;
     else if (argument == "--ipc-socket") result.ipc_socket = value();
     else if (argument == "--joint-safety-config") result.joint_safety_config = value();
+    else if (argument == "--kinematics-config") result.kinematics_config = value();
     else if (argument == "--policy-joint-hash") result.policy_joint_hash = unsigned_number(value());
     else if (argument == "--realtime-priority") {
       result.realtime_priority = static_cast<int>(number(value()));
@@ -358,6 +483,9 @@ Options parse_options(int argc, char** argv) {
   }
   if (!result.joint_safety_config.empty() && result.ipc_socket.empty()) {
     throw std::runtime_error("--joint-safety-config requires policy IPC");
+  }
+  if (result.kinematics_config.empty() != result.ipc_socket.empty()) {
+    throw std::runtime_error("--kinematics-config is required exactly when policy IPC is enabled");
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
     throw std::runtime_error("realtime priority must be in [0, 80]");
@@ -530,10 +658,129 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
     }
     ipc.last_target_sequence = packet.sequence;
     ipc.last_target_ns = packet.monotonic_ns;
+    ipc.latest_target = packet;
+    ipc.has_target = true;
     ++ipc.target_count;
     ipc.maximum_target_age_ms = std::max(
         ipc.maximum_target_age_ms, static_cast<double>(age_ns) / 1.0e6);
   }
+}
+
+void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
+                                  const NativeKinematics& kinematics) {
+  if (!ipc.has_target) return;
+  std::array<double, kJointCount> joint_position{};
+  std::array<double, kJointCount> joint_velocity{};
+  for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+    for (std::size_t motor = 0; motor < kJointCount; ++motor) {
+      joint_position[joint] += kinematics.motor_to_joint[joint][motor] *
+          (motors[motor].last_position - kinematics.motor_offset[motor]);
+      joint_velocity[joint] +=
+          kinematics.motor_to_joint[joint][motor] * motors[motor].last_velocity;
+    }
+  }
+  std::array<double, kJointCount> desired_motor_position{};
+  std::array<double, kJointCount> desired_motor_velocity{};
+  std::array<double, kJointCount> joint_torque{};
+  for (std::size_t motor = 0; motor < kJointCount; ++motor) {
+    desired_motor_position[motor] = kinematics.motor_offset[motor];
+    for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+      desired_motor_position[motor] += kinematics.joint_to_motor[motor][joint] *
+          ipc.latest_target.position_rad[joint];
+      desired_motor_velocity[motor] += kinematics.joint_to_motor[motor][joint] *
+          ipc.latest_target.velocity_rad_s[joint];
+    }
+  }
+  for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+    const double raw = ipc.latest_target.kp[joint] *
+            (ipc.latest_target.position_rad[joint] - joint_position[joint]) +
+        ipc.latest_target.kd[joint] *
+            (ipc.latest_target.velocity_rad_s[joint] - joint_velocity[joint]) +
+        ipc.latest_target.feedforward_torque_nm[joint];
+    joint_torque[joint] = std::clamp(
+        raw, -kinematics.joint_effort_limit[joint], kinematics.joint_effort_limit[joint]);
+  }
+  const bool update_other_motors = ipc.motor_preview_count % 10 == 0;
+  for (std::size_t motor_index = 0; motor_index < kJointCount; ++motor_index) {
+    auto& motor = motors[motor_index];
+    const bool ankle = motor.name.find("ankle_motor") != std::string::npos;
+    if (ankle) {
+      motor.preview_position = motor.last_position;
+      motor.preview_velocity = 0.0;
+      motor.preview_kp = 0.0;
+      motor.preview_kd = 0.0;
+      motor.preview_feedforward_torque = 0.0;
+      for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+        if (kinematics.joint_names[joint].find("ankle_") != std::string::npos) {
+          motor.preview_feedforward_torque +=
+              kinematics.motor_to_joint[joint][motor_index] * joint_torque[joint];
+        }
+      }
+      motor.preview_initialized = true;
+    } else if (update_other_motors) {
+      motor.preview_position = desired_motor_position[motor_index];
+      motor.preview_velocity = desired_motor_velocity[motor_index];
+      motor.preview_kp = 0.0;
+      motor.preview_kd = 0.0;
+      motor.preview_feedforward_torque = 0.0;
+      for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+        const double coefficient = kinematics.motor_to_joint[joint][motor_index];
+        motor.preview_kp += ipc.latest_target.kp[joint] * coefficient * coefficient;
+        motor.preview_kd += ipc.latest_target.kd[joint] * coefficient * coefficient;
+        motor.preview_feedforward_torque +=
+            coefficient * ipc.latest_target.feedforward_torque_nm[joint];
+      }
+      for (std::size_t other = 0; other < kJointCount; ++other) {
+        if (other == motor_index) continue;
+        double coupled_kp = 0.0;
+        double coupled_kd = 0.0;
+        for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+          const double left = kinematics.motor_to_joint[joint][motor_index];
+          const double right = kinematics.motor_to_joint[joint][other];
+          coupled_kp += ipc.latest_target.kp[joint] * left * right;
+          coupled_kd += ipc.latest_target.kd[joint] * left * right;
+        }
+        motor.preview_feedforward_torque +=
+            coupled_kp * (desired_motor_position[other] - motors[other].last_position) +
+            coupled_kd * (desired_motor_velocity[other] - motors[other].last_velocity);
+      }
+      motor.preview_initialized = true;
+    }
+    if (!motor.preview_initialized) continue;
+    const double estimated_torque = motor.preview_kp *
+            (motor.preview_position - motor.last_position) +
+        motor.preview_kd * (motor.preview_velocity - motor.last_velocity) +
+        motor.preview_feedforward_torque;
+    constexpr double tolerance = 1.0e-9;
+    if (motor.preview_position < motor.soft_position_min - tolerance ||
+        motor.preview_position > motor.soft_position_max + tolerance ||
+        motor.preview_position < motor.hard_position_min - tolerance ||
+        motor.preview_position > motor.hard_position_max + tolerance ||
+        motor.preview_position < motor.position_min - tolerance ||
+        motor.preview_position > motor.position_max + tolerance ||
+        std::abs(motor.preview_velocity) > motor.deployment_velocity_max + tolerance ||
+        motor.preview_kp < 0.0 || motor.preview_kp > 500.0 + tolerance ||
+        motor.preview_kd < 0.0 || motor.preview_kd > 3.0 + tolerance ||
+        std::abs(motor.preview_feedforward_torque) >
+            std::min(std::abs(motor.torque_min), motor.torque_max) + tolerance ||
+        std::abs(estimated_torque) >
+            std::min(std::abs(motor.torque_min), motor.torque_max) + tolerance ||
+        std::abs(estimated_torque) > motor.mechanical_peak_torque + tolerance) {
+      throw std::runtime_error("final motor command preview invariant failed for " + motor.name);
+    }
+    motor.preview_maximum_abs_position =
+        std::max(motor.preview_maximum_abs_position, std::abs(motor.preview_position));
+    motor.preview_maximum_abs_velocity =
+        std::max(motor.preview_maximum_abs_velocity, std::abs(motor.preview_velocity));
+    motor.preview_maximum_kp = std::max(motor.preview_maximum_kp, motor.preview_kp);
+    motor.preview_maximum_kd = std::max(motor.preview_maximum_kd, motor.preview_kd);
+    motor.preview_maximum_abs_feedforward_torque = std::max(
+        motor.preview_maximum_abs_feedforward_torque,
+        std::abs(motor.preview_feedforward_torque));
+    motor.preview_maximum_abs_estimated_torque = std::max(
+        motor.preview_maximum_abs_estimated_torque, std::abs(estimated_torque));
+  }
+  ++ipc.motor_preview_count;
 }
 
 void send_poll(Socket& socket, Motor& motor) {
@@ -592,11 +839,13 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
   std::ostringstream coverage_values;
   std::ostringstream mos_temperatures;
   std::ostringstream rotor_temperatures;
+  std::ostringstream preview_torque;
   tx_counts << "  \"tx_count_by_motor\": {\n";
   rx_counts << "  \"rx_count_by_motor\": {\n";
   coverage_values << "  \"sample_coverage_by_motor\": {\n";
   mos_temperatures << "  \"maximum_mos_temperature_c_by_motor\": {\n";
   rotor_temperatures << "  \"maximum_rotor_temperature_c_by_motor\": {\n";
+  preview_torque << "  \"preview_maximum_abs_estimated_torque_nm_by_motor\": {\n";
   for (std::size_t i = 0; i < motors.size(); ++i) {
     const auto& motor = motors[i];
     const double coverage = motor.tx_count > 0
@@ -611,13 +860,32 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
                      << motor.maximum_mos_temperature << suffix;
     rotor_temperatures << "    \"" << motor.name << "\": "
                        << motor.maximum_rotor_temperature << suffix;
+    preview_torque << "    \"" << motor.name << "\": "
+                   << motor.preview_maximum_abs_estimated_torque << suffix;
   }
   tx_counts << "  },\n";
   rx_counts << "  },\n";
   coverage_values << "  },\n";
   mos_temperatures << "  },\n";
   rotor_temperatures << "  },\n";
+  preview_torque << "  },\n";
   const bool ipc_enabled = ipc != nullptr;
+  double preview_position_max = 0.0;
+  double preview_velocity_max = 0.0;
+  double preview_kp_max = 0.0;
+  double preview_kd_max = 0.0;
+  double preview_feedforward_max = 0.0;
+  double preview_estimated_torque_max = 0.0;
+  for (const auto& motor : motors) {
+    preview_position_max = std::max(preview_position_max, motor.preview_maximum_abs_position);
+    preview_velocity_max = std::max(preview_velocity_max, motor.preview_maximum_abs_velocity);
+    preview_kp_max = std::max(preview_kp_max, motor.preview_maximum_kp);
+    preview_kd_max = std::max(preview_kd_max, motor.preview_maximum_kd);
+    preview_feedforward_max = std::max(
+        preview_feedforward_max, motor.preview_maximum_abs_feedforward_torque);
+    preview_estimated_torque_max = std::max(
+        preview_estimated_torque_max, motor.preview_maximum_abs_estimated_torque);
+  }
   const double target_coverage = ipc_enabled && ipc->state_sequence > 0
       ? static_cast<double>(ipc->target_count) / static_cast<double>(ipc->state_sequence)
       : 0.0;
@@ -626,7 +894,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       : 0.0;
   const bool ipc_passed = !ipc_enabled ||
       (ipc->state_sequence > 0 && target_coverage >= 0.90 &&
-       ipc->last_target_ns > 0 && final_target_age_ms <= 100.0);
+       ipc->last_target_ns > 0 && final_target_age_ms <= 100.0 &&
+       ipc->motor_preview_count > 0);
   const bool passed = deadline_misses == 0 && p99 <= 0.5 && maximum <= 2.0 &&
       coverage_passed && ipc_passed;
   std::ostringstream out;
@@ -650,6 +919,18 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << (ipc_enabled ? ipc->maximum_target_age_ms : 0.0) << ",\n"
       << "  \"policy_ipc_final_target_age_ms\": " << final_target_age_ms << ",\n"
       << "  \"policy_ipc_passed\": " << (ipc_passed ? "true" : "false") << ",\n"
+      << "  \"final_motor_command_preview_enabled\": "
+      << (ipc_enabled ? "true" : "false") << ",\n"
+      << "  \"final_motor_command_preview_count\": "
+      << (ipc_enabled ? ipc->motor_preview_count : 0) << ",\n"
+      << "  \"preview_maximum_abs_position_rad\": " << preview_position_max << ",\n"
+      << "  \"preview_maximum_abs_velocity_rad_s\": " << preview_velocity_max << ",\n"
+      << "  \"preview_maximum_embedded_kp\": " << preview_kp_max << ",\n"
+      << "  \"preview_maximum_embedded_kd\": " << preview_kd_max << ",\n"
+      << "  \"preview_maximum_abs_feedforward_torque_nm\": "
+      << preview_feedforward_max << ",\n"
+      << "  \"preview_maximum_abs_estimated_torque_nm\": "
+      << preview_estimated_torque_max << ",\n"
       << "  \"protected_target_envelope_enabled\": "
       << (protected_target_envelope_enabled ? "true" : "false") << ",\n"
       << "  \"nonzero_gain_or_torque_tx_attempts\": 0,\n"
@@ -660,6 +941,7 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << coverage_values.str()
       << mos_temperatures.str()
       << rotor_temperatures.str()
+      << preview_torque.str()
       << "  \"coverage_passed\": " << (coverage_passed ? "true" : "false") << ",\n"
       << "  \"passed\": " << (passed ? "true" : "false") << "\n}\n";
   return out.str();
@@ -676,9 +958,17 @@ int main(int argc, char** argv) {
     const auto joint_safety = options.joint_safety_config.empty()
         ? std::vector<JointSafety>{}
         : load_joint_safety(options.joint_safety_config);
+    const auto kinematics = options.kinematics_config.empty()
+        ? NativeKinematics{}
+        : load_kinematics(options.kinematics_config, motors);
     if (!joint_safety.empty() &&
         ordered_joint_name_hash(joint_safety) != options.policy_joint_hash) {
       throw std::runtime_error("native joint safety order/hash mismatch");
+    }
+    if (!options.kinematics_config.empty()) {
+      if (ordered_joint_name_hash(kinematics.joint_names) != options.policy_joint_hash) {
+        throw std::runtime_error("native kinematics joint order/hash mismatch");
+      }
     }
     std::map<std::string, std::size_t> socket_index;
     for (const auto& motor : motors) {
@@ -765,6 +1055,10 @@ int main(int argc, char** argv) {
       }
       if (ipc.client_fd >= 0) {
         drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
+        if (slot % 4 == 0 &&
+            std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
+          preview_final_motor_commands(motors, ipc, kinematics);
+        }
         if (slot % 40 == 39 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
           send_state_packet(ipc, motors, motor_hash, monotonic_ns());
