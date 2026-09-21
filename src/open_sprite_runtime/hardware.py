@@ -13,6 +13,64 @@ import numpy as np
 DAMIAO_PROJECT_MAX_EMBEDDED_KD = 3.0
 
 
+# Manufacturer output-side specifications. Protocol PMAX/VMAX/TMAX and the
+# lower 38 V deployment envelopes remain separate per-motor records.
+DAMIAO_MODEL_SPECS = {
+    "DM-J4340P-2EC V1.1 (48V)": {
+        "rated_torque_nm": 14.0,
+        "peak_torque_nm": 40.0,
+        "rated_speed_rad_s": 36.0 * 2.0 * math.pi / 60.0,
+        "maximum_no_load_speed_rad_s_at_48v": 112.0 * 2.0 * math.pi / 60.0,
+        "rated_phase_current_a": 4.11,
+        "rated_supply_current_a": 1.8,
+        "peak_phase_current_a": 19.85,
+        "peak_supply_current_a": 11.2,
+        "recommended_motor_temperature_limit_c": 100.0,
+        "drive_shutdown_temperature_c": 120.0,
+        "source_document": "DM-J4340P-2EC V1.1 User Manual V1.1 2026-04-09",
+    },
+    "DM-J4310P-2EC (48V)": {
+        "rated_torque_nm": 3.5,
+        "peak_torque_nm": 12.5,
+        "rated_speed_rad_s": 120.0 * 2.0 * math.pi / 60.0,
+        "maximum_no_load_speed_rad_s_at_48v": 450.0 * 2.0 * math.pi / 60.0,
+        "rated_phase_current_a": 4.8,
+        "rated_supply_current_a": 1.6,
+        "peak_phase_current_a": 20.0,
+        "peak_supply_current_a": 12.8,
+        "recommended_motor_temperature_limit_c": 100.0,
+        "drive_shutdown_temperature_c": 120.0,
+        "source_document": "DM-J4310P-2EC User Manual V1.1",
+    },
+    "DM-J3507-2EC (48V)": {
+        "rated_torque_nm": 0.8,
+        "peak_torque_nm": 3.0,
+        "rated_speed_rad_s": 150.0 * 2.0 * math.pi / 60.0,
+        "maximum_no_load_speed_rad_s_at_48v": 910.0 * 2.0 * math.pi / 60.0,
+        "rated_phase_current_a": 3.0,
+        "rated_supply_current_a": 0.6,
+        "peak_phase_current_a": 8.3,
+        "peak_supply_current_a": 2.0,
+        "recommended_motor_temperature_limit_c": 100.0,
+        "drive_shutdown_temperature_c": 120.0,
+        "source_document": "DM-J3507-2EC Gear Motor User Manual V1.1 2026-04-16",
+    },
+    "DM-J6248P-2EC": {
+        "rated_torque_nm": 30.0,
+        "peak_torque_nm": 97.0,
+        "rated_speed_rad_s": 40.0 * 2.0 * math.pi / 60.0,
+        "maximum_no_load_speed_rad_s_at_48v": 60.0 * 2.0 * math.pi / 60.0,
+        "rated_phase_current_a": 11.3,
+        "rated_supply_current_a": 3.7,
+        "peak_phase_current_a": 38.7,
+        "peak_supply_current_a": 8.0,
+        "recommended_motor_temperature_limit_c": 100.0,
+        "drive_shutdown_temperature_c": 120.0,
+        "source_document": "DM-J6248P-2EC Gear Motor User Manual V1.1 2026-04-13",
+    },
+}
+
+
 ANKLE_PAIRS = {
     "left": ("left_ankle_pitch_joint", "left_ankle_roll_joint"),
     "right": ("right_ankle_pitch_joint", "right_ankle_roll_joint"),
@@ -370,6 +428,31 @@ def _close(value: Any, expected: float, tolerance: float = 1.0e-6) -> bool:
         return False
 
 
+def _validate_motor_model_specs(hardware: dict[str, Any], errors: list[str]) -> None:
+    specs = hardware.get("motor_model_specs")
+    if not isinstance(specs, dict):
+        errors.append("motor_model_specs is missing")
+        return
+    if set(specs) != set(DAMIAO_MODEL_SPECS):
+        errors.append("motor_model_specs must exactly cover the four installed models")
+        return
+    for model, expected in DAMIAO_MODEL_SPECS.items():
+        actual = specs.get(model)
+        if not isinstance(actual, dict):
+            errors.append(f"motor_model_specs.{model} must be an object")
+            continue
+        if set(actual) != set(expected):
+            errors.append(f"motor_model_specs.{model} fields do not match the frozen schema")
+            continue
+        for field, expected_value in expected.items():
+            actual_value = actual.get(field)
+            if isinstance(expected_value, str):
+                if actual_value != expected_value:
+                    errors.append(f"motor_model_specs.{model}.{field} source mismatch")
+            elif not _close(actual_value, expected_value):
+                errors.append(f"motor_model_specs.{model}.{field} value mismatch")
+
+
 def _validate_known_motor_profile(
     label: str,
     record: dict[str, Any],
@@ -431,6 +514,7 @@ def validate_hardware_inventory(
         errors.append("frozen policy contract must contain 31 unique joints")
 
     _validate_can_adapter(hardware, errors)
+    _validate_motor_model_specs(hardware, errors)
 
     controller = hardware.get("controller")
     if not isinstance(controller, dict):
@@ -738,6 +822,9 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
     return {
         "schema": "sprite0825_hardware_contract_v3",
         "configured": False,
+        "motor_model_specs": {
+            model: dict(values) for model, values in DAMIAO_MODEL_SPECS.items()
+        },
         "controller": {
             "candidate": "jetson_orin_nano_or_raspberry_pi_5",
             "usb_canfd_channels": 4,

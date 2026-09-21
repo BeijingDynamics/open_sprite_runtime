@@ -1,6 +1,60 @@
 {
   "schema": "sprite0825_hardware_contract_v3",
   "configured": false,
+  "motor_model_specs": {
+    "DM-J4340P-2EC V1.1 (48V)": {
+      "rated_torque_nm": 14.0,
+      "peak_torque_nm": 40.0,
+      "rated_speed_rad_s": 3.7699111843077517,
+      "maximum_no_load_speed_rad_s_at_48v": 11.728612573401895,
+      "rated_phase_current_a": 4.11,
+      "rated_supply_current_a": 1.8,
+      "peak_phase_current_a": 19.85,
+      "peak_supply_current_a": 11.2,
+      "recommended_motor_temperature_limit_c": 100.0,
+      "drive_shutdown_temperature_c": 120.0,
+      "source_document": "DM-J4340P-2EC V1.1 User Manual V1.1 2026-04-09"
+    },
+    "DM-J4310P-2EC (48V)": {
+      "rated_torque_nm": 3.5,
+      "peak_torque_nm": 12.5,
+      "rated_speed_rad_s": 12.566370614359172,
+      "maximum_no_load_speed_rad_s_at_48v": 47.12388980384689,
+      "rated_phase_current_a": 4.8,
+      "rated_supply_current_a": 1.6,
+      "peak_phase_current_a": 20.0,
+      "peak_supply_current_a": 12.8,
+      "recommended_motor_temperature_limit_c": 100.0,
+      "drive_shutdown_temperature_c": 120.0,
+      "source_document": "DM-J4310P-2EC User Manual V1.1"
+    },
+    "DM-J3507-2EC (48V)": {
+      "rated_torque_nm": 0.8,
+      "peak_torque_nm": 3.0,
+      "rated_speed_rad_s": 15.707963267948966,
+      "maximum_no_load_speed_rad_s_at_48v": 95.29497716289085,
+      "rated_phase_current_a": 3.0,
+      "rated_supply_current_a": 0.6,
+      "peak_phase_current_a": 8.3,
+      "peak_supply_current_a": 2.0,
+      "recommended_motor_temperature_limit_c": 100.0,
+      "drive_shutdown_temperature_c": 120.0,
+      "source_document": "DM-J3507-2EC Gear Motor User Manual V1.1 2026-04-16"
+    },
+    "DM-J6248P-2EC": {
+      "rated_torque_nm": 30.0,
+      "peak_torque_nm": 97.0,
+      "rated_speed_rad_s": 4.1887902047863905,
+      "maximum_no_load_speed_rad_s_at_48v": 6.283185307179586,
+      "rated_phase_current_a": 11.3,
+      "rated_supply_current_a": 3.7,
+      "peak_phase_current_a": 38.7,
+      "peak_supply_current_a": 8.0,
+      "recommended_motor_temperature_limit_c": 100.0,
+      "drive_shutdown_temperature_c": 120.0,
+      "source_document": "DM-J6248P-2EC Gear Motor User Manual V1.1 2026-04-13"
+    }
+  },
   "controller": {
     "candidate": "jetson_orin_nano_or_raspberry_pi_5",
     "usb_canfd_channels": 4,

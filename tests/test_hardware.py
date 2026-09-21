@@ -1,6 +1,8 @@
 import copy
 import unittest
 
+import numpy as np
+
 from open_sprite_runtime.damiao import (
     DamiaoMitCommand,
     DamiaoMitState,
@@ -10,6 +12,7 @@ from open_sprite_runtime.hardware import (
     ANKLE_PAIRS,
     CONFIRMED_CAN_ENDPOINTS,
     CONFIRMED_MOTOR_MODELS,
+    DAMIAO_MODEL_SPECS,
     DIFFERENTIAL_JOINTS,
     DIFFERENTIAL_PAIRS,
     make_hardware_template,
@@ -101,6 +104,7 @@ def complete_hardware() -> dict:
         row["master_id"] = can_id + 0x10
     return {
         "configured": True,
+        "motor_model_specs": copy.deepcopy(DAMIAO_MODEL_SPECS),
         "controller": {
             "candidate": "jetson_orin_nano",
             "usb_canfd_channels": 4,
@@ -220,6 +224,16 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertFalse(template["configured"])
         self.assertEqual(template["can_adapter"]["sdk_version"], "1.4.2")
         self.assertEqual(template["controller"]["damiao_embedded_kd_max"], 3.0)
+        specs = template["motor_model_specs"]
+        self.assertEqual(set(specs), {record["model"] for record in records.values()})
+        self.assertAlmostEqual(
+            specs["DM-J3507-2EC (48V)"]["rated_speed_rad_s"],
+            150.0 * 2.0 * np.pi / 60.0,
+        )
+        self.assertAlmostEqual(
+            specs["DM-J6248P-2EC"]["maximum_no_load_speed_rad_s_at_48v"],
+            2.0 * np.pi,
+        )
         self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
         self.assertEqual(records["waist_yaw_motor"]["peak_torque_nm"], 40.0)
@@ -243,6 +257,15 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertFalse(report.missing_policy_joints)
         self.assertLess(len(report.errors), 80)
+
+    def test_model_spec_tampering_is_rejected(self) -> None:
+        hardware = complete_hardware()
+        hardware["motor_model_specs"]["DM-J3507-2EC (48V)"][
+            "peak_torque_nm"
+        ] = 30.0
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(any("peak_torque_nm" in error for error in report.errors))
 
     def test_complete_inventory_passes(self) -> None:
         report = validate_hardware_inventory(complete_hardware(), JOINTS)
