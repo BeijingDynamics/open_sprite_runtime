@@ -366,3 +366,64 @@ class SocketCanZeroGainPoller:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+class SocketCanSetZeroWriter:
+    """Capability-restricted CAN-FD writer for the exact Damiao set-zero frame."""
+
+    SET_ZERO_PAYLOAD = bytes((0xFF,) * 7 + (0xFE,))
+
+    def __init__(self, interface: str, raw_socket: Any, allowed_can_ids: Iterable[int]):
+        self.interface = interface
+        self._socket = raw_socket
+        self._allowed_can_ids = frozenset(allowed_can_ids)
+        if not self._allowed_can_ids:
+            raise ValueError("at least one set-zero CAN ID must be allowed")
+        if any(not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF for can_id in self._allowed_can_ids):
+            raise ValueError("set-zero allowlist requires 11-bit standard CAN IDs")
+        self.hardware_tx_attempts = 0
+
+    @classmethod
+    def open(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        allowed_can_ids: Iterable[int],
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanSetZeroWriter":
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            raw_socket.bind((interface,))
+            return cls(interface, raw_socket, allowed_can_ids)
+        except BaseException:
+            raw_socket.close()
+            raise
+
+    def send_set_zero(self, can_id: int) -> None:
+        if can_id not in self._allowed_can_ids:
+            raise ValueError(f"CAN ID {can_id:#x} is not in the set-zero allowlist")
+        frame = CANFD_FRAME.pack(
+            can_id,
+            8,
+            0x01,
+            0,
+            0,
+            self.SET_ZERO_PAYLOAD.ljust(64, b"\0"),
+        )
+        sent = self._socket.send(frame)
+        self.hardware_tx_attempts += 1
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def __enter__(self) -> "SocketCanSetZeroWriter":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()

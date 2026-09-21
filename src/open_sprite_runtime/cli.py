@@ -45,6 +45,7 @@ from .safety import (
 )
 from .socketcan import (
     SocketCanReceiver,
+    SocketCanSetZeroWriter,
     SocketCanZeroGainPoller,
     audit_socketcan_active_fd_snapshot,
     audit_socketcan_rx_snapshot,
@@ -932,6 +933,107 @@ def full_body_shadow_probe(args: argparse.Namespace) -> None:
         raise SystemExit("full-body shadow probe failed")
 
 
+def damiao_set_head_zero(args: argparse.Namespace) -> None:
+    confirmation = "SET_HEAD_DIFFERENTIAL_ZERO_07_08"
+    if args.acknowledge_hardware_tx != confirmation:
+        raise SystemExit(
+            f"refusing persistent zero write: pass --acknowledge-hardware-tx {confirmation}"
+        )
+    if not args.head_mechanism_positioned_at_zero:
+        raise SystemExit("--head-mechanism-positioned-at-zero is required")
+    if not args.all_motors_disabled_confirmed:
+        raise SystemExit("--all-motors-disabled-confirmed is required")
+
+    hardware = load_json(args.hardware_config)
+    endpoints = endpoints_from_hardware_config(hardware)
+    by_name = {item.motor_name: item for item in endpoints}
+    names = ("head_motor_a", "head_motor_b")
+    selected = tuple(by_name[name] for name in names)
+    expected = {
+        "head_motor_a": ("kcan2", 0x07, 0x17),
+        "head_motor_b": ("kcan2", 0x08, 0x18),
+    }
+    for endpoint in selected:
+        actual = (endpoint.interface, endpoint.can_id, endpoint.master_id)
+        if actual != expected[endpoint.motor_name]:
+            raise SystemExit(
+                f"refusing zero write: {endpoint.motor_name} endpoint {actual} "
+                f"does not match {expected[endpoint.motor_name]}"
+            )
+
+    preflight = audit_socketcan_active_fd_snapshot(
+        load_json(args.snapshot),
+        "kcan2",
+        arbitration_bitrate=1_000_000,
+        data_bitrate=5_000_000,
+    )
+    if not preflight.passed:
+        raise SystemExit("kcan2 preflight failed: " + "; ".join(preflight.errors))
+
+    def probe(endpoint):
+        with SocketCanZeroGainPoller.open("kcan2", preflight) as poller:
+            return collect_zero_gain_position_echo(
+                poller,
+                endpoint,
+                endpoints,
+                args.probe_duration,
+                args.probe_rate_hz,
+                feedback_timeout_s=args.feedback_timeout,
+            )
+
+    result = {
+        "mode": "persistent_head_differential_motor_zero_write",
+        "interface": "kcan2",
+        "set_zero_payload_hex": SocketCanSetZeroWriter.SET_ZERO_PAYLOAD.hex(" "),
+        "automatic_enable_attempts": 0,
+        "automatic_mode_switch_attempts": 0,
+        "motors": {},
+        "errors": [],
+    }
+    for endpoint in selected:
+        before = probe(endpoint)
+        if not before.passed or before.status_codes != (0,):
+            raise SystemExit(
+                f"refusing zero write: {endpoint.motor_name} did not return disabled feedback"
+            )
+        with SocketCanSetZeroWriter.open(
+            "kcan2", preflight, (endpoint.can_id,)
+        ) as writer:
+            writer.send_set_zero(endpoint.can_id)
+            set_zero_tx_count = writer.hardware_tx_attempts
+        time.sleep(args.settle_time)
+        after = probe(endpoint)
+        after_position = after.last_position_rad
+        verified = (
+            after.passed
+            and after.status_codes == (0,)
+            and after_position is not None
+            and abs(after_position) <= args.maximum_zero_error_rad
+        )
+        result["motors"][endpoint.motor_name] = {
+            "can_id": endpoint.can_id,
+            "master_id": endpoint.master_id,
+            "before": before.to_dict(),
+            "set_zero_tx_count": set_zero_tx_count,
+            "after": after.to_dict(),
+            "maximum_zero_error_rad": args.maximum_zero_error_rad,
+            "verified": verified,
+        }
+        if not verified:
+            result["errors"].append(
+                f"{endpoint.motor_name} did not verify near zero after the persistent write"
+            )
+            break
+
+    result["passed"] = not result["errors"] and len(result["motors"]) == 2
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not result["passed"]:
+        raise SystemExit("head differential motor zero verification failed")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(required=True)
@@ -1166,6 +1268,26 @@ def main() -> None:
     )
     full_body_parser.add_argument("--acknowledge-hardware-tx")
     full_body_parser.set_defaults(handler=full_body_shadow_probe)
+    head_zero_parser = subparsers.add_parser(
+        "damiao-set-head-zero",
+        help="persistently set kcan2 Damiao IDs 0x07 and 0x08 to their current zero",
+    )
+    head_zero_parser.add_argument("--hardware-config", required=True)
+    head_zero_parser.add_argument("--snapshot", required=True)
+    head_zero_parser.add_argument("--output", required=True)
+    head_zero_parser.add_argument("--probe-duration", type=float, default=0.5)
+    head_zero_parser.add_argument("--probe-rate-hz", type=float, default=50.0)
+    head_zero_parser.add_argument("--feedback-timeout", type=float, default=0.2)
+    head_zero_parser.add_argument("--settle-time", type=float, default=0.2)
+    head_zero_parser.add_argument("--maximum-zero-error-rad", type=float, default=0.03)
+    head_zero_parser.add_argument(
+        "--head-mechanism-positioned-at-zero", action="store_true"
+    )
+    head_zero_parser.add_argument(
+        "--all-motors-disabled-confirmed", action="store_true"
+    )
+    head_zero_parser.add_argument("--acknowledge-hardware-tx")
+    head_zero_parser.set_defaults(handler=damiao_set_head_zero)
     args = parser.parse_args()
     args.handler(args)
 
