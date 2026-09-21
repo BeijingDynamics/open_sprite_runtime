@@ -42,12 +42,12 @@
     ]
   },
   "imu": {
-    "configured": false,
+    "configured": true,
     "vendor": "Yahboom",
     "model": "high_precision_9_axis",
     "transport": "usb_serial_ch340",
-    "device_path": "/dev/ttyCH341USB0",
-    "device_selection": "temporary kernel node; dedicated udev symlink still required because this CH340 exposes no unique serial",
+    "device_path": "/dev/sprite0825-imu",
+    "device_selection": "udev symlink pinned to USB VID/PID 1a86:7523 and Jetson physical topology 1-2.2",
     "usb_identity": "1a86:7523 at Jetson USB topology 1-2.2",
     "baud_rate": 115200,
     "mount_link": "pelvis",
@@ -93,7 +93,8 @@
       "reports/yahboom_imu_set_100hz.json",
       "reports/yahboom_imu_after_power_cycle_100hz.json",
       "reports/yahboom_imu_static_desk_20260920.json",
-      "reports/yahboom_imu_static_120s_20260921.json"
+      "reports/yahboom_imu_static_120s_20260921.json",
+      "reports/yahboom_imu_stable_link_verify_20260921.json"
     ]
   },
   "estop": {

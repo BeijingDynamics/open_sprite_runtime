@@ -44,7 +44,7 @@ def build_report(hardware: dict, policy_joint_names: list[str]) -> dict:
     imu_blockers = []
     if imu.get("configured") is not True:
         imu_blockers.append("imu.configured is false")
-    if not str(imu.get("device_path") or "").startswith("/dev/sprite-"):
+    if imu.get("device_path") != "/dev/sprite0825-imu":
         imu_blockers.append("dedicated stable udev symlink is not installed")
     if imu.get("measured_yaw_drift_deg_per_min") is None:
         imu_blockers.append("stationary yaw drift has not been measured")

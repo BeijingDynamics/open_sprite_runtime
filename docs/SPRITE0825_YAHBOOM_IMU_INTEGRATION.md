@@ -129,6 +129,10 @@ The rule matches USB VID/PID `1a86:7523` at physical topology `1-2.2` and
 creates `/dev/sprite0825-imu`. If the USB port changes, the script must fail
 rather than silently bind another CH340 device.
 
+The link was installed and read-only verified on 2026-09-21 at 99.75 Hz with
+zero rejected frames. Runtime configuration uses `/dev/sprite0825-imu`, not the
+ephemeral `/dev/ttyCH341USB0` node.
+
 To validate the physical mounting and live axis direction on the Jetson display,
 run the absolute-attitude MuJoCo viewer. Correct mounting displays the robot
 upright. A sensor lying flat with sensor +Z upward must not display upright. The

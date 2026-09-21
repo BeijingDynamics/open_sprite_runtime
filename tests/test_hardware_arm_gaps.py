@@ -7,7 +7,7 @@ from tools.report_hardware_arm_gaps import build_report
 class HardwareArmGapReportTests(unittest.TestCase):
     def test_complete_hardware_has_no_grouped_or_sensor_gaps(self) -> None:
         hardware = complete_hardware()
-        hardware["imu"]["device_path"] = "/dev/sprite-pelvis-imu"
+        hardware["imu"]["device_path"] = "/dev/sprite0825-imu"
         report = build_report(hardware, list(JOINTS))
         self.assertTrue(report["inventory_valid"])
         self.assertFalse(report["imu_blockers"])
