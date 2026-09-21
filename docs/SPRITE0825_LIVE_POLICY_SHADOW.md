@@ -267,3 +267,29 @@ The process-level fault suite now also injects a position outside the protected
 joint limit and a Kp above the exported 0.1-gain ceiling. Both were rejected by
 the C++ receiver with `policy IPC protected target envelope failed`, alongside
 the existing hash, sequence, timestamp, Kd, and missing-target failures.
+
+## Physical startup ramp
+
+The protected policy client now treats physical startup separately from the
+frozen policy contract's 0.04-second MuJoCo handoff. It captures the first
+measured 31-joint pose, holds that pose with zero gains, and then uses smoothstep
+to admit both the protected policy position and its Kp/Kd/feedforward values.
+The captured pose is clamped through the same reviewed joint soft limits before
+it can enter IPC.
+
+The first qualification used a one-second hold and four-second ramp:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./probe_sprite0825_native_policy_ipc_shadow_on_253.sh 10 0.1 1 4
+```
+
+On 2026-09-21 this completed 500 policy ticks and 5,000 native ticks with zero
+deadline misses, full feedback coverage on all 31 motors, no rejected IMU
+frames, and no nonzero CAN, enable, or mode-switch attempts. The ramp reached
+alpha 1.0 and limited the maximum target change between adjacent 50 Hz ticks to
+0.01881 rad. The native protected envelope accepted the complete sequence.
+
+This qualifies only the target-generation and IPC startup sequence. It does not
+authorize motor enable or nonzero gains. The next gate is a separately reviewed
+native writer with final per-motor mapping and dynamic torque-speed validation.

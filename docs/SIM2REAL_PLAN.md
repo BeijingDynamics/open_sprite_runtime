@@ -111,10 +111,13 @@ required.
   envelope in the C++ native IPC receiver. Qualify `gain_scale=0.1` for 10
   seconds under the full four-bus/IMU load and verify fail-closed rejection of
   an out-of-limit position and excessive Kp.
-- [ ] Carry only validated projected targets into a separately reviewed
-  nonzero native writer, separate the physical startup pose/ramp from the
-  frozen two-tick MuJoCo handoff, and validate the final mapped motor command
-  against its dynamic torque-speed envelope immediately before transmission.
+- [x] Separate physical startup from the frozen two-tick MuJoCo handoff. Capture
+  the measured pose, hold it for one second, then smoothstep both position and
+  the protected gain tier over four seconds. The zero-gain live shadow completed
+  this sequence with a maximum per-tick target change of 0.01881 rad.
+- [ ] Carry only validated ramped targets into a separately reviewed nonzero
+  native writer and validate the final mapped motor command against its dynamic
+  torque-speed envelope immediately before transmission.
 
 ## Gate 4: protected actuation
 

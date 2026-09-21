@@ -5,6 +5,8 @@ ROOT=/home/tony/open_sprite_runtime
 CANDIDATE=/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate
 DURATION="${1:-10}"
 GAIN_SCALE="${2:-}"
+STARTUP_HOLD_SECONDS="${3:-0}"
+STARTUP_RAMP_SECONDS="${4:-0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -40,6 +42,12 @@ if [[ -n "$GAIN_SCALE" ]]; then
     --output "$ROOT/build/native/joint_safety.tsv"
   NATIVE_SAFETY_ARGS=(--joint-safety-config "$ROOT/build/native/joint_safety.tsv")
   POLICY_SAFETY_ARGS=(--joint-limit-candidates "$JOINT_LIMITS" --gain-scale "$GAIN_SCALE")
+  if [[ "$STARTUP_HOLD_SECONDS" != "0" || "$STARTUP_RAMP_SECONDS" != "0" ]]; then
+    POLICY_SAFETY_ARGS+=(
+      --physical-startup-hold-seconds "$STARTUP_HOLD_SECONDS"
+      --physical-startup-ramp-seconds "$STARTUP_RAMP_SECONDS"
+    )
+  fi
 fi
 
 echo "NATIVE POLICY IPC SHADOW: C++ owns four CAN buses; Python owns IMU + 50Hz ONNX"
@@ -49,6 +57,7 @@ echo "The robot must remain mechanically supported and every motor disabled"
 echo "DURATION ${DURATION}s; NATIVE_REPORT $NATIVE_REPORT; POLICY_REPORT $POLICY_REPORT"
 echo "REPLAYABLE_TRACE $POLICY_TRACE"
 echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
+echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 
 "$ROOT/build/native/sprite_can_shadow" \
   --config "$ROOT/build/native/motors.tsv" \

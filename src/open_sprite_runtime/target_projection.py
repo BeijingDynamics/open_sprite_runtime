@@ -109,6 +109,13 @@ class ProtectedTargetProjector:
             feedforward_torque_nm=projected_feedforward,
         )
 
+    def project_position(self, position_rad: Any) -> np.ndarray:
+        """Clamp a measured or commanded joint pose without changing counters."""
+        position = np.asarray(position_rad, dtype=np.float64)
+        if position.shape != (31,) or not np.isfinite(position).all():
+            raise ValueError("protected position must be a finite 31-vector")
+        return np.clip(position, self.lower_rad, self.upper_rad)
+
     def report(self) -> dict[str, Any]:
         return {
             "enabled": True,

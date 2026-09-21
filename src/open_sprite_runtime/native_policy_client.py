@@ -17,6 +17,7 @@ from .contracts import PolicyContract
 from .damiao import DamiaoMitState
 from .motor_mapping import motor_map_from_hardware_config
 from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
+from .physical_startup import PhysicalStartupRamp
 from .policy_shadow import LivePolicyShadow
 from .target_projection import ProtectedTargetProjector
 from .yahboom_imu import YahboomQuaternion, YahboomRawImu, YahboomStreamDecoder
@@ -62,6 +63,15 @@ def run(args: argparse.Namespace) -> dict:
         )
     elif args.gain_scale != 1.0:
         raise ValueError("--gain-scale requires --joint-limit-candidates")
+    startup = None
+    if args.physical_startup_hold_seconds or args.physical_startup_ramp_seconds:
+        if projector is None:
+            raise ValueError("physical startup ramp requires protected target projection")
+        startup = PhysicalStartupRamp(
+            policy_hz=contract.policy_hz,
+            hold_seconds=args.physical_startup_hold_seconds,
+            ramp_seconds=args.physical_startup_ramp_seconds,
+        )
     motor_names = _native_motor_order(hardware)
     motor_hash = ordered_name_hash(motor_names)
     joint_hash = ordered_name_hash(contract.data["joint_names"])
@@ -93,6 +103,10 @@ def run(args: argparse.Namespace) -> dict:
             "projected_target_position_rad": [],
             "projected_kp": [],
             "projected_kd": [],
+            "startup_target_position_rad": [],
+            "startup_kp": [],
+            "startup_kd": [],
+            "startup_alpha": [],
         }
 
     try:
@@ -158,8 +172,17 @@ def run(args: argparse.Namespace) -> dict:
                     started_ns = time.perf_counter_ns()
                     target = shadow.infer_policy_target(state.monotonic_ns)
                     inference_ms.append((time.perf_counter_ns() - started_ns) / 1.0e6)
+                    policy_trace = shadow.last_policy_trace
+                    if policy_trace is None:
+                        raise RuntimeError("policy trace was not captured")
                     if projector is not None:
                         target = projector.project(target)
+                    projected_target = target
+                    if startup is not None:
+                        target = startup.apply(
+                            projected_target,
+                            projector.project_position(policy_trace.joint_position_rad),
+                        )
                     target_sequence += 1
                     packet = PolicyTargetPacket(
                         sequence=target_sequence,
@@ -173,9 +196,6 @@ def run(args: argparse.Namespace) -> dict:
                         feedforward_torque_nm=tuple(map(float, target.feedforward_torque_nm)),
                     )
                     if trace is not None:
-                        policy_trace = shadow.last_policy_trace
-                        if policy_trace is None:
-                            raise RuntimeError("policy trace was not captured")
                         trace["state_sequence"].append(state.sequence)
                         trace["state_monotonic_ns"].append(state.monotonic_ns)
                         trace["target_monotonic_ns"].append(packet.monotonic_ns)
@@ -192,9 +212,17 @@ def run(args: argparse.Namespace) -> dict:
                             "target_position_rad",
                         ):
                             trace[field].append(getattr(policy_trace, field))
-                        trace["projected_target_position_rad"].append(target.position_rad)
-                        trace["projected_kp"].append(target.kp)
-                        trace["projected_kd"].append(target.kd)
+                        trace["projected_target_position_rad"].append(
+                            projected_target.position_rad
+                        )
+                        trace["projected_kp"].append(projected_target.kp)
+                        trace["projected_kd"].append(projected_target.kd)
+                        trace["startup_target_position_rad"].append(target.position_rad)
+                        trace["startup_kp"].append(target.kp)
+                        trace["startup_kd"].append(target.kd)
+                        trace["startup_alpha"].append(
+                            startup.last_alpha if startup is not None else 1.0
+                        )
                     try:
                         connection.sendall(packet.pack())
                     except BrokenPipeError:
@@ -234,6 +262,9 @@ def run(args: argparse.Namespace) -> dict:
         "protected_target_projection": (
             projector.report() if projector is not None else {"enabled": False}
         ),
+        "physical_startup_ramp": (
+            startup.report() if startup is not None else {"enabled": False}
+        ),
         "trace_output": str(Path(args.trace_output).resolve()) if args.trace_output else None,
         "trace_sha256": trace_sha256,
         "trace_tick_count": len(trace["state_sequence"]) if trace is not None else 0,
@@ -267,6 +298,8 @@ def main() -> None:
     parser.add_argument("--trace-output")
     parser.add_argument("--joint-limit-candidates")
     parser.add_argument("--gain-scale", type=float, default=1.0)
+    parser.add_argument("--physical-startup-hold-seconds", type=float, default=0.0)
+    parser.add_argument("--physical-startup-ramp-seconds", type=float, default=0.0)
     args = parser.parse_args()
     report = run(args)
     print(json.dumps(report, indent=2))
