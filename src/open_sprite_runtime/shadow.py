@@ -28,7 +28,7 @@ class _Actor:
         return action
 
 
-def _load_actor(contract: PolicyContract) -> _Actor:
+def load_actor(contract: PolicyContract) -> _Actor:
     """Load ONNX when available, otherwise the contract-pinned TorchScript actor."""
     contract_dir = contract.path.parent
     try:
@@ -87,7 +87,7 @@ def replay_mujoco_trace(
         raise ValueError("sample_stride must be positive")
     contract = PolicyContract.load(contract_path)
     trace = json.loads(Path(trace_path).read_text(encoding="utf-8"))
-    actor = _load_actor(contract)
+    actor = load_actor(contract)
     max_abs = 0.0
     rms_sum = 0.0
     value_count = 0
@@ -165,7 +165,7 @@ def replay_multirate_mujoco_trace(
     supervisor = SafetySupervisor(RuntimeMode.SHADOW, limits)
 
     trace = json.loads(Path(trace_path).read_text(encoding="utf-8"))
-    actor = _load_actor(contract)
+    actor = load_actor(contract)
     handoff_seconds = float(contract.data.get("deployment_handoff_seconds", 0.0))
     rows = [row for row in trace if float(row.get("time_s", 0.0)) >= handoff_seconds]
     if not rows:

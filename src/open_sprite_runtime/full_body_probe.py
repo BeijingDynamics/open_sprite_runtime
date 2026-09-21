@@ -85,6 +85,7 @@ def collect_full_body_shadow(
     on_feedback: Callable[[DamiaoFeedback], None] | None = None,
     on_imu_packet: Callable[[YahboomPacket], None] | None = None,
     keep_running: Callable[[], bool] | None = None,
+    on_loop: Callable[[int], None] | None = None,
 ) -> FullBodyShadowReport:
     """Poll all four buses and read the IMU without enabling any motor."""
     selected = tuple(endpoints)
@@ -228,6 +229,9 @@ def collect_full_body_shadow(
                     on_feedback(feedback)
             if errors:
                 break
+
+            if on_loop is not None:
+                on_loop(time.perf_counter_ns())
 
             now = monotonic()
             stale_motors = sorted(

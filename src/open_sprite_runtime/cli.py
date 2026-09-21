@@ -36,6 +36,8 @@ from .imu_commissioning import (
     collect_static_imu_audit,
     run_mujoco_imu_viewer,
 )
+from .motor_mapping import motor_map_from_hardware_config
+from .policy_shadow import LivePolicyShadow
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -933,6 +935,154 @@ def full_body_shadow_probe(args: argparse.Namespace) -> None:
         raise SystemExit("full-body shadow probe failed")
 
 
+def live_policy_shadow_probe(args: argparse.Namespace) -> None:
+    """Run live sensor-to-policy math while retaining the zero-gain-only writer."""
+    if args.acknowledge_hardware_tx != "ZERO_GAIN_POLICY_SHADOW":
+        raise SystemExit(
+            "refusing hardware TX: pass --acknowledge-hardware-tx ZERO_GAIN_POLICY_SHADOW"
+        )
+    if not args.mit_mode_confirmed:
+        raise SystemExit("refusing hardware TX: --mit-mode-confirmed is required")
+    if not args.supported_unloaded:
+        raise SystemExit("refusing hardware TX: --supported-unloaded is required")
+    if not args.all_motors_disabled_confirmed:
+        raise SystemExit(
+            "refusing policy shadow: --all-motors-disabled-confirmed is required"
+        )
+
+    hardware = load_json(args.hardware_config)
+    interfaces = tuple(hardware.get("can_adapter", {}).get("interfaces", ()))
+    if len(interfaces) != 4:
+        raise SystemExit("hardware configuration must contain four CAN interfaces")
+    endpoints = endpoints_from_hardware_config(hardware)
+    snapshot = load_json(args.snapshot)
+    preflights = {
+        interface: audit_socketcan_active_fd_snapshot(
+            snapshot,
+            interface,
+            arbitration_bitrate=1_000_000,
+            data_bitrate=5_000_000,
+        )
+        for interface in interfaces
+    }
+    failed = {
+        interface: report.errors
+        for interface, report in preflights.items()
+        if not report.passed
+    }
+    if failed:
+        raise SystemExit(f"active CAN-FD preflight failed: {failed}")
+
+    contract = PolicyContract.load(args.contract)
+    contract.validate_for_hardware(
+        RuntimeTiming(policy_hz=50, state_hz=500, motor_internal_hz=1000)
+    )
+    mapping = motor_map_from_hardware_config(
+        hardware, contract.data["joint_names"], require_armable=False
+    )
+    shadow = LivePolicyShadow(
+        contract,
+        hardware,
+        mapping,
+        (args.vx, args.vy, args.yaw_rate),
+    )
+
+    try:
+        import serial
+    except ImportError as exc:
+        raise SystemExit("pyserial is required for the live policy shadow") from exc
+
+    if args.display:
+        os.environ["DISPLAY"] = args.display
+    print(
+        "TX_ARMED_POLICY_SHADOW "
+        f"interfaces={','.join(interfaces)} motors={len(endpoints)} "
+        f"duration={args.duration:.3f}s feedback_rate={args.rate_hz:.1f}Hz "
+        "policy=50Hz ankle_math=500Hz nonzero_control_tx=forbidden",
+        flush=True,
+    )
+    with ExitStack() as stack:
+        viewer = None
+        if args.viewer:
+            if not args.mjcf:
+                raise SystemExit("--viewer requires --mjcf")
+            from .mujoco_rx_viewer import MujocoRxViewer
+
+            viewer = stack.enter_context(
+                MujocoRxViewer(
+                    hardware,
+                    contract.data["joint_names"],
+                    args.mjcf,
+                    root_height_m=args.root_height,
+                    refresh_hz=args.viewer_hz,
+                )
+            )
+        pollers = {
+            interface: stack.enter_context(
+                SocketCanZeroGainPoller.open(interface, preflights[interface])
+            )
+            for interface in interfaces
+        }
+        imu_port = stack.enter_context(
+            serial.Serial(
+                port=args.imu_device,
+                baudrate=args.imu_baud,
+                timeout=0,
+                write_timeout=0,
+                exclusive=True,
+            )
+        )
+        imu_port.dtr = False
+        imu_port.rts = False
+
+        def feedback_callback(feedback) -> None:
+            shadow.update_feedback(feedback)
+            if viewer is not None:
+                viewer.update(feedback)
+
+        def imu_callback(packet) -> None:
+            shadow.update_imu(packet)
+            if viewer is not None and isinstance(packet, YahboomQuaternion):
+                world_from_body = body_orientation_matrix(
+                    packet.wxyz, ImuMount.sprite0825_rear_pelvis()
+                )
+                viewer.update_body_orientation_wxyz(
+                    tuple(matrix_to_quaternion_wxyz(world_from_body))
+                )
+
+        sensor_report = collect_full_body_shadow(
+            pollers,
+            endpoints,
+            imu_port,
+            args.duration,
+            args.rate_hz,
+            feedback_timeout_s=args.feedback_timeout,
+            minimum_motor_sample_coverage=args.minimum_sample_coverage,
+            minimum_imu_rate_hz=args.minimum_imu_rate_hz,
+            on_feedback=feedback_callback,
+            on_imu_packet=imu_callback,
+            keep_running=None if viewer is None else viewer.is_running,
+            on_loop=shadow.tick,
+        )
+
+    policy_report = shadow.report()
+    result = {
+        "mode": "live_policy_shadow_zero_gain_feedback_only_no_actuation",
+        "preflight": {
+            interface: report.to_dict() for interface, report in preflights.items()
+        },
+        "sensor_transport": sensor_report.to_dict(),
+        "policy_shadow": policy_report.to_dict(),
+        "passed": sensor_report.passed and policy_report.passed,
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not result["passed"]:
+        raise SystemExit("live policy shadow probe failed")
+
+
 def damiao_set_head_zero(args: argparse.Namespace) -> None:
     confirmation = "SET_HEAD_DIFFERENTIAL_ZERO_07_08"
     if args.acknowledge_hardware_tx != confirmation:
@@ -1268,6 +1418,38 @@ def main() -> None:
     )
     full_body_parser.add_argument("--acknowledge-hardware-tx")
     full_body_parser.set_defaults(handler=full_body_shadow_probe)
+    policy_shadow_parser = subparsers.add_parser(
+        "live-policy-shadow-probe",
+        help="run the frozen policy from live motor/IMU state without actuator commands",
+    )
+    policy_shadow_parser.add_argument("--hardware-config", required=True)
+    policy_shadow_parser.add_argument("--snapshot", required=True)
+    policy_shadow_parser.add_argument("--contract", required=True)
+    policy_shadow_parser.add_argument("--mjcf")
+    policy_shadow_parser.add_argument("--output", required=True)
+    policy_shadow_parser.add_argument("--imu-device", default="/dev/ttyCH341USB0")
+    policy_shadow_parser.add_argument("--imu-baud", type=int, default=115200)
+    policy_shadow_parser.add_argument("--duration", type=float, default=10.0)
+    policy_shadow_parser.add_argument("--rate-hz", type=float, default=50.0)
+    policy_shadow_parser.add_argument("--feedback-timeout", type=float, default=0.2)
+    policy_shadow_parser.add_argument(
+        "--minimum-sample-coverage", type=float, default=0.85
+    )
+    policy_shadow_parser.add_argument("--minimum-imu-rate-hz", type=float, default=80.0)
+    policy_shadow_parser.add_argument("--vx", type=float, default=0.0)
+    policy_shadow_parser.add_argument("--vy", type=float, default=0.0)
+    policy_shadow_parser.add_argument("--yaw-rate", type=float, default=0.0)
+    policy_shadow_parser.add_argument("--viewer", action="store_true")
+    policy_shadow_parser.add_argument("--display", default=":1")
+    policy_shadow_parser.add_argument("--root-height", type=float, default=0.52)
+    policy_shadow_parser.add_argument("--viewer-hz", type=float, default=50.0)
+    policy_shadow_parser.add_argument("--mit-mode-confirmed", action="store_true")
+    policy_shadow_parser.add_argument("--supported-unloaded", action="store_true")
+    policy_shadow_parser.add_argument(
+        "--all-motors-disabled-confirmed", action="store_true"
+    )
+    policy_shadow_parser.add_argument("--acknowledge-hardware-tx")
+    policy_shadow_parser.set_defaults(handler=live_policy_shadow_probe)
     head_zero_parser = subparsers.add_parser(
         "damiao-set-head-zero",
         help="persistently set kcan2 Damiao IDs 0x07 and 0x08 to their current zero",
