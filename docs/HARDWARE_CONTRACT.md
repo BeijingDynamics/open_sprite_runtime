@@ -82,6 +82,25 @@ frames: J4340P reported `12.5/20/28`, J4310P `12.5/50/10`, J3507
 ranges are preserved separately from each model's rated and peak mechanical
 torque.
 
+A second, independently capability-limited reader covers only RIDs 2, 3, 6,
+13, 14, and 36 (`OT_Value`, `OC_Value`, `MAX_SPD`, `hw_ver`, `sw_ver`, and
+`sub_ver`):
+
+```bash
+cd /home/tony/open_sprite_runtime
+./read_sprite0825_damiao_commissioning_registers_on_253.sh
+```
+
+The 2026-09-21 run completed 186/186 reads with no discarded frames and zero
+write, enable, mode-switch, or MIT-control attempts. Every drive reported
+`OT_Value=100` and `OC_Value=0.8`; `MAX_SPD` was 600 for J4340P/J4310P/J6248P
+and 300 for J3507. These are drive configuration values, not yet proven SI
+units: `OC_Value` is not treated as amperes and `MAX_SPD` is not treated as
+rad/s. Several version registers were zero or otherwise inconsistent, so none
+of these values are automatically copied into firmware, nameplate-current,
+speed, or software thermal-limit fields. The raw report is retained as evidence
+until the matching vendor register semantics are confirmed.
+
 Run `sprite-runtime inspect` after filling the hardware file. The
 `hardware_inventory` report is fail-closed: it requires 25 one-to-one joint
 motors plus two coupled motors for each left ankle, right ankle, and head

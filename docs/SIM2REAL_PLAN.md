@@ -29,6 +29,9 @@
 - [x] Read PMAX/VMAX/TMAX registers from all 31 disabled motors using 93
   capability-limited read-only transactions with no write, enable, or mode
   switch attempts, then pin the evidence in the hardware contract.
+- [x] Read OT/OC/MAX_SPD and three version registers from all 31 disabled
+  motors using 186 capability-limited read-only transactions. Preserve the
+  evidence without mislabelling register values as SI nameplate limits.
 - Measure four-channel USB-CAN FD latency and sustained bus utilization.
 - [x] Establish a hardware emergency-stop chain independent of the SBC process:
   a safety operator controls the regulated supply's independent motor-bus switch.

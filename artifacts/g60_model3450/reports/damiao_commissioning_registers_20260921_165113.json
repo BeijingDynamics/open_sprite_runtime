@@ -1,0 +1,268 @@
+{
+  "mode": "read_only_damiao_commissioning_register_audit",
+  "allowed_register_ids": [
+    2,
+    3,
+    6,
+    13,
+    14,
+    36
+  ],
+  "write_register_attempts": 0,
+  "enable_attempts": 0,
+  "mode_switch_attempts": 0,
+  "mit_control_attempts": 0,
+  "tx_count": 186,
+  "discarded_timestamp_frames": 0,
+  "motors": {
+    "left_hip_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_hip_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "waist_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942748215,
+      "sub_ver": 57
+    },
+    "left_hip_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_hip_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "waist_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_hip_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_hip_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_shoulder_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 808595767,
+      "sub_ver": 825241648
+    },
+    "right_shoulder_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 808595767,
+      "sub_ver": 825241648
+    },
+    "left_knee_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_knee_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 551,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_shoulder_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 808595767,
+      "sub_ver": 825241648
+    },
+    "right_shoulder_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 808595767,
+      "sub_ver": 825241648
+    },
+    "head_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "left_shoulder_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_shoulder_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_elbow_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_elbow_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_wrist_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_wrist_yaw_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 0,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_wrist_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "right_wrist_pitch_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 0,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "left_wrist_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "right_wrist_roll_motor": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 0,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "left_ankle_motor_a": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "left_ankle_motor_b": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_ankle_motor_a": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "right_ankle_motor_b": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 600.0,
+      "hw_ver": 1445998644,
+      "sw_ver": 942747959,
+      "sub_ver": 57
+    },
+    "head_motor_a": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    },
+    "head_motor_b": {
+      "OT_Value": 100.0,
+      "OC_Value": 0.800000011920929,
+      "MAX_SPD": 300.0,
+      "hw_ver": 1445998643,
+      "sw_ver": 925971766,
+      "sub_ver": 52
+    }
+  },
+  "passed": true
+}

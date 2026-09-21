@@ -456,6 +456,37 @@ class SocketCanDamiaoRegisterReader:
         self.close()
 
 
+class SocketCanDamiaoCommissioningRegisterReader(SocketCanDamiaoRegisterReader):
+    """CAN-FD+BRS writer restricted to six read-only commissioning registers."""
+
+    ALLOWED_REGISTER_IDS = frozenset((2, 3, 6, 13, 14, 36))
+
+    def send_read_request(self, motor_can_id: int, register_id: int) -> None:
+        if motor_can_id not in self._allowed_motor_can_ids:
+            raise ValueError("motor CAN ID is outside the register-read allowlist")
+        if register_id not in self.ALLOWED_REGISTER_IDS:
+            raise ValueError("only OT/OC/MAX_SPD/version commissioning registers may be read")
+        data = bytes(
+            (
+                motor_can_id & 0xFF,
+                (motor_can_id >> 8) & 0xFF,
+                self.READ_OPCODE,
+                register_id,
+                0,
+                0,
+                0,
+                0,
+            )
+        )
+        frame = CANFD_FRAME.pack(
+            self.PARAMETER_CAN_ID, 8, 0x01, 0, 0, data.ljust(64, b"\0")
+        )
+        sent = self._socket.send(frame)
+        self.hardware_tx_attempts += 1
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+
 class SocketCanSetZeroWriter:
     """Capability-restricted CAN-FD writer for the exact Damiao set-zero frame."""
 
