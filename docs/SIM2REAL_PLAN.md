@@ -62,6 +62,18 @@ error and zero permitted hardware transmissions. This does not complete Gate 3: 
 motor/IMU frames, USB-CAN load, full logging, and the selected SBC are still
 required.
 
+### Native transport result (2026-09-21)
+
+- [x] Pin a native C++ absolute-time transport loop to Jetson CPU 5.
+- [x] Schedule ankle motors at 500 Hz and all other motors at 50 Hz without
+  issuing more than one frame per bus per 0.5 ms slot.
+- [x] Complete a 120-second, 31-motor, four-bus zero-gain shadow run with zero
+  deadline misses, complete expected feedback, and no new CAN errors or drops.
+- [ ] Connect the 50 Hz Python/ONNX actor to the native layer through a bounded,
+  sequence-numbered, stale-target-failing shadow interface.
+- [ ] Qualify measured-pose handoff/ramp and command envelopes before any
+  nonzero motor command is permitted.
+
 ## Gate 4: protected actuation
 
 - Single-joint unloaded tests, then whole-body zero pose in a lifting frame.

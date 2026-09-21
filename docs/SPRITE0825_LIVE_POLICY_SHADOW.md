@@ -60,3 +60,25 @@ the policy target. Several distal joints exceeded their configured MIT torque
 range in the calculated command, led by head yaw at 3.86 times its protocol
 limit. The first actuation gate therefore requires a bounded measured-pose
 handoff/ramp and command-envelope validation; direct policy enable is forbidden.
+
+## Native mixed-rate transport qualification
+
+The native C++ transport uses a 2 kHz absolute-time slot schedule pinned to
+CPU 5. Each CAN bus emits at most one frame per 0.5 ms slot. The two ankle
+motors on each leg bus occupy separate slots and each run at 500 Hz; every
+other motor runs at 50 Hz. The restricted writer can encode only position echo
+with velocity, Kp, Kd, and feedforward torque set to zero. It has no motor
+enable, disable, or mode-switch path.
+
+On 2026-09-21 the powered, mechanically supported robot completed both a
+10-second and a 120-second four-bus native shadow test. The long run completed
+60,000 state ticks with zero deadline misses, 0.060 ms P99 lateness, and
+0.525 ms maximum lateness. Each ankle motor returned 60,000 samples and every
+other motor returned 6,000 samples. All four SocketCAN interfaces remained
+ERROR-ACTIVE with zero current TX/RX error counters, and their cumulative bus
+error, drop, and bus-off counters did not change during the run.
+
+This qualifies the native timing and zero-gain transport layer only. Nonzero
+actuation remains forbidden until the measured-pose handoff, stale-target
+watchdog, command envelope, and Python-policy-to-native target interface pass
+their own shadow tests.
