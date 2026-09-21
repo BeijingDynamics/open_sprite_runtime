@@ -89,6 +89,16 @@ struct Motor {
   bool seen = false;
 };
 
+struct JointSafety {
+  std::string name;
+  double position_min = 0.0;
+  double position_max = 0.0;
+  double velocity_max = 0.0;
+  double kp_max = 0.0;
+  double kd_max = 0.0;
+  double feedforward_torque_max = 0.0;
+};
+
 struct Options {
   std::string config;
   std::string output;
@@ -97,6 +107,7 @@ struct Options {
   std::string acknowledgement;
   bool all_disabled = false;
   std::string ipc_socket;
+  std::string joint_safety_config;
   std::uint64_t policy_joint_hash = 0;
   int realtime_priority = 0;
 };
@@ -161,6 +172,19 @@ std::uint64_t ordered_name_hash(const std::vector<Motor>& motors) {
   std::uint64_t result = 0xCBF29CE484222325ULL;
   for (const auto& motor : motors) {
     for (const unsigned char byte : motor.name) {
+      result ^= byte;
+      result *= 0x100000001B3ULL;
+    }
+    result ^= 0;
+    result *= 0x100000001B3ULL;
+  }
+  return result;
+}
+
+std::uint64_t ordered_joint_name_hash(const std::vector<JointSafety>& limits) {
+  std::uint64_t result = 0xCBF29CE484222325ULL;
+  for (const auto& limit : limits) {
+    for (const unsigned char byte : limit.name) {
       result ^= byte;
       result *= 0x100000001B3ULL;
     }
@@ -236,6 +260,58 @@ std::vector<Motor> load_motors(const std::string& path) {
   return motors;
 }
 
+std::vector<JointSafety> load_joint_safety(const std::string& path) {
+  std::ifstream file(path);
+  if (!file) {
+    throw std::runtime_error("cannot open native joint safety config: " + path);
+  }
+  std::string line;
+  if (!std::getline(file, line)) {
+    throw std::runtime_error("native joint safety config is empty");
+  }
+  if (!line.empty() && line.back() == '\r') line.pop_back();
+  const std::vector<std::string> expected_header = {
+      "joint_name", "position_min_rad", "position_max_rad", "velocity_max_rad_s",
+      "kp_max", "kd_max", "feedforward_torque_max_nm"};
+  if (split(line, '\t') != expected_header) {
+    throw std::runtime_error("native joint safety config header mismatch");
+  }
+  std::vector<JointSafety> result;
+  while (std::getline(file, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.empty()) continue;
+    const auto fields = split(line, '\t');
+    if (fields.size() != expected_header.size()) {
+      throw std::runtime_error("native joint safety row has wrong field count");
+    }
+    JointSafety limit;
+    limit.name = fields[0];
+    limit.position_min = number(fields[1]);
+    limit.position_max = number(fields[2]);
+    limit.velocity_max = number(fields[3]);
+    limit.kp_max = number(fields[4]);
+    limit.kd_max = number(fields[5]);
+    limit.feedforward_torque_max = number(fields[6]);
+    if (limit.name.empty() || limit.position_min >= limit.position_max ||
+        limit.velocity_max <= 0.0 || limit.kp_max < 0.0 || limit.kd_max < 0.0 ||
+        limit.kd_max > 3.0 || limit.feedforward_torque_max < 0.0) {
+      throw std::runtime_error("native joint safety limit invariant failed");
+    }
+    result.push_back(limit);
+  }
+  if (result.size() != kJointCount) {
+    throw std::runtime_error("native joint safety config must contain 31 joints");
+  }
+  std::vector<std::string> names;
+  names.reserve(result.size());
+  for (const auto& limit : result) names.push_back(limit.name);
+  std::sort(names.begin(), names.end());
+  if (std::adjacent_find(names.begin(), names.end()) != names.end()) {
+    throw std::runtime_error("native joint safety names must be unique");
+  }
+  return result;
+}
+
 Options parse_options(int argc, char** argv) {
   Options result;
   for (int index = 1; index < argc; ++index) {
@@ -253,6 +329,7 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--acknowledge-hardware-tx") result.acknowledgement = value();
     else if (argument == "--all-motors-disabled-confirmed") result.all_disabled = true;
     else if (argument == "--ipc-socket") result.ipc_socket = value();
+    else if (argument == "--joint-safety-config") result.joint_safety_config = value();
     else if (argument == "--policy-joint-hash") result.policy_joint_hash = unsigned_number(value());
     else if (argument == "--realtime-priority") {
       result.realtime_priority = static_cast<int>(number(value()));
@@ -270,6 +347,9 @@ Options parse_options(int argc, char** argv) {
   }
   if (result.ipc_socket.empty() != (result.policy_joint_hash == 0)) {
     throw std::runtime_error("--ipc-socket and nonzero --policy-joint-hash must be provided together");
+  }
+  if (!result.joint_safety_config.empty() && result.ipc_socket.empty()) {
+    throw std::runtime_error("--joint-safety-config requires policy IPC");
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
     throw std::runtime_error("realtime priority must be in [0, 80]");
@@ -397,6 +477,7 @@ void send_state_packet(IpcSocket& ipc, const std::vector<Motor>& motors,
 }
 
 void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
+                          const std::vector<JointSafety>& joint_safety,
                           std::int64_t now_ns) {
   while (true) {
     TargetPacket packet{};
@@ -423,6 +504,20 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
       if (!std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); }) ||
           packet.kp[index] < 0.0 || packet.kd[index] < 0.0 || packet.kd[index] > 3.0) {
         throw std::runtime_error("policy IPC target numeric/gain invariant failed");
+      }
+      if (!joint_safety.empty()) {
+        constexpr double tolerance = 1.0e-9;
+        const auto& limit = joint_safety[index];
+        if (packet.position_rad[index] < limit.position_min - tolerance ||
+            packet.position_rad[index] > limit.position_max + tolerance ||
+            std::abs(packet.velocity_rad_s[index]) > limit.velocity_max + tolerance ||
+            packet.kp[index] > limit.kp_max + tolerance ||
+            packet.kd[index] > limit.kd_max + tolerance ||
+            std::abs(packet.feedforward_torque_nm[index]) >
+                limit.feedforward_torque_max + tolerance) {
+          throw std::runtime_error(
+              "policy IPC protected target envelope failed at joint " + limit.name);
+        }
       }
     }
     ipc.last_target_sequence = packet.sequence;
@@ -479,6 +574,7 @@ double percentile(std::vector<double> values, double fraction) {
 std::string json_report(const std::vector<Motor>& motors, const std::vector<double>& lateness,
                         double elapsed_s, std::size_t deadline_misses, bool memory_locked,
                         int cpu, int realtime_priority, const IpcSocket* ipc,
+                        bool protected_target_envelope_enabled,
                         std::int64_t finished_ns) {
   const double p99 = percentile(lateness, 0.99);
   const double maximum = *std::max_element(lateness.begin(), lateness.end());
@@ -536,6 +632,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << (ipc_enabled ? ipc->maximum_target_age_ms : 0.0) << ",\n"
       << "  \"policy_ipc_final_target_age_ms\": " << final_target_age_ms << ",\n"
       << "  \"policy_ipc_passed\": " << (ipc_passed ? "true" : "false") << ",\n"
+      << "  \"protected_target_envelope_enabled\": "
+      << (protected_target_envelope_enabled ? "true" : "false") << ",\n"
       << "  \"nonzero_gain_or_torque_tx_attempts\": 0,\n"
       << "  \"automatic_enable_attempts\": 0,\n"
       << "  \"automatic_mode_switch_attempts\": 0,\n"
@@ -555,6 +653,13 @@ int main(int argc, char** argv) {
   try {
     const Options options = parse_options(argc, argv);
     auto motors = load_motors(options.config);
+    const auto joint_safety = options.joint_safety_config.empty()
+        ? std::vector<JointSafety>{}
+        : load_joint_safety(options.joint_safety_config);
+    if (!joint_safety.empty() &&
+        ordered_joint_name_hash(joint_safety) != options.policy_joint_hash) {
+      throw std::runtime_error("native joint safety order/hash mismatch");
+    }
     std::map<std::string, std::size_t> socket_index;
     for (const auto& motor : motors) {
       if (socket_index.count(motor.interface) == 0) {
@@ -631,7 +736,7 @@ int main(int argc, char** argv) {
         }
       }
       if (ipc.client_fd >= 0) {
-        drain_target_packets(ipc, options.policy_joint_hash, monotonic_ns());
+        drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
         if (slot % 40 == 39 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
           send_state_packet(ipc, motors, motor_hash, monotonic_ns());
@@ -673,12 +778,13 @@ int main(int argc, char** argv) {
     }
     const std::int64_t finished_ns = monotonic_ns();
     if (ipc.client_fd >= 0) {
-      drain_target_packets(ipc, options.policy_joint_hash, finished_ns);
+      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, finished_ns);
     }
     const double elapsed_s = static_cast<double>(finished_ns - start_ns) / 1.0e9;
     const std::string report = json_report(
         motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu,
-        options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr, finished_ns);
+        options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr,
+        !joint_safety.empty(), finished_ns);
     std::cout << report;
     std::ofstream output(options.output);
     if (!output) throw std::runtime_error("cannot open report output");

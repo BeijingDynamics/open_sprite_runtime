@@ -13,7 +13,8 @@ from .native_ipc import NativeStatePacket, PolicyTargetPacket
 
 def _target(state: NativeStatePacket, joint_hash: int, mode: str) -> PolicyTargetPacket:
     zeros = tuple(np.zeros(31, dtype=np.float64))
-    kp = tuple(np.ones(31, dtype=np.float64))
+    position = list(np.zeros(31, dtype=np.float64))
+    kp = list(np.ones(31, dtype=np.float64))
     kd = list(np.ones(31, dtype=np.float64))
     sequence = 1
     timestamp = time.monotonic_ns()
@@ -26,6 +27,10 @@ def _target(state: NativeStatePacket, joint_hash: int, mode: str) -> PolicyTarge
         timestamp -= 1_000_000_000
     elif mode == "excessive_kd":
         kd[0] = 3.01
+    elif mode == "protected_position":
+        position[0] = 10.0
+    elif mode == "protected_kp":
+        kp[0] = 100.0
     else:
         raise ValueError(f"unsupported packet fault mode: {mode}")
     return PolicyTargetPacket(
@@ -33,9 +38,9 @@ def _target(state: NativeStatePacket, joint_hash: int, mode: str) -> PolicyTarge
         monotonic_ns=timestamp,
         joint_order_hash=joint_hash,
         source_state_sequence=source_sequence,
-        position_rad=zeros,
+        position_rad=tuple(position),
         velocity_rad_s=zeros,
-        kp=kp,
+        kp=tuple(kp),
         kd=tuple(kd),
         feedforward_torque_nm=zeros,
     )
@@ -48,7 +53,15 @@ def main() -> None:
     parser.add_argument(
         "--mode",
         required=True,
-        choices=("wrong_hash", "future_source", "stale_timestamp", "excessive_kd", "silence"),
+        choices=(
+            "wrong_hash",
+            "future_source",
+            "stale_timestamp",
+            "excessive_kd",
+            "protected_position",
+            "protected_kp",
+            "silence",
+        ),
     )
     args = parser.parse_args()
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection:

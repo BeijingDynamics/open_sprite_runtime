@@ -172,9 +172,10 @@ cd /home/tony/open_sprite_runtime
 
 The harness can only exercise the restricted zero-gain position-echo CAN
 writer. It deliberately injects a wrong joint-order hash, a future source-state
-sequence, a stale target timestamp, embedded `Kd=3.01`, and a client that never
-sends its first target. On 2026-09-21 all five cases were rejected by the native
-process with their exact expected invariant failure. A new initial-target
+sequence, a stale target timestamp, embedded `Kd=3.01`, a protected-envelope
+position violation, excessive protected-envelope Kp, and a client that never
+sends its first target. On 2026-09-21 all seven cases were rejected by the native
+process with their exact expected invariant failure. The initial-target
 watchdog now stops the native loop after five unanswered 50 Hz state packets;
 the existing 100 ms watchdog still covers loss after the first accepted target.
 
@@ -234,3 +235,35 @@ output was 2.02 Nm (67.2% of its 3 Nm mechanical peak); maximum ankle joint
 demands were 1.33 Nm pitch and 0.46 Nm roll. This establishes a conservative
 starting envelope for a supported single-joint/pose-hold test only. It does not
 authorize walking or prove that 0.1 gains are dynamically sufficient.
+
+## Protected IPC target boundary
+
+The deployment client now has an optional protected-target mode. It projects
+the 31 actor targets into the ordered URDF-derived joint soft limits before any
+differential mapping, then scales Kp, Kd, and feedforward torque by the selected
+commissioning gain tier. The C++ process independently loads an exported TSV
+containing the same ordered limits and gain ceilings, verifies its joint-name
+hash, and rejects any IPC packet outside that envelope. The native CAN writer
+is still the restricted zero-gain position-echo writer.
+
+Run the protected shadow with a 0.1 startup gain tier using:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./probe_sprite0825_native_policy_ipc_shadow_on_253.sh 10 0.1
+```
+
+The first powered, mechanically-supported run passed 5,000 native 500 Hz ticks
+with zero deadline misses, 100% feedback coverage for all 31 motors, 500 policy
+targets, zero rejected IMU frames, and no nonzero CAN, enable, or mode-switch
+attempts. Native P99 lateness was 0.0117 ms and maximum lateness was 0.461 ms.
+The projection reported the expected repeated clamps on both elbows and both
+ankle-pitch targets; maximum raw target overshoot was 0.5845 rad.
+The resulting 500-tick trace replayed through the frozen actor with exactly zero
+action error, and its post-run physical motor margin audit passed with no
+violating motor and no ankle joint-torque saturation.
+
+The process-level fault suite now also injects a position outside the protected
+joint limit and a Kp above the exported 0.1-gain ceiling. Both were rejected by
+the C++ receiver with `policy IPC protected target envelope failed`, alongside
+the existing hash, sequence, timestamp, Kd, and missing-target failures.

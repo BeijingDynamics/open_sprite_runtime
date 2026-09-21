@@ -106,10 +106,15 @@ required.
   live trace. Joint-space soft-limit projection plus `gain_scale=0.1` produced
   zero position/velocity/Kd/torque violations and zero ankle torque saturation.
   This is an initial suspended-test setting, not a walking gain qualification.
-- [ ] Implement the protected-actuation projector in the native command path,
-  separate the physical startup pose/ramp from the frozen two-tick MuJoCo
-  handoff, and fault instead of transmitting whenever the final encoded motor
-  command leaves its dynamic envelope.
+- [x] Implement joint-space soft-limit projection and startup gain scaling in
+  the Python policy client, plus an independently exported, order-hashed joint
+  envelope in the C++ native IPC receiver. Qualify `gain_scale=0.1` for 10
+  seconds under the full four-bus/IMU load and verify fail-closed rejection of
+  an out-of-limit position and excessive Kp.
+- [ ] Carry only validated projected targets into a separately reviewed
+  nonzero native writer, separate the physical startup pose/ramp from the
+  frozen two-tick MuJoCo handoff, and validate the final mapped motor command
+  against its dynamic torque-speed envelope immediately before transmission.
 
 ## Gate 4: protected actuation
 

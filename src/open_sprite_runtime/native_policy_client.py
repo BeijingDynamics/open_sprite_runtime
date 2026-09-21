@@ -18,6 +18,7 @@ from .damiao import DamiaoMitState
 from .motor_mapping import motor_map_from_hardware_config
 from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
 from .policy_shadow import LivePolicyShadow
+from .target_projection import ProtectedTargetProjector
 from .yahboom_imu import YahboomQuaternion, YahboomRawImu, YahboomStreamDecoder
 
 
@@ -49,6 +50,18 @@ def run(args: argparse.Namespace) -> dict:
         hardware, contract.data["joint_names"], require_armable=False
     )
     shadow = LivePolicyShadow(contract, hardware, mapping, (args.vx, args.vy, args.yaw_rate))
+    projector = None
+    if args.joint_limit_candidates:
+        projector = ProtectedTargetProjector.from_limit_report(
+            tuple(contract.data["joint_names"]),
+            args.joint_limit_candidates,
+            gain_scale=args.gain_scale,
+            maximum_embedded_kd=float(
+                hardware["controller"]["damiao_embedded_kd_max"]
+            ),
+        )
+    elif args.gain_scale != 1.0:
+        raise ValueError("--gain-scale requires --joint-limit-candidates")
     motor_names = _native_motor_order(hardware)
     motor_hash = ordered_name_hash(motor_names)
     joint_hash = ordered_name_hash(contract.data["joint_names"])
@@ -77,6 +90,9 @@ def run(args: argparse.Namespace) -> dict:
             "raw_action": [],
             "handoff_action": [],
             "target_position_rad": [],
+            "projected_target_position_rad": [],
+            "projected_kp": [],
+            "projected_kd": [],
         }
 
     try:
@@ -142,6 +158,8 @@ def run(args: argparse.Namespace) -> dict:
                     started_ns = time.perf_counter_ns()
                     target = shadow.infer_policy_target(state.monotonic_ns)
                     inference_ms.append((time.perf_counter_ns() - started_ns) / 1.0e6)
+                    if projector is not None:
+                        target = projector.project(target)
                     target_sequence += 1
                     packet = PolicyTargetPacket(
                         sequence=target_sequence,
@@ -174,6 +192,9 @@ def run(args: argparse.Namespace) -> dict:
                             "target_position_rad",
                         ):
                             trace[field].append(getattr(policy_trace, field))
+                        trace["projected_target_position_rad"].append(target.position_rad)
+                        trace["projected_kp"].append(target.kp)
+                        trace["projected_kd"].append(target.kd)
                     try:
                         connection.sendall(packet.pack())
                     except BrokenPipeError:
@@ -210,6 +231,9 @@ def run(args: argparse.Namespace) -> dict:
         "inference_p99_ms": _percentile(inference_ms, 0.99),
         "inference_max_ms": max(inference_ms) if inference_ms else None,
         "nonzero_can_tx_attempts": 0,
+        "protected_target_projection": (
+            projector.report() if projector is not None else {"enabled": False}
+        ),
         "trace_output": str(Path(args.trace_output).resolve()) if args.trace_output else None,
         "trace_sha256": trace_sha256,
         "trace_tick_count": len(trace["state_sequence"]) if trace is not None else 0,
@@ -241,6 +265,8 @@ def main() -> None:
     parser.add_argument("--yaw-rate", type=float, default=0.0)
     parser.add_argument("--output", required=True)
     parser.add_argument("--trace-output")
+    parser.add_argument("--joint-limit-candidates")
+    parser.add_argument("--gain-scale", type=float, default=1.0)
     args = parser.parse_args()
     report = run(args)
     print(json.dumps(report, indent=2))
