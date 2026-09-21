@@ -45,7 +45,9 @@ cd /home/tony
 ```
 
 Reports are written under `/home/tony/open_sprite_runtime/reports` as
-`full_body_shadow_<timestamp>.json`.
+`full_body_shadow_<timestamp>.json`. A post-run `ip -j -d -s` snapshot is always
+written as `kh_socketcan_full_body_post_<timestamp>.json`, including failed runs,
+so missing ACK, error-passive, and bus-off failures remain inspectable.
 
 ## Automatic gates
 

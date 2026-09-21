@@ -8,6 +8,7 @@ RATE_HZ="${2:-50.0}"
 DISPLAY_VALUE="${DISPLAY:-:1}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SNAPSHOT="$ROOT/reports/kh_socketcan_full_body_${STAMP}.json"
+POST_SNAPSHOT="$ROOT/reports/kh_socketcan_full_body_post_${STAMP}.json"
 OUTPUT="$ROOT/reports/full_body_shadow_${STAMP}.json"
 
 mkdir -p "$ROOT/reports"
@@ -20,9 +21,11 @@ echo "NO motor enable, disable, mode switch, or nonzero torque command"
 echo "The complete robot must be mechanically supported and every motor disabled"
 echo "Close the MuJoCo viewer to stop early"
 echo "OUTPUT $OUTPUT"
+echo "POST CAN STATS $POST_SNAPSHOT"
 
 cd "$ROOT"
-exec env DISPLAY="$DISPLAY_VALUE" PYTHONPATH="$ROOT/src" python3 \
+set +e
+env DISPLAY="$DISPLAY_VALUE" PYTHONPATH="$ROOT/src" python3 \
   -m open_sprite_runtime.cli full-body-shadow-probe \
   --hardware-config "$ROOT/config/hardware.sprite0825.measurement.json" \
   --snapshot "$SNAPSHOT" \
@@ -43,3 +46,14 @@ exec env DISPLAY="$DISPLAY_VALUE" PYTHONPATH="$ROOT/src" python3 \
   --supported-unloaded \
   --all-motors-disabled-confirmed \
   --acknowledge-hardware-tx ZERO_GAIN_FULL_BODY_POSITION_ECHO
+status=$?
+set -e
+
+ip -j -d -s link show type can > "$POST_SNAPSHOT"
+echo
+echo "POST-RUN CAN STATE"
+for interface in kcan1 kcan2 kcan3 kcan4; do
+  ip -details -statistics link show dev "$interface"
+done
+
+exit "$status"
