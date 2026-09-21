@@ -728,6 +728,10 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
                 rated_speed_rad_s=12.56,
                 max_speed_rad_s=36.2,
             )
+        elif "3507" in model:
+            record.update(rated_torque_nm=0.8, peak_torque_nm=3.0)
+        elif "6248" in model:
+            record.update(rated_torque_nm=30.0, peak_torque_nm=97.0)
 
     if len(motor_map) != 31:
         raise AssertionError("generated hardware template must contain 31 physical motors")

@@ -224,6 +224,8 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
         self.assertEqual(records["waist_yaw_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_elbow_motor"]["peak_torque_nm"], 12.5)
+        self.assertEqual(records["head_yaw_motor"]["peak_torque_nm"], 3.0)
+        self.assertEqual(records["waist_roll_motor"]["peak_torque_nm"], 97.0)
         self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])
         self.assertNotIn("policy_to_motor_sign", records["head_motor_a"])
         self.assertEqual(records["waist_yaw_motor"]["policy_to_motor_sign"], -1)

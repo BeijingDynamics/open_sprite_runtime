@@ -83,6 +83,11 @@ coverage for every motor, and zero deadline misses, CAN errors/drops, nonzero
 gain/torque writes, automatic enables, or automatic mode switches. A pure
 listen-only capture must not be presented as this evidence.
 
+During suspended commissioning, a dedicated safety operator controls the main
+motor-power switch and the robot remains mechanically supported. This is a
+required operating procedure for the current tests, but it is not the
+independent hardware emergency-stop chain required before walking tests.
+
 Generate a concise, model-grouped list of remaining physical inputs without
 opening CAN or serial devices:
 
@@ -175,6 +180,10 @@ records. The configured names are `left_ankle`, `right_ankle`, and `head`:
 q_motor = joint_to_motor_matrix * [q_pitch, q_roll] + ankle_motor_zero
 ```
 
+The head topology is frozen as a differential over
+`[head_pitch_joint, head_roll_joint]`; `head_yaw_joint` is an independent direct
+joint on CANFD3 ID 8. Do not include yaw in the head differential matrix.
+
 Velocity uses the same linear map without offsets. Torque uses the inverse
 transpose so instantaneous power is preserved. These transforms are tested in
 both directions over the complete 31-joint/31-motor map.
@@ -196,6 +205,31 @@ The 48 V nameplate no-load speed is 47.1 rad/s, but the qualified approximately
 Record `controller.nominal_bus_voltage_v`; this candidate rejects values outside
 36-40 V. Current and temperature limits remain hardware/firmware measurements
 and must be entered before qualification.
+
+The confirmed nameplate torque values for the remaining installed models are
+0.8/3.0 Nm rated/peak for DM-J3507-2EC and 30/97 Nm rated/peak for
+DM-J6248P-2EC. These mechanical ratings remain distinct from each drive's MIT
+protocol `TMAX`, which must come from register readback.
+
+Generate review-only joint and motor limit candidates from the exact URDF pinned
+by the policy contract:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/derive_urdf_motor_limits.py \
+  --hardware config/hardware.sprite0825.measurement.json \
+  --contract <g74-model3000-candidate>/deploy/contract.json \
+  --urdf <g74-model3000-candidate>/<contract-asset-urdf> \
+  --soft-margin-rad 0.05 \
+  --output reports/sprite0825_urdf_limit_candidates.json
+```
+
+The tool verifies the URDF SHA256 before deriving anything. For direct joints it
+applies sign, zero, and ratio. For each ankle and the head pitch/roll
+differential it maps all four corners of the two-joint limit rectangle through
+the calibrated matrix. The resulting motor boxes are secondary guards only:
+the runtime must first enforce the pitch/roll joint-space limits. The 0.05 rad
+inset and all URDF limits remain candidates until the physical hard stops are
+measured and signed off.
 
 ## IMU and heading
 

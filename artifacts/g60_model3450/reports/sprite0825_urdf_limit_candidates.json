@@ -1,0 +1,834 @@
+{
+  "mode": "offline_urdf_limit_derivation_no_hardware_io",
+  "asset_urdf": "../assets/isaac/sprite0825_sanitized_v5_4340_shoulders/sprite0825_float.urdf",
+  "asset_urdf_sha256": "6c753d563b54103e4278c27a11a22e0f4f1076e4156f0873cb2325f1701a921b",
+  "soft_margin_rad_each_joint_boundary": 0.05,
+  "joint_limits": {
+    "left_hip_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "right_hip_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "waist_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.611,
+        0.611
+      ],
+      "soft_limit_rad_candidate": [
+        -0.5609999999999999,
+        0.5609999999999999
+      ]
+    },
+    "left_hip_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -1.047,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -0.9969999999999999,
+        1.695
+      ]
+    },
+    "right_hip_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.047
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        0.9969999999999999
+      ]
+    },
+    "waist_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -2.618,
+        2.618
+      ],
+      "soft_limit_rad_candidate": [
+        -2.568,
+        2.568
+      ]
+    },
+    "left_hip_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "right_hip_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "head_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -0.785,
+        0.524
+      ],
+      "soft_limit_rad_candidate": [
+        -0.735,
+        0.47400000000000003
+      ]
+    },
+    "left_shoulder_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -3.142,
+        1.571
+      ],
+      "soft_limit_rad_candidate": [
+        -3.092,
+        1.521
+      ]
+    },
+    "right_shoulder_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -1.571,
+        3.142
+      ],
+      "soft_limit_rad_candidate": [
+        -1.521,
+        3.092
+      ]
+    },
+    "left_knee_joint": {
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.443
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.3930000000000002
+      ]
+    },
+    "right_knee_joint": {
+      "hard_limit_rad_candidate": [
+        -2.443,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.3930000000000002,
+        0.12499999999999999
+      ]
+    },
+    "head_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.436,
+        0.436
+      ],
+      "soft_limit_rad_candidate": [
+        -0.386,
+        0.386
+      ]
+    },
+    "left_shoulder_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.792
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.742
+      ]
+    },
+    "right_shoulder_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -2.792,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.742,
+        0.12499999999999999
+      ]
+    },
+    "left_ankle_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -0.436,
+        0.436
+      ],
+      "soft_limit_rad_candidate": [
+        -0.386,
+        0.386
+      ]
+    },
+    "right_ankle_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -0.436,
+        0.436
+      ],
+      "soft_limit_rad_candidate": [
+        -0.386,
+        0.386
+      ]
+    },
+    "head_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_shoulder_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "right_shoulder_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_ankle_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.436,
+        0.436
+      ],
+      "soft_limit_rad_candidate": [
+        -0.386,
+        0.386
+      ]
+    },
+    "right_ankle_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.436,
+        0.436
+      ],
+      "soft_limit_rad_candidate": [
+        -0.386,
+        0.386
+      ]
+    },
+    "left_elbow_joint": {
+      "hard_limit_rad_candidate": [
+        -2.618,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.568,
+        0.12499999999999999
+      ]
+    },
+    "right_elbow_joint": {
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.618
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.568
+      ]
+    },
+    "left_wrist_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "right_wrist_yaw_joint": {
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_wrist_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -0.785,
+        0.785
+      ],
+      "soft_limit_rad_candidate": [
+        -0.735,
+        0.735
+      ]
+    },
+    "right_wrist_pitch_joint": {
+      "hard_limit_rad_candidate": [
+        -0.785,
+        0.785
+      ],
+      "soft_limit_rad_candidate": [
+        -0.735,
+        0.735
+      ]
+    },
+    "left_wrist_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.75,
+        0.75
+      ],
+      "soft_limit_rad_candidate": [
+        -0.7,
+        0.7
+      ]
+    },
+    "right_wrist_roll_joint": {
+      "hard_limit_rad_candidate": [
+        -0.75,
+        0.75
+      ],
+      "soft_limit_rad_candidate": [
+        -0.7,
+        0.7
+      ]
+    }
+  },
+  "motor_limits": {
+    "left_hip_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_hip_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "right_hip_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_hip_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "waist_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "waist_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.611,
+        0.611
+      ],
+      "soft_limit_rad_candidate": [
+        -0.5609999999999999,
+        0.5609999999999999
+      ]
+    },
+    "left_hip_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_hip_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.047,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -0.9969999999999999,
+        1.695
+      ]
+    },
+    "right_hip_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_hip_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.047
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        0.9969999999999999
+      ]
+    },
+    "waist_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "waist_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.618,
+        2.618
+      ],
+      "soft_limit_rad_candidate": [
+        -2.568,
+        2.568
+      ]
+    },
+    "left_hip_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_hip_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "right_hip_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_hip_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.74,
+        2.74
+      ],
+      "soft_limit_rad_candidate": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ]
+    },
+    "left_shoulder_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_shoulder_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -3.142,
+        1.571
+      ],
+      "soft_limit_rad_candidate": [
+        -3.092,
+        1.521
+      ]
+    },
+    "right_shoulder_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_shoulder_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.571,
+        3.142
+      ],
+      "soft_limit_rad_candidate": [
+        -1.521,
+        3.092
+      ]
+    },
+    "left_knee_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_knee_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.443
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.3930000000000002
+      ]
+    },
+    "right_knee_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_knee_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.443,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.3930000000000002,
+        0.12499999999999999
+      ]
+    },
+    "left_shoulder_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_shoulder_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.792
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.742
+      ]
+    },
+    "right_shoulder_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_shoulder_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.792,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.742,
+        0.12499999999999999
+      ]
+    },
+    "head_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "head_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_shoulder_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_shoulder_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "right_shoulder_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_shoulder_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_elbow_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_elbow_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -2.618,
+        0.175
+      ],
+      "soft_limit_rad_candidate": [
+        -2.568,
+        0.12499999999999999
+      ]
+    },
+    "right_elbow_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_elbow_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.175,
+        2.618
+      ],
+      "soft_limit_rad_candidate": [
+        -0.12499999999999999,
+        2.568
+      ]
+    },
+    "left_wrist_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_wrist_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "right_wrist_yaw_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_wrist_yaw_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.745,
+        1.745
+      ],
+      "soft_limit_rad_candidate": [
+        -1.695,
+        1.695
+      ]
+    },
+    "left_wrist_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_wrist_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.785,
+        0.785
+      ],
+      "soft_limit_rad_candidate": [
+        -0.735,
+        0.735
+      ]
+    },
+    "right_wrist_pitch_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_wrist_pitch_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.785,
+        0.785
+      ],
+      "soft_limit_rad_candidate": [
+        -0.735,
+        0.735
+      ]
+    },
+    "left_wrist_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "left_wrist_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.75,
+        0.75
+      ],
+      "soft_limit_rad_candidate": [
+        -0.7,
+        0.7
+      ]
+    },
+    "right_wrist_roll_motor": {
+      "topology": "direct",
+      "policy_joints": [
+        "right_wrist_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.75,
+        0.75
+      ],
+      "soft_limit_rad_candidate": [
+        -0.7,
+        0.7
+      ]
+    },
+    "left_ankle_motor_a": {
+      "topology": "differential",
+      "differential_pair": "left_ankle",
+      "policy_joints": [
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.0244126587327627,
+        0.9953726587327622
+      ],
+      "soft_limit_rad_candidate": [
+        -0.9085992804377211,
+        0.8795592804377207
+      ]
+    },
+    "left_ankle_motor_b": {
+      "topology": "differential",
+      "differential_pair": "left_ankle",
+      "policy_joints": [
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.9968932308136411,
+        1.022893230813641
+      ],
+      "soft_limit_rad_candidate": [
+        -0.8810797869129943,
+        0.9070797869129941
+      ]
+    },
+    "right_ankle_motor_a": {
+      "topology": "differential",
+      "differential_pair": "right_ankle",
+      "policy_joints": [
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.995811971186018,
+        1.0247719711860181
+      ],
+      "soft_limit_rad_candidate": [
+        -0.8799528001784472,
+        0.9089128001784473
+      ]
+    },
+    "right_ankle_motor_b": {
+      "topology": "differential",
+      "differential_pair": "right_ankle",
+      "policy_joints": [
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.0235823143033345,
+        0.9971023143033343
+      ],
+      "soft_limit_rad_candidate": [
+        -0.9077173700024932,
+        0.8812373700024931
+      ]
+    },
+    "head_motor_a": {
+      "topology": "differential",
+      "differential_pair": "head",
+      "policy_joints": [
+        "head_pitch_joint",
+        "head_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -1.0567680293388269,
+        0.7944623604896802
+      ],
+      "soft_limit_rad_candidate": [
+        -0.9757945077611432,
+        0.7134888389119967
+      ]
+    },
+    "head_motor_b": {
+      "topology": "differential",
+      "differential_pair": "head",
+      "policy_joints": [
+        "head_pitch_joint",
+        "head_roll_joint"
+      ],
+      "hard_limit_rad_candidate": [
+        -0.7944623604896802,
+        1.0567680293388264
+      ],
+      "soft_limit_rad_candidate": [
+        -0.7134888389119965,
+        0.9757945077611428
+      ]
+    }
+  },
+  "differential_pairs": {
+    "left_ankle": {
+      "joint_order": [
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint"
+      ],
+      "motor_order": [
+        "left_ankle_motor_a",
+        "left_ankle_motor_b"
+      ],
+      "joint_to_drive_matrix": [
+        [
+          1.3046986734546604,
+          -1.0115688924461708
+        ],
+        [
+          -1.3049296051854675,
+          -1.0113392728274706
+        ]
+      ]
+    },
+    "right_ankle": {
+      "joint_order": [
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint"
+      ],
+      "motor_order": [
+        "right_ankle_motor_a",
+        "right_ankle_motor_b"
+      ],
+      "joint_to_drive_matrix": [
+        [
+          -1.3055003739519506,
+          -1.0116830461994673
+        ],
+        [
+          1.3051579126920607,
+          -1.0121409733247608
+        ]
+      ]
+    },
+    "head": {
+      "joint_order": [
+        "head_pitch_joint",
+        "head_roll_joint"
+      ],
+      "motor_order": [
+        "head_motor_a",
+        "head_motor_b"
+      ],
+      "joint_to_drive_matrix": [
+        [
+          1.0046960492304464,
+          0.6147743823232256
+        ],
+        [
+          -1.0046960492304462,
+          0.6147743823232253
+        ]
+      ]
+    }
+  },
+  "confirmed_physical_hard_limits": false,
+  "warnings": [
+    "URDF limits are design candidates until confirmed against physical hard stops.",
+    "Differential motor min/max boxes do not replace joint-space limit checks.",
+    "Runtime must reject joint-space violations before mapping to differential motors."
+  ]
+}

@@ -1,0 +1,51 @@
+import hashlib
+import tempfile
+import unittest
+from pathlib import Path
+
+from open_sprite_runtime.contracts import PolicyContract
+from open_sprite_runtime.limit_derivation import derive_limit_candidates
+from tests.test_contracts import valid_policy_data
+from tests.test_hardware import JOINTS, complete_hardware
+
+
+class LimitDerivationTests(unittest.TestCase):
+    def _fixture(self, directory: Path) -> tuple[PolicyContract, Path]:
+        urdf = directory / "robot.urdf"
+        joints = "".join(
+            f'<joint name="{name}" type="revolute"><parent link="a"/><child link="b"/>'
+            f'<limit lower="-1" upper="2" effort="1" velocity="1"/></joint>'
+            for name in JOINTS
+        )
+        urdf.write_text(f'<robot name="test">{joints}</robot>', encoding="utf-8")
+        data = valid_policy_data()
+        data["joint_names"] = list(JOINTS)
+        data["asset_urdf_sha256"] = hashlib.sha256(urdf.read_bytes()).hexdigest()
+        return PolicyContract(path=None, data=data), urdf  # type: ignore[arg-type]
+
+    def test_derives_all_direct_and_differential_motor_boxes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            report = derive_limit_candidates(complete_hardware(), contract, urdf)
+        self.assertEqual(len(report["joint_limits"]), 31)
+        self.assertEqual(len(report["motor_limits"]), 31)
+        self.assertFalse(report["confirmed_physical_hard_limits"])
+        self.assertEqual(
+            report["differential_pairs"]["head"]["joint_order"],
+            ["head_pitch_joint", "head_roll_joint"],
+        )
+        self.assertEqual(report["joint_limits"][JOINTS[0]]["soft_limit_rad_candidate"], [-0.95, 1.95])
+        self.assertEqual(
+            report["motor_limits"]["left_ankle_motor_a"]["topology"], "differential"
+        )
+
+    def test_rejects_asset_hash_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            contract.data["asset_urdf_sha256"] = "0" * 64
+            with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
+                derive_limit_candidates(complete_hardware(), contract, urdf)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -21,6 +21,14 @@ KNOWN_NAMEPLATES = {
         "rated_speed_rad_s": 12.56,
         "max_speed_rad_s": 36.2,
     },
+    "DM-J3507-2EC (48V)": {
+        "rated_torque_nm": 0.8,
+        "peak_torque_nm": 3.0,
+    },
+    "DM-J6248P-2EC": {
+        "rated_torque_nm": 30.0,
+        "peak_torque_nm": 97.0,
+    },
 }
 
 

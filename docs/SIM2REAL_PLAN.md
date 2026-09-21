@@ -24,6 +24,8 @@
 ## Gate 1: hardware inventory
 
 - Complete all 31 motor mappings, limits, and MIT ranges.
+- [x] Derive review-only direct and differential motor limit candidates from
+  the contract-pinned URDF; physical hard-stop confirmation remains open.
 - Measure four-channel USB-CAN FD latency and sustained bus utilization.
 - Establish a hardware emergency-stop chain independent of the SBC process.
 - Measure and record pelvis IMU mounting transform, axes, timestamps, update
