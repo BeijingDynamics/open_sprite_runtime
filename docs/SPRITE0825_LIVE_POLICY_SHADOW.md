@@ -38,3 +38,25 @@ cd /home/tony
 The initial command is deliberately stand (`0,0,0`). Forward-command shadow is
 not meaningful while disabled hardware cannot follow the target and should only
 be added as a separate diagnostic after this gate is understood.
+
+## 2026-09-21 commissioning result
+
+The first full-hardware run exposed and fixed an I/O scheduling defect. The
+corrected retry received 496-500 samples per motor over ten seconds (minimum
+coverage 0.990), received both IMU packet types at approximately 100 Hz, and
+ran the 50 Hz ONNX actor with 0.424 ms mean and 1.43 ms P99 inference time.
+All 31 drives remained disabled and the restricted writer made zero nonzero
+control, enable, disable, or mode-switch attempts.
+
+The Python process is not yet qualified as the final 500 Hz ankle execution
+layer. Its best integrated result had 3.64 ms P99 and 9.24 ms maximum state-tick
+lateness. A Python worker-thread experiment was rejected because GIL contention
+made both CAN coverage and timing worse. Keep the 50 Hz ONNX policy in Python,
+but implement the 500 Hz ankle/safety/transport loop in a native real-time
+component before actuation.
+
+The audit also rejects direct transition from the measured supported pose to
+the policy target. Several distal joints exceeded their configured MIT torque
+range in the calculated command, led by head yaw at 3.86 times its protocol
+limit. The first actuation gate therefore requires a bounded measured-pose
+handoff/ramp and command-envelope validation; direct policy enable is forbidden.

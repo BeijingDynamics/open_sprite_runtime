@@ -114,6 +114,7 @@ class PolicyShadowReport:
     command_vx_vy_yaw_rate: tuple[float, float, float]
     policy_ticks: int
     state_ticks: int
+    state_tick_deadline_misses: int
     policy_deadline_misses: int
     inference_mean_ms: float | None
     inference_p99_ms: float | None
@@ -127,6 +128,7 @@ class PolicyShadowReport:
     maximum_abs_ankle_motor_torque_nm: dict[str, float]
     ankle_joint_saturation_count: int
     maximum_abs_direct_motor_estimated_torque_nm: dict[str, float]
+    maximum_direct_motor_torque_limit_ratio_by_motor: dict[str, float]
     maximum_direct_motor_peak_torque_ratio: float
     damiao_embedded_kd_limit: float
     maximum_embedded_kd_requested: float
@@ -144,6 +146,11 @@ class PolicyShadowReport:
             and self.policy_ticks > 0
             and self.state_ticks > 0
             and self.policy_deadline_misses == 0
+            and self.state_tick_lateness_p99_ms is not None
+            and self.state_tick_lateness_p99_ms <= 2.0
+            and self.state_tick_lateness_max_ms is not None
+            and self.state_tick_lateness_max_ms <= 20.0
+            and self.maximum_direct_motor_peak_torque_ratio <= 1.0
             and not self.horizontal_base_velocity_present
             and self.serial_write_count == 0
             and self.nonzero_motor_command_tx_attempts == 0
@@ -188,6 +195,7 @@ class LivePolicyShadow:
         self._state_lateness_ms: list[float] = []
         self._policy_ticks = 0
         self._state_ticks = 0
+        self._state_deadline_misses = 0
         self._deadline_misses = 0
         self._max_action = 0.0
         self._max_action_delta = 0.0
@@ -203,6 +211,7 @@ class LivePolicyShadow:
         self._direct_torque_max = {
             name: 0.0 for name in mapping.physical_motor_names if name not in ankle_motors
         }
+        self._direct_torque_ratio = {name: 0.0 for name in self._direct_torque_max}
         self._max_direct_peak_ratio = 0.0
         self._max_embedded_kd = 0.0
         self._errors: list[str] = []
@@ -320,9 +329,16 @@ class LivePolicyShadow:
                 self._direct_torque_max[motor_name], absolute
             )
             peak = records[motor_name].get("peak_torque_nm")
-            if peak is not None and float(peak) > 0.0:
+            if peak is None:
+                torque_range = records[motor_name]["mit_ranges"]["torque_nm"]
+                peak = min(abs(float(value)) for value in torque_range)
+            if float(peak) > 0.0:
+                ratio = absolute / float(peak)
+                self._direct_torque_ratio[motor_name] = max(
+                    self._direct_torque_ratio[motor_name], ratio
+                )
                 self._max_direct_peak_ratio = max(
-                    self._max_direct_peak_ratio, absolute / float(peak)
+                    self._max_direct_peak_ratio, ratio
                 )
 
     def tick(self, now_ns: int | None = None) -> None:
@@ -332,9 +348,10 @@ class LivePolicyShadow:
         if self.next_state_tick_ns is None:
             self.next_state_tick_ns = now_ns
         catch_up = 0
-        while now_ns >= self.next_state_tick_ns and catch_up < 5:
+        while now_ns >= self.next_state_tick_ns and catch_up < 20:
             lateness_ms = (now_ns - self.next_state_tick_ns) / 1.0e6
             self._state_lateness_ms.append(lateness_ms)
+            self._state_deadline_misses += int(lateness_ms > 2.0)
             try:
                 if self._state_ticks % self._policy_tick_divisor == 0:
                     self._run_policy(self.next_state_tick_ns)
@@ -346,8 +363,8 @@ class LivePolicyShadow:
             self._state_ticks += 1
             self.next_state_tick_ns += 2_000_000
             catch_up += 1
-        if catch_up == 5 and now_ns >= self.next_state_tick_ns:
-            self._errors.append("500 Hz shadow calculation fell more than five ticks behind")
+        if catch_up == 20 and now_ns >= self.next_state_tick_ns:
+            self._errors.append("500 Hz shadow calculation fell more than 20 ticks behind")
 
     def report(self) -> PolicyShadowReport:
         kd_limit = float(self.hardware["controller"]["damiao_embedded_kd_max"])
@@ -359,6 +376,7 @@ class LivePolicyShadow:
             command_vx_vy_yaw_rate=tuple(map(float, self.command)),
             policy_ticks=self._policy_ticks,
             state_ticks=self._state_ticks,
+            state_tick_deadline_misses=self._state_deadline_misses,
             policy_deadline_misses=self._deadline_misses,
             inference_mean_ms=(
                 float(np.mean(self._inference_ms)) if self._inference_ms else None
@@ -382,6 +400,7 @@ class LivePolicyShadow:
             maximum_abs_ankle_motor_torque_nm=self._ankle_motor_max,
             ankle_joint_saturation_count=self._ankle_saturations,
             maximum_abs_direct_motor_estimated_torque_nm=self._direct_torque_max,
+            maximum_direct_motor_torque_limit_ratio_by_motor=self._direct_torque_ratio,
             maximum_direct_motor_peak_torque_ratio=self._max_direct_peak_ratio,
             damiao_embedded_kd_limit=kd_limit,
             maximum_embedded_kd_requested=self._max_embedded_kd,

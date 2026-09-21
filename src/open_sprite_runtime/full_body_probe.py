@@ -156,31 +156,46 @@ def collect_full_body_shadow(
                 break
 
             for interface, poller in pollers.items():
-                if now < next_send[interface]:
-                    continue
-                items = by_interface[interface]
-                endpoint = items[next_index[interface]]
-                command = encode_zero_gain_position_echo(
-                    endpoint, targets[endpoint.motor_name]
-                )
-                try:
-                    poller.send_zero_gain_poll(command.can_id, command.data)
-                except OSError as exc:
-                    errors.append(
-                        f"SocketCAN transmit failed on {interface} for "
-                        f"{endpoint.motor_name}: {exc}"
+                # Linux selectors commonly wake at roughly millisecond granularity.
+                # A 500 Hz x 8-motor bus needs a 250 us slot, so emit the bounded
+                # number of slots that became due instead of silently dropping 3/4
+                # of the polls on every wake-up.
+                sends = 0
+                while now >= next_send[interface] and sends < 16:
+                    items = by_interface[interface]
+                    endpoint = items[next_index[interface]]
+                    command = encode_zero_gain_position_echo(
+                        endpoint, targets[endpoint.motor_name]
                     )
+                    try:
+                        poller.send_zero_gain_poll(command.can_id, command.data)
+                    except OSError as exc:
+                        errors.append(
+                            f"SocketCAN transmit failed on {interface} for "
+                            f"{endpoint.motor_name}: {exc}"
+                        )
+                        break
+                    next_index[interface] = (next_index[interface] + 1) % len(items)
+                    next_send[interface] += slot_s[interface]
+                    sends += 1
+                    if on_loop is not None and sends % 4 == 0:
+                        on_loop(time.perf_counter_ns())
+                if errors:
                     break
-                next_index[interface] = (next_index[interface] + 1) % len(items)
-                next_send[interface] += slot_s[interface]
-                if next_send[interface] <= now:
+                if sends == 16 and next_send[interface] <= now:
+                    # Do not replay an unbounded stale backlog onto hardware.
                     next_send[interface] = now + slot_s[interface]
+                if on_loop is not None:
+                    on_loop(time.perf_counter_ns())
             if errors:
                 break
 
+            if on_loop is not None:
+                on_loop(time.perf_counter_ns())
+
             timeout = min(
                 max(0.0, min(next_send.values()) - monotonic()),
-                0.005,
+                0.001 if on_loop is not None else 0.005,
             )
             for key, _mask in selector.select(timeout=timeout):
                 kind, interface, source = key.data
@@ -195,43 +210,47 @@ def collect_full_body_shadow(
                         if on_imu_packet is not None:
                             on_imu_packet(packet)
                     continue
-                try:
-                    frame = source.receive()
-                except SocketCanTimestampError:
-                    discarded_timestamp_frames += 1
-                    continue
-                frame_key = (frame.interface, frame.can_id)
-                if frame_key in known_commands:
-                    continue
-                if frame_key not in known_feedback:
-                    errors.append(
-                        f"unexpected CAN endpoint: {frame.interface}:{frame.can_id:#x}"
-                    )
-                    continue
-                feedback = decoder.decode(frame)
-                if feedback.motor_name not in selected_names:
-                    continue
-                if not frame.is_fd or not frame.bit_rate_switch:
-                    errors.append(
-                        f"{feedback.motor_name} feedback was not CAN-FD with BRS"
-                    )
-                    break
-                feedback_values[feedback.motor_name].append(feedback)
-                status_codes[feedback.motor_name].add(feedback.status_code)
-                targets[feedback.motor_name] = feedback.position_rad
-                last_feedback[feedback.motor_name] = monotonic()
-                if feedback.status_code != 0x0:
-                    errors.append(
-                        f"{feedback.motor_name} is not disabled: {feedback.status_name}"
-                    )
-                    break
-                if on_feedback is not None:
-                    on_feedback(feedback)
+                for drain_index in range(64):
+                    if on_loop is not None and drain_index % 8 == 0:
+                        on_loop(time.perf_counter_ns())
+                    try:
+                        frame = source.receive()
+                    except BlockingIOError:
+                        break
+                    except SocketCanTimestampError:
+                        discarded_timestamp_frames += 1
+                        continue
+                    frame_key = (frame.interface, frame.can_id)
+                    if frame_key in known_commands:
+                        continue
+                    if frame_key not in known_feedback:
+                        errors.append(
+                            f"unexpected CAN endpoint: {frame.interface}:{frame.can_id:#x}"
+                        )
+                        continue
+                    feedback = decoder.decode(frame)
+                    if feedback.motor_name not in selected_names:
+                        continue
+                    if not frame.is_fd or not frame.bit_rate_switch:
+                        errors.append(
+                            f"{feedback.motor_name} feedback was not CAN-FD with BRS"
+                        )
+                        break
+                    feedback_values[feedback.motor_name].append(feedback)
+                    status_codes[feedback.motor_name].add(feedback.status_code)
+                    targets[feedback.motor_name] = feedback.position_rad
+                    last_feedback[feedback.motor_name] = monotonic()
+                    if feedback.status_code != 0x0:
+                        errors.append(
+                            f"{feedback.motor_name} is not disabled: {feedback.status_name}"
+                        )
+                        break
+                    if on_feedback is not None:
+                        on_feedback(feedback)
+                if on_loop is not None:
+                    on_loop(time.perf_counter_ns())
             if errors:
                 break
-
-            if on_loop is not None:
-                on_loop(time.perf_counter_ns())
 
             now = monotonic()
             stale_motors = sorted(

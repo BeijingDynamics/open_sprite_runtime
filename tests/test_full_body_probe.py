@@ -70,6 +70,8 @@ class FullBodyProbeTests(unittest.TestCase):
                 self.sent_payloads.append(data)
 
             def receive(self):
+                if not self.frames:
+                    raise BlockingIOError
                 return self.frames.pop(0)
 
         raw = yahboom_frame(0x04, struct.pack("<9h", *([0] * 9)))

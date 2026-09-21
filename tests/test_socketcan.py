@@ -69,12 +69,16 @@ class FakeSocket:
         self.address = None
         self.closed = False
         self.sent = []
+        self.blocking = True
 
     def setsockopt(self, level, name, value):
         self.options.append((level, name, value))
 
     def bind(self, address):
         self.address = address
+
+    def setblocking(self, blocking):
+        self.blocking = blocking
 
     def recvmsg(self, *_args):
         return self.frame, self.ancillary, 0, ("can0",)
@@ -164,6 +168,7 @@ class SocketCanZeroGainPollerTests(unittest.TestCase):
         poller = SocketCanZeroGainPoller.open(
             "can0", preflight, socket_factory=lambda *_: fake
         )
+        self.assertFalse(fake.blocking)
         zero_gain = bytes.fromhex("7fff7ff0000007ff")
         poller.send_zero_gain_poll(3, zero_gain)
         self.assertEqual(poller.hardware_tx_attempts, 1)

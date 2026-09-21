@@ -337,6 +337,7 @@ class SocketCanZeroGainPoller:
             )
             raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
             raw_socket.bind((interface,))
+            raw_socket.setblocking(False)
         except BaseException:
             raw_socket.close()
             raise
