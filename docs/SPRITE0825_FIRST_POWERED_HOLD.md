@@ -55,3 +55,8 @@ cd /home/tony/open_sprite_runtime
 ```
 
 The motion report is written under `reports/head_yaw_low_gain_motion_*.json`.
+
+The first physical run passed on 2026-09-21. It completed 225 command and 225
+feedback cycles, observed at most 0.0611 rad/s and 0.0306 Nm, and verified the
+motor was disabled after the trajectory. The preserved report is
+`reports/head_yaw_low_gain_motion_20260921_192055.json` on the Jetson.

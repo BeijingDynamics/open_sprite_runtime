@@ -137,7 +137,10 @@ required.
 - [x] Prepare a separately gated, fixed second test for the unloaded head-yaw
   shaft: quintic `+0.02 -> -0.02 -> start` motion at 50 Hz with `Kp=1.0`,
   `Kd=0.2`, zero feedforward, and the same fail-closed guards.
-- [ ] Execute and review the unloaded head-yaw smooth-motion test.
+- [x] Execute and safety-review the unloaded head-yaw smooth-motion test. The
+  2026-09-21 run completed 225/225 command/feedback cycles, stayed below
+  0.0611 rad/s and 0.0306 Nm, reached at most 40/35 C MOS/rotor temperature,
+  reported no guard errors, and verified `disabled` after three disable frames.
 - Single-joint unloaded tests, then whole-body zero pose in a lifting frame.
 - Low Kp/Kd and strict current limits first.
 - Stand, weight shift, one step, 0.15 m/s walk, stop, and restart.
