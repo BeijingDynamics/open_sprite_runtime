@@ -369,6 +369,93 @@ class SocketCanZeroGainPoller:
         self.close()
 
 
+class SocketCanDamiaoRegisterReader:
+    """CAN-FD+BRS writer restricted to Damiao PMAX/VMAX/TMAX read requests."""
+
+    PARAMETER_CAN_ID = 0x7FF
+    READ_OPCODE = 0x33
+    ALLOWED_REGISTER_IDS = frozenset((21, 22, 23))
+
+    def __init__(self, interface: str, raw_socket: Any, allowed_motor_can_ids: Iterable[int]):
+        self.interface = interface
+        self._socket = raw_socket
+        self._receiver = SocketCanReceiver(interface, raw_socket)
+        self._allowed_motor_can_ids = frozenset(allowed_motor_can_ids)
+        if not self._allowed_motor_can_ids:
+            raise ValueError("at least one motor CAN ID must be allowed")
+        if any(not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF for can_id in self._allowed_motor_can_ids):
+            raise ValueError("motor allowlist requires 11-bit standard CAN IDs")
+        self.hardware_tx_attempts = 0
+
+    @classmethod
+    def open(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        allowed_motor_can_ids: Iterable[int],
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanDamiaoRegisterReader":
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            timestamp_flags = (
+                SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
+                | SOF_TIMESTAMPING_SOFTWARE
+                | SOF_TIMESTAMPING_RAW_HARDWARE
+            )
+            raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
+            raw_socket.bind((interface,))
+            raw_socket.setblocking(False)
+        except BaseException:
+            raw_socket.close()
+            raise
+        return cls(interface, raw_socket, allowed_motor_can_ids)
+
+    def send_read_request(self, motor_can_id: int, register_id: int) -> None:
+        if motor_can_id not in self._allowed_motor_can_ids:
+            raise ValueError("motor CAN ID is outside the register-read allowlist")
+        if register_id not in self.ALLOWED_REGISTER_IDS:
+            raise ValueError("only PMAX/VMAX/TMAX registers 21/22/23 may be read")
+        data = bytes(
+            (
+                motor_can_id & 0xFF,
+                (motor_can_id >> 8) & 0xFF,
+                self.READ_OPCODE,
+                register_id,
+                0,
+                0,
+                0,
+                0,
+            )
+        )
+        frame = CANFD_FRAME.pack(
+            self.PARAMETER_CAN_ID, 8, 0x01, 0, 0, data.ljust(64, b"\0")
+        )
+        sent = self._socket.send(frame)
+        self.hardware_tx_attempts += 1
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+    def receive(self) -> ReceivedCanFrame:
+        return self._receiver.receive()
+
+    def fileno(self) -> int:
+        return self._socket.fileno()
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def __enter__(self) -> "SocketCanDamiaoRegisterReader":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
+
+
 class SocketCanSetZeroWriter:
     """Capability-restricted CAN-FD writer for the exact Damiao set-zero frame."""
 

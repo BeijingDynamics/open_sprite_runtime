@@ -6,6 +6,7 @@ from open_sprite_runtime.socketcan import (
     CANFD_FRAME,
     SO_TIMESTAMPING_LINUX_64,
     SOF_TIMESTAMPING_RX_SOFTWARE,
+    SocketCanDamiaoRegisterReader,
     SocketCanReceiver,
     SocketCanZeroGainPoller,
     audit_socketcan_active_fd_snapshot,
@@ -186,6 +187,26 @@ class SocketCanZeroGainPollerTests(unittest.TestCase):
             SocketCanReceiver(
                 "can0", FakeSocket(frame, ancillary), clock_ns=lambda: 6_000_000_000
             ).receive()
+
+
+class SocketCanDamiaoRegisterReaderTests(unittest.TestCase):
+    def test_reader_can_send_only_allowlisted_range_reads(self) -> None:
+        preflight = audit_socketcan_active_fd_snapshot(
+            [entry("can0", listen_only=False)], "can0"
+        )
+        fake = FakeSocket()
+        reader = SocketCanDamiaoRegisterReader.open(
+            "can0", preflight, (1, 2), socket_factory=lambda *_: fake
+        )
+        reader.send_read_request(2, 21)
+        raw_id, length, flags, _, _, data = CANFD_FRAME.unpack(fake.sent[0])
+        self.assertEqual((raw_id, length, flags), (0x7FF, 8, 0x01))
+        self.assertEqual(data[:8], bytes((2, 0, 0x33, 21, 0, 0, 0, 0)))
+        self.assertEqual(reader.hardware_tx_attempts, 1)
+        with self.assertRaisesRegex(ValueError, "allowlist"):
+            reader.send_read_request(3, 21)
+        with self.assertRaisesRegex(ValueError, "21/22/23"):
+            reader.send_read_request(2, 20)
 
 
 if __name__ == "__main__":

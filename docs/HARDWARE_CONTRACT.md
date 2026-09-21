@@ -64,6 +64,18 @@ See `SPRITE0825_DAMIAO_PROTOCOL_SOURCE_AUDIT.md` for the pinned official
 protocol sources, exact receive-frame layout, status values, and the reason the
 decoded torque is an estimate rather than an independent torque measurement.
 
+The official SDK reads motor registers by sending standard CAN ID `0x7FF` with
+payload `[can_id_lo, can_id_hi, 0x33, RID, 0, 0, 0, 0]`. PMAX, VMAX, and TMAX
+are float32 registers 21, 22, and 23. The runtime's dedicated register reader is
+capability-limited to exactly this CAN ID, opcode, and RID set; it has no
+write-register, save, enable, mode-switch, or MIT-control method. The wrapper
+still requires the robot to be supported and all motors confirmed disabled:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./read_sprite0825_damiao_mit_ranges_on_253.sh
+```
+
 Run `sprite-runtime inspect` after filling the hardware file. The
 `hardware_inventory` report is fail-closed: it requires 25 one-to-one joint
 motors plus two coupled motors for each left ankle, right ankle, and head
