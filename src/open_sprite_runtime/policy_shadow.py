@@ -305,6 +305,20 @@ class LivePolicyShadow:
         self.previous_target = target.copy()
         self._policy_ticks += 1
 
+    def infer_policy_target(self, now_ns: int) -> JointImpedanceTarget:
+        """Run exactly one actor tick from the latest complete hardware state."""
+        if not self.ready:
+            raise RuntimeError("complete motor and IMU state is required for policy inference")
+        self._run_policy(int(now_ns))
+        assert self.previous_target is not None
+        return JointImpedanceTarget(
+            position_rad=self.previous_target.copy(),
+            velocity_rad_s=np.zeros(31),
+            kp=self.kp.copy(),
+            kd=self.kd.copy(),
+            feedforward_torque_nm=np.zeros(31),
+        )
+
     def _audit_command_frame(self, frame) -> None:
         for pair_name, torques in frame.ankle_joint_torque_nm.items():
             self._ankle_joint_max[pair_name] = max(

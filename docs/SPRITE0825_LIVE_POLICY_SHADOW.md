@@ -82,3 +82,45 @@ This qualifies the native timing and zero-gain transport layer only. Nonzero
 actuation remains forbidden until the measured-pose handoff, stale-target
 watchdog, command envelope, and Python-policy-to-native target interface pass
 their own shadow tests.
+
+## Native policy IPC qualification
+
+The integrated architecture keeps all four CAN sockets and the 500 Hz timing
+loop in C++. It publishes a versioned 50 Hz motor-state packet to a Python
+client. Python combines that state with the 100 Hz pelvis IMU, reconstructs the
+exact 795-value observation history, runs the frozen ONNX actor, and returns a
+versioned 31-joint target packet. Packets carry monotonic timestamps, increasing
+sequence numbers, source-state sequence numbers, and hashes of the ordered
+motor/joint names. The native side rejects stale, future, reordered, nonfinite,
+or excessive-Kd targets. During this gate returned targets are audited only and
+cannot reach the restricted zero-gain CAN writer.
+
+The integrated load exposed rare 2--5 ms scheduling spikes under Linux
+`SCHED_OTHER`. CPU affinity alone did not remove them. The qualified setup pins
+the native thread to CPU 5 with `SCHED_FIFO` priority 50, pins Python/ONNX to
+CPU 4, and gives only `CAP_SYS_NICE` to the native binary:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./build_sprite0825_native_runtime_on_253.sh
+./install_sprite0825_native_runtime_capabilities_on_253.sh
+./probe_sprite0825_native_policy_ipc_shadow_on_253.sh 120
+```
+
+Capabilities must be reinstalled after rebuilding the binary. The launcher
+fails closed if `SCHED_FIFO` cannot be applied.
+
+On 2026-09-21 the integrated runtime passed a 120-second live-hardware shadow:
+
+- 60,000 native 500 Hz ticks, zero deadline misses;
+- 0.0123 ms P99 and 0.227 ms maximum native lateness;
+- 6,000 Python state packets and 6,000 inferred targets;
+- 5,999 targets accepted by native (99.983% including the final shutdown race);
+- 0.901 ms maximum accepted target age;
+- 2.01 ms ONNX inference P99 and 5.40 ms maximum;
+- approximately 100 Hz raw IMU and quaternion packets with zero rejected frames;
+- exact expected CAN TX/RX counts and zero new errors or drops on all four buses.
+
+This still does not authorize actuation. Measured-pose handoff, full target
+envelopes, stale-target safe hold, and deliberate fault-injection tests remain
+required before any nonzero command path is implemented.

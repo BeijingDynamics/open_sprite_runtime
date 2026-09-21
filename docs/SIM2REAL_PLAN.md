@@ -69,8 +69,9 @@ required.
   issuing more than one frame per bus per 0.5 ms slot.
 - [x] Complete a 120-second, 31-motor, four-bus zero-gain shadow run with zero
   deadline misses, complete expected feedback, and no new CAN errors or drops.
-- [ ] Connect the 50 Hz Python/ONNX actor to the native layer through a bounded,
-  sequence-numbered, stale-target-failing shadow interface.
+- [x] Connect the 50 Hz Python/ONNX actor to the native layer through a versioned,
+  sequence-numbered, stale-target-failing shadow interface and qualify it for
+  120 seconds under full CAN and IMU load.
 - [ ] Qualify measured-pose handoff/ramp and command envelopes before any
   nonzero motor command is permitted.
 

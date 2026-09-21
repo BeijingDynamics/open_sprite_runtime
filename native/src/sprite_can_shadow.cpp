@@ -18,8 +18,10 @@
 #include <linux/can.h>
 #include <linux/can/raw.h>
 #include <net/if.h>
+#include <poll.h>
 #include <pthread.h>
 #include <sched.h>
+#include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
@@ -30,6 +32,42 @@ namespace {
 
 constexpr std::int64_t kTransportPeriodNs = 500'000LL;
 constexpr int kTransportRateHz = 2000;
+constexpr std::uint16_t kIpcVersion = 1;
+constexpr std::uint16_t kStateKind = 1;
+constexpr std::uint16_t kTargetKind = 2;
+constexpr std::size_t kJointCount = 31;
+constexpr std::int64_t kTargetTimeoutNs = 100'000'000LL;
+
+#pragma pack(push, 1)
+struct StatePacket {
+  char magic[4];
+  std::uint16_t version;
+  std::uint16_t kind;
+  std::uint64_t sequence;
+  std::int64_t monotonic_ns;
+  std::uint64_t motor_order_hash;
+  double position_rad[kJointCount];
+  double velocity_rad_s[kJointCount];
+};
+
+struct TargetPacket {
+  char magic[4];
+  std::uint16_t version;
+  std::uint16_t kind;
+  std::uint64_t sequence;
+  std::int64_t monotonic_ns;
+  std::uint64_t joint_order_hash;
+  std::uint64_t source_state_sequence;
+  double position_rad[kJointCount];
+  double velocity_rad_s[kJointCount];
+  double kp[kJointCount];
+  double kd[kJointCount];
+  double feedforward_torque_nm[kJointCount];
+};
+#pragma pack(pop)
+
+static_assert(sizeof(StatePacket) == 528, "state IPC ABI drift");
+static_assert(sizeof(TargetPacket) == 1280, "target IPC ABI drift");
 
 struct Motor {
   std::string name;
@@ -45,6 +83,7 @@ struct Motor {
   int poll_rate_hz = 0;
   int poll_phase = 0;
   double last_position = 0.0;
+  double last_velocity = 0.0;
   std::size_t tx_count = 0;
   std::size_t rx_count = 0;
   bool seen = false;
@@ -57,11 +96,25 @@ struct Options {
   int cpu = 5;
   std::string acknowledgement;
   bool all_disabled = false;
+  std::string ipc_socket;
+  std::uint64_t policy_joint_hash = 0;
+  int realtime_priority = 0;
 };
 
 struct Socket {
   std::string interface;
   int fd = -1;
+};
+
+struct IpcSocket {
+  std::string path;
+  int server_fd = -1;
+  int client_fd = -1;
+  std::uint64_t state_sequence = 0;
+  std::uint64_t last_target_sequence = 0;
+  std::int64_t last_target_ns = 0;
+  std::size_t target_count = 0;
+  double maximum_target_age_ms = 0.0;
 };
 
 std::int64_t monotonic_ns() {
@@ -91,6 +144,28 @@ double number(const std::string& value) {
   const double result = std::stod(value, &consumed);
   if (consumed != value.size() || !std::isfinite(result)) {
     throw std::runtime_error("invalid numeric TSV field");
+  }
+  return result;
+}
+
+std::uint64_t unsigned_number(const std::string& value) {
+  std::size_t consumed = 0;
+  const auto result = std::stoull(value, &consumed, 0);
+  if (consumed != value.size()) {
+    throw std::runtime_error("invalid unsigned integer argument");
+  }
+  return result;
+}
+
+std::uint64_t ordered_name_hash(const std::vector<Motor>& motors) {
+  std::uint64_t result = 0xCBF29CE484222325ULL;
+  for (const auto& motor : motors) {
+    for (const unsigned char byte : motor.name) {
+      result ^= byte;
+      result *= 0x100000001B3ULL;
+    }
+    result ^= 0;
+    result *= 0x100000001B3ULL;
   }
   return result;
 }
@@ -177,6 +252,11 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--cpu") result.cpu = static_cast<int>(number(value()));
     else if (argument == "--acknowledge-hardware-tx") result.acknowledgement = value();
     else if (argument == "--all-motors-disabled-confirmed") result.all_disabled = true;
+    else if (argument == "--ipc-socket") result.ipc_socket = value();
+    else if (argument == "--policy-joint-hash") result.policy_joint_hash = unsigned_number(value());
+    else if (argument == "--realtime-priority") {
+      result.realtime_priority = static_cast<int>(number(value()));
+    }
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -187,6 +267,12 @@ Options parse_options(int argc, char** argv) {
   }
   if (result.acknowledgement != "ZERO_GAIN_NATIVE_SHADOW" || !result.all_disabled) {
     throw std::runtime_error("explicit zero-gain TX acknowledgement and disabled confirmation required");
+  }
+  if (result.ipc_socket.empty() != (result.policy_joint_hash == 0)) {
+    throw std::runtime_error("--ipc-socket and nonzero --policy-joint-hash must be provided together");
+  }
+  if (result.realtime_priority < 0 || result.realtime_priority > 80) {
+    throw std::runtime_error("realtime priority must be in [0, 80]");
   }
   return result;
 }
@@ -249,6 +335,104 @@ Socket open_socket(const std::string& interface) {
   return Socket{interface, fd};
 }
 
+IpcSocket open_ipc_server(const std::string& path) {
+  if (path.empty() || path.size() >= sizeof(sockaddr_un::sun_path)) {
+    throw std::runtime_error("invalid IPC socket path");
+  }
+  IpcSocket result;
+  result.path = path;
+  result.server_fd = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_NONBLOCK, 0);
+  if (result.server_fd < 0) throw std::runtime_error("failed to open IPC server socket");
+  unlink(path.c_str());
+  sockaddr_un address{};
+  address.sun_family = AF_UNIX;
+  std::strncpy(address.sun_path, path.c_str(), sizeof(address.sun_path) - 1);
+  if (bind(result.server_fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+      listen(result.server_fd, 1) != 0) {
+    close(result.server_fd);
+    unlink(path.c_str());
+    throw std::runtime_error("failed to bind/listen on IPC socket");
+  }
+  pollfd event{result.server_fd, POLLIN, 0};
+  const int ready = poll(&event, 1, 10'000);
+  if (ready <= 0 || (event.revents & POLLIN) == 0) {
+    close(result.server_fd);
+    unlink(path.c_str());
+    throw std::runtime_error("policy IPC client did not connect within 10 seconds");
+  }
+  result.client_fd = accept4(result.server_fd, nullptr, nullptr, SOCK_NONBLOCK);
+  if (result.client_fd < 0) {
+    close(result.server_fd);
+    unlink(path.c_str());
+    throw std::runtime_error("failed to accept policy IPC client");
+  }
+  return result;
+}
+
+void close_ipc(IpcSocket& ipc) {
+  if (ipc.client_fd >= 0) close(ipc.client_fd);
+  if (ipc.server_fd >= 0) close(ipc.server_fd);
+  if (!ipc.path.empty()) unlink(ipc.path.c_str());
+  ipc.client_fd = -1;
+  ipc.server_fd = -1;
+}
+
+void send_state_packet(IpcSocket& ipc, const std::vector<Motor>& motors,
+                       std::uint64_t motor_hash, std::int64_t now_ns) {
+  StatePacket packet{};
+  std::memcpy(packet.magic, "SPRT", 4);
+  packet.version = kIpcVersion;
+  packet.kind = kStateKind;
+  packet.sequence = ++ipc.state_sequence;
+  packet.monotonic_ns = now_ns;
+  packet.motor_order_hash = motor_hash;
+  for (std::size_t index = 0; index < motors.size(); ++index) {
+    packet.position_rad[index] = motors[index].last_position;
+    packet.velocity_rad_s[index] = motors[index].last_velocity;
+  }
+  const ssize_t sent = send(ipc.client_fd, &packet, sizeof(packet), MSG_DONTWAIT | MSG_NOSIGNAL);
+  if (sent != static_cast<ssize_t>(sizeof(packet))) {
+    throw std::runtime_error("failed to publish native state IPC packet");
+  }
+}
+
+void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
+                          std::int64_t now_ns) {
+  while (true) {
+    TargetPacket packet{};
+    const ssize_t received = recv(ipc.client_fd, &packet, sizeof(packet), MSG_DONTWAIT);
+    if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+    if (received == 0) throw std::runtime_error("policy IPC client disconnected");
+    if (received != static_cast<ssize_t>(sizeof(packet)) ||
+        std::memcmp(packet.magic, "SPRT", 4) != 0 || packet.version != kIpcVersion ||
+        packet.kind != kTargetKind || packet.joint_order_hash != policy_joint_hash) {
+      throw std::runtime_error("policy IPC target ABI/order invariant failed");
+    }
+    if (packet.sequence <= ipc.last_target_sequence ||
+        packet.source_state_sequence > ipc.state_sequence ||
+        ipc.state_sequence - packet.source_state_sequence > 5) {
+      throw std::runtime_error("policy IPC target sequence invariant failed");
+    }
+    const std::int64_t age_ns = now_ns - packet.monotonic_ns;
+    if (age_ns < -5'000'000LL || age_ns > kTargetTimeoutNs) {
+      throw std::runtime_error("policy IPC target timestamp is future or stale");
+    }
+    for (std::size_t index = 0; index < kJointCount; ++index) {
+      const std::array<double, 5> values{packet.position_rad[index], packet.velocity_rad_s[index],
+          packet.kp[index], packet.kd[index], packet.feedforward_torque_nm[index]};
+      if (!std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); }) ||
+          packet.kp[index] < 0.0 || packet.kd[index] < 0.0 || packet.kd[index] > 3.0) {
+        throw std::runtime_error("policy IPC target numeric/gain invariant failed");
+      }
+    }
+    ipc.last_target_sequence = packet.sequence;
+    ipc.last_target_ns = packet.monotonic_ns;
+    ++ipc.target_count;
+    ipc.maximum_target_age_ms = std::max(
+        ipc.maximum_target_age_ms, static_cast<double>(age_ns) / 1.0e6);
+  }
+}
+
 void send_poll(Socket& socket, Motor& motor) {
   const auto data = zero_gain_payload(motor);
   canfd_frame frame{};
@@ -273,6 +457,18 @@ void apply_affinity(int cpu) {
   }
 }
 
+void apply_realtime_priority(int priority) {
+  if (priority == 0) return;
+  sched_param parameters{};
+  parameters.sched_priority = priority;
+  const int status = pthread_setschedparam(pthread_self(), SCHED_FIFO, &parameters);
+  if (status != 0) {
+    throw std::runtime_error(
+        "failed to apply SCHED_FIFO priority " + std::to_string(priority) + ": " +
+        std::strerror(status));
+  }
+}
+
 double percentile(std::vector<double> values, double fraction) {
   std::sort(values.begin(), values.end());
   const auto index = std::min(values.size() - 1,
@@ -282,7 +478,8 @@ double percentile(std::vector<double> values, double fraction) {
 
 std::string json_report(const std::vector<Motor>& motors, const std::vector<double>& lateness,
                         double elapsed_s, std::size_t deadline_misses, bool memory_locked,
-                        int cpu) {
+                        int cpu, int realtime_priority, const IpcSocket* ipc,
+                        std::int64_t finished_ns) {
   const double p99 = percentile(lateness, 0.99);
   const double maximum = *std::max_element(lateness.begin(), lateness.end());
   bool coverage_passed = true;
@@ -306,7 +503,18 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
   tx_counts << "  },\n";
   rx_counts << "  },\n";
   coverage_values << "  },\n";
-  const bool passed = deadline_misses == 0 && p99 <= 0.5 && maximum <= 2.0 && coverage_passed;
+  const bool ipc_enabled = ipc != nullptr;
+  const double target_coverage = ipc_enabled && ipc->state_sequence > 0
+      ? static_cast<double>(ipc->target_count) / static_cast<double>(ipc->state_sequence)
+      : 0.0;
+  const double final_target_age_ms = ipc_enabled && ipc->last_target_ns > 0
+      ? static_cast<double>(finished_ns - ipc->last_target_ns) / 1.0e6
+      : 0.0;
+  const bool ipc_passed = !ipc_enabled ||
+      (ipc->state_sequence > 0 && target_coverage >= 0.90 &&
+       ipc->last_target_ns > 0 && final_target_age_ms <= 100.0);
+  const bool passed = deadline_misses == 0 && p99 <= 0.5 && maximum <= 2.0 &&
+      coverage_passed && ipc_passed;
   std::ostringstream out;
   out << std::fixed << std::setprecision(6)
       << "{\n  \"mode\": \"native_mixed_rate_zero_gain_can_shadow\",\n"
@@ -316,7 +524,18 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << "  \"lateness_p99_ms\": " << p99 << ",\n"
       << "  \"lateness_max_ms\": " << maximum << ",\n"
       << "  \"cpu\": " << cpu << ",\n"
+      << "  \"scheduler\": \"" << (realtime_priority > 0 ? "SCHED_FIFO" : "SCHED_OTHER")
+      << "\",\n"
+      << "  \"realtime_priority\": " << realtime_priority << ",\n"
       << "  \"memory_locked\": " << (memory_locked ? "true" : "false") << ",\n"
+      << "  \"policy_ipc_enabled\": " << (ipc_enabled ? "true" : "false") << ",\n"
+      << "  \"policy_ipc_state_count\": " << (ipc_enabled ? ipc->state_sequence : 0) << ",\n"
+      << "  \"policy_ipc_target_count\": " << (ipc_enabled ? ipc->target_count : 0) << ",\n"
+      << "  \"policy_ipc_target_coverage\": " << target_coverage << ",\n"
+      << "  \"policy_ipc_maximum_target_age_ms\": "
+      << (ipc_enabled ? ipc->maximum_target_age_ms : 0.0) << ",\n"
+      << "  \"policy_ipc_final_target_age_ms\": " << final_target_age_ms << ",\n"
+      << "  \"policy_ipc_passed\": " << (ipc_passed ? "true" : "false") << ",\n"
       << "  \"nonzero_gain_or_torque_tx_attempts\": 0,\n"
       << "  \"automatic_enable_attempts\": 0,\n"
       << "  \"automatic_mode_switch_attempts\": 0,\n"
@@ -332,6 +551,7 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
 
 int main(int argc, char** argv) {
   std::vector<Socket> sockets;
+  IpcSocket ipc;
   try {
     const Options options = parse_options(argc, argv);
     auto motors = load_motors(options.config);
@@ -349,11 +569,16 @@ int main(int argc, char** argv) {
         throw std::runtime_error("duplicate feedback endpoint");
       }
     }
+    const std::uint64_t motor_hash = ordered_name_hash(motors);
+    if (!options.ipc_socket.empty()) {
+      ipc = open_ipc_server(options.ipc_socket);
+    }
     const std::size_t transport_slots =
         static_cast<std::size_t>(std::llround(options.duration_s * kTransportRateHz));
     const std::size_t state_ticks = transport_slots / 4;
     std::vector<double> lateness(state_ticks);
     apply_affinity(options.cpu);
+    apply_realtime_priority(options.realtime_priority);
     const bool memory_locked = mlockall(MCL_CURRENT | MCL_FUTURE) == 0;
     const std::int64_t start_ns = monotonic_ns() + 100'000'000LL;
     std::size_t deadline_misses = 0;
@@ -398,9 +623,21 @@ int main(int argc, char** argv) {
             throw std::runtime_error("motor identity/status invariant failed for " + motor.name);
           }
           const auto raw_position = (static_cast<unsigned>(frame.data[1]) << 8) | frame.data[2];
+          const auto raw_velocity = (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
           motor.last_position = decode_uint(raw_position, motor.position_min, motor.position_max, 16);
+          motor.last_velocity = decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
           ++motor.rx_count;
           motor.seen = true;
+        }
+      }
+      if (ipc.client_fd >= 0) {
+        drain_target_packets(ipc, options.policy_joint_hash, monotonic_ns());
+        if (slot % 40 == 39 &&
+            std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
+          send_state_packet(ipc, motors, motor_hash, monotonic_ns());
+          if (ipc.last_target_ns > 0 && monotonic_ns() - ipc.last_target_ns > kTargetTimeoutNs) {
+            throw std::runtime_error("policy IPC target watchdog expired");
+          }
         }
       }
     }
@@ -424,22 +661,31 @@ int main(int argc, char** argv) {
           throw std::runtime_error("final motor identity/status invariant failed for " + motor.name);
         }
         const auto raw_position = (static_cast<unsigned>(frame.data[1]) << 8) | frame.data[2];
+        const auto raw_velocity = (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
         motor.last_position = decode_uint(raw_position, motor.position_min, motor.position_max, 16);
+        motor.last_velocity = decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
         ++motor.rx_count;
         motor.seen = true;
       }
     }
-    const double elapsed_s = static_cast<double>(monotonic_ns() - start_ns) / 1.0e9;
+    const std::int64_t finished_ns = monotonic_ns();
+    if (ipc.client_fd >= 0) {
+      drain_target_packets(ipc, options.policy_joint_hash, finished_ns);
+    }
+    const double elapsed_s = static_cast<double>(finished_ns - start_ns) / 1.0e9;
     const std::string report = json_report(
-        motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu);
+        motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu,
+        options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr, finished_ns);
     std::cout << report;
     std::ofstream output(options.output);
     if (!output) throw std::runtime_error("cannot open report output");
     output << report;
     for (auto& can_socket : sockets) close(can_socket.fd);
+    close_ipc(ipc);
     return report.find("\"passed\": true") != std::string::npos ? 0 : 2;
   } catch (const std::exception& error) {
     for (auto& can_socket : sockets) if (can_socket.fd >= 0) close(can_socket.fd);
+    close_ipc(ipc);
     std::cerr << "ERROR: " << error.what() << '\n';
     return 1;
   }
