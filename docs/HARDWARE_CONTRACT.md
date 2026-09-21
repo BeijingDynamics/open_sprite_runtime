@@ -94,12 +94,15 @@ cd /home/tony/open_sprite_runtime
 The 2026-09-21 run completed 186/186 reads with no discarded frames and zero
 write, enable, mode-switch, or MIT-control attempts. Every drive reported
 `OT_Value=100` and `OC_Value=0.8`; `MAX_SPD` was 600 for J4340P/J4310P/J6248P
-and 300 for J3507. These are drive configuration values, not yet proven SI
-units: `OC_Value` is not treated as amperes and `MAX_SPD` is not treated as
-rad/s. Several version registers were zero or otherwise inconsistent, so none
-of these values are automatically copied into firmware, nameplate-current,
-speed, or software thermal-limit fields. The raw report is retained as evidence
-until the matching vendor register semantics are confirmed.
+and 300 for J3507. The DM-J4340P-2EC V1.1 manual defines `OT_Value` as the motor
+winding over-temperature threshold in degrees C, `OC_Value` as a fraction of
+rated phase current, and `MAX_SPD` as the velocity-mode rotor limit before gear
+reduction in rad/s. Therefore `0.8` is not 0.8 A, and 600 rad/s is not an output
+shaft or policy-joint speed limit. The hardware protection threshold also does
+not automatically become the runtime's lower operational temperature limit.
+Several version registers were zero or otherwise undocumented, so none of
+these values are automatically copied into firmware, nameplate-current,
+joint-speed, or software thermal-limit fields. The raw report remains evidence.
 
 Run `sprite-runtime inspect` after filling the hardware file. The
 `hardware_inventory` report is fail-closed: it requires 25 one-to-one joint

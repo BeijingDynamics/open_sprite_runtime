@@ -60,13 +60,26 @@ split. In particular, `hw_ver` (13), `sw_ver` (14), and `sub_ver` (36) are
 integers, while `OT_Value` (2), `OC_Value` (3), `MAX_SPD` (6), PMAX (21), VMAX
 (22), and TMAX (23) are floats.
 
-The SDK source names these registers but does not define engineering units for
-`OC_Value` or `MAX_SPD`. Therefore the measured `OC_Value=0.8` is not labelled
-as amperes, and `MAX_SPD=600/300` is not labelled as rad/s. Likewise, integer
-version-register contents are retained as raw values when a drive reports zero
-or a value whose textual representation is undocumented. None of these values
-may silently populate nameplate-current, SI speed, firmware, or operational
-thermal-limit fields without the matching vendor register manual.
+The SDK source names these registers but does not define their engineering
+semantics. The DM-J4340P-2EC V1.1 User Manual V1.1 (2026-04-09), pages 6, 19,
+20, and 29, supplies the missing definitions:
+
+- `OT_Value` is the motor-winding over-temperature threshold in degrees C. The
+  manual recommends at most 100 C; crossing it disables motor output.
+- `OC_Value` is the maximum phase-current fraction of rated phase current. A
+  value of 0.8 means 80%, not 0.8 A. For the 48 V J4340P nameplate rated phase
+  current of 4.11 A, this corresponds to a configured phase-current threshold
+  of approximately 3.288 A.
+- `MAX_SPD` is a rad/s limit on rotor speed before gear reduction and applies
+  only in velocity mode. It is not the output-shaft or policy-joint speed limit.
+- `hw_ver` is reserved, `sw_ver` is the firmware version, and `sub_ver` is the
+  firmware sub-version/minor version.
+
+The same register map is used by the inspected common Damiao SDK, but the
+J4340P manual is not silently treated as a nameplate manual for J4310P, J3507,
+or J6248P. Integer version contents remain raw when a drive reports zero or an
+undocumented packed representation. Drive shutdown values also remain distinct
+from lower project operating limits.
 
 ## Safety-critical distinctions
 
