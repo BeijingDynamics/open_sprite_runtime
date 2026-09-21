@@ -9,6 +9,11 @@ transmission, motor enable, parameter writes, zeroing, or torque commands.
   `0b2ede457bdbf0882e29ab9958ab8fda047b7f4a`
 - `dmBots/damiao-document`, commit
   `5e5a6932b8f013636415174c7433b9685ba24aa2`
+- The vendor-style U2CANFD C++ implementation mirrored at
+  `gitee.com/kit-miao/motor-sdk`, specifically
+  [`damiao.h`](https://gitee.com/kit-miao/motor-sdk/blob/master/C%2B%2B%E4%BE%8B%E7%A8%8B/u2canfd/include/protocol/damiao.h)
+  and
+  [`damiao.cpp`](https://gitee.com/kit-miao/motor-sdk/blob/master/C%2B%2B%E4%BE%8B%E7%A8%8B/u2canfd/src/protocol/damiao.cpp).
 - `damiao-document/调试助手使用说明书（达妙驱动控制协议）V1.4.pdf`,
   section 4.1 for the common feedback frame and section 4.2 for MIT mapping.
 - `damiao-document/3. 电机上手流程(三)-MIT模式说明.pdf` for the
@@ -44,6 +49,24 @@ its feedback can be decoded.
 The decoded torque is named `estimated_output_torque_nm`. It is the drive's
 reported estimate based on its identified motor parameters, gear ratio, and
 torque coefficient. It is not an independent torque-sensor measurement.
+
+## Parameter-read protocol and types
+
+The inspected C++ source constructs a read request on standard CAN ID `0x7FF`
+with payload `[motor_id_lo, motor_id_hi, 0x33, RID, 0, 0, 0, 0]`. Its response
+decoder treats RIDs 7-10, 13-16, and 35-36 as little-endian `uint32`; all other
+listed registers are little-endian `float32`. The runtime follows that exact
+split. In particular, `hw_ver` (13), `sw_ver` (14), and `sub_ver` (36) are
+integers, while `OT_Value` (2), `OC_Value` (3), `MAX_SPD` (6), PMAX (21), VMAX
+(22), and TMAX (23) are floats.
+
+The SDK source names these registers but does not define engineering units for
+`OC_Value` or `MAX_SPD`. Therefore the measured `OC_Value=0.8` is not labelled
+as amperes, and `MAX_SPD=600/300` is not labelled as rad/s. Likewise, integer
+version-register contents are retained as raw values when a drive reports zero
+or a value whose textual representation is undocumented. None of these values
+may silently populate nameplate-current, SI speed, firmware, or operational
+thermal-limit fields without the matching vendor register manual.
 
 ## Safety-critical distinctions
 
