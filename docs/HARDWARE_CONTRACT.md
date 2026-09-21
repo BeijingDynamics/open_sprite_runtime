@@ -1,6 +1,6 @@
 # Hardware contract
 
-Before shadow mode, fill every policy joint entry in `motor_map` with:
+Before protected actuation, fill every physical motor entry in `motor_map` with:
 
 - Damiao model and firmware version
 - USB-CAN FD channel, command CAN ID, and feedback Master ID
@@ -38,8 +38,8 @@ sprite-runtime hardware-template \
 ```
 
 The generated file is deliberately non-armable. It pre-fills the known leg and
-upgraded shoulder pitch/roll motor nameplate values plus the physical ankle and
-head differential topology; every machine-specific
+all J4340P/J4310P motor nameplate values plus the physical ankle and head
+differential topology; every machine-specific
 CAN endpoint, firmware version, zero, sign, limit, current/temperature bound,
 MIT range, IMU transform, e-stop description, and measured ankle matrix remains
 unset until measured.
@@ -73,6 +73,26 @@ finite zeros, nested soft/hard limits, a measured IMU configuration, an
 independent e-stop chain, and three separate differential calibrations. A passing
 inventory check validates configuration consistency only; it does not enable
 CAN transmission.
+
+The CAN commissioning evidence is recorded under
+`can_adapter.commissioning_shadow`. For the installed Damiao drives this must be
+`active_zero_gain_position_echo`, because a disabled drive returns its state in
+response to a request rather than broadcasting the complete required stream.
+The gate requires at least 120 seconds, all motors disabled, at least 99% sample
+coverage for every motor, and zero deadline misses, CAN errors/drops, nonzero
+gain/torque writes, automatic enables, or automatic mode switches. A pure
+listen-only capture must not be presented as this evidence.
+
+Generate a concise, model-grouped list of remaining physical inputs without
+opening CAN or serial devices:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/report_hardware_arm_gaps.py \
+  --hardware config/hardware.sprite0825.measurement.json \
+  --contract <g74-model3000-candidate>/deploy/contract.json \
+  --json-output reports/sprite0825_arm_gaps.json \
+  --markdown-output reports/sprite0825_arm_gaps.md
+```
 
 ## Frozen CAN FD assignment
 

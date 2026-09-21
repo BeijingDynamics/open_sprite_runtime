@@ -26,7 +26,17 @@ No CAN device was opened, configured, or used to transmit frames.
   channel names, firmware version, timestamp quality, receive loss, and latency
   are not yet measured.
 
-## Required gate before torque enable
+## Historical passive diagnostic
+
+This document predates direct polling of the installed disabled Damiao drives.
+Those drives do not supply the complete required state stream without request
+frames, so listen-only capture is not the current arming gate. It remains valid
+for inspecting traffic when another independently approved controller is
+already polling the motors. The authoritative gate is now
+`can_adapter.commissioning_shadow.method=active_zero_gain_position_echo`, as
+documented in `HARDWARE_CONTRACT.md` and `SPRITE0825_LIVE_POLICY_SHADOW.md`.
+
+## Passive diagnostic procedure
 
 1. Attach the exact four-channel adapter and record USB identity, firmware, and
    the stable mapping from physical channel 0..3 to SocketCAN interface names.
@@ -39,9 +49,8 @@ No CAN device was opened, configured, or used to transmit frames.
    under all 31 motors; its P99 must be no more than 6 ms. Do not report raw
    hardware time minus host time as latency. Measure USB bus-to-kernel latency
    later with synchronized clocks or a physical loopback test.
-5. Save the machine-readable report and set `rx_only_shadow.completed=true`
-   only after all four channels pass. Leaving any field unset keeps the runtime
-   fail-closed.
+5. Save the machine-readable report as passive diagnostic evidence. Do not use
+   it to mark the active zero-gain commissioning gate complete.
 
 Listen-only is a shadow-mode commissioning gate, not the final armed state.
 Changing an interface to active mode later must be a separate deliberate

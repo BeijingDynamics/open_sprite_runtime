@@ -114,15 +114,21 @@ def complete_hardware() -> dict:
             "sdk_version": "1.3.1",
             "logical_bus_names": ["CANFD1", "CANFD2", "CANFD3", "CANFD4"],
             "interfaces": ["can0", "can1", "can2", "can3"],
-            "rx_only_shadow": {
+            "commissioning_shadow": {
                 "required_before_arm": True,
-                "kernel_listen_only_required": True,
-                "kernel_ctrlmode": "CAN_CTRLMODE_LISTENONLY",
-                "hardware_timestamp_required": True,
+                "method": "active_zero_gain_position_echo",
+                "payload": "position_echo_v0_kp0_kd0_tau0",
+                "all_motors_disabled": True,
                 "completed": True,
-                "timestamp_source": "hardware",
-                "measured_rx_age_p99_ms": 1.2,
-                "evidence_report": "reports/kh_rx_only_20260913.json",
+                "duration_s": 120.0,
+                "minimum_motor_sample_coverage": 1.0,
+                "deadline_misses": 0,
+                "can_error_delta": 0,
+                "can_drop_delta": 0,
+                "nonzero_gain_or_torque_tx_attempts": 0,
+                "automatic_enable_attempts": 0,
+                "automatic_mode_switch_attempts": 0,
+                "evidence_report": "docs/SPRITE0825_LIVE_POLICY_SHADOW.md",
             },
         },
         "imu": {
@@ -216,6 +222,8 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertEqual(template["controller"]["damiao_embedded_kd_max"], 3.0)
         self.assertEqual(records["left_hip_pitch_motor"]["peak_torque_nm"], 40.0)
         self.assertEqual(records["left_ankle_motor_a"]["peak_torque_nm"], 12.5)
+        self.assertEqual(records["waist_yaw_motor"]["peak_torque_nm"], 40.0)
+        self.assertEqual(records["left_elbow_motor"]["peak_torque_nm"], 12.5)
         self.assertNotIn("policy_to_motor_sign", records["left_ankle_motor_a"])
         self.assertNotIn("policy_to_motor_sign", records["head_motor_a"])
         self.assertEqual(records["waist_yaw_motor"]["policy_to_motor_sign"], -1)
@@ -320,19 +328,29 @@ class HardwareInventoryTest(unittest.TestCase):
         self.assertFalse(report.valid)
         self.assertTrue(any("interfaces must be unique" in error for error in report.errors))
 
-    def test_can_adapter_requires_completed_listen_only_shadow_gate(self) -> None:
+    def test_can_adapter_requires_completed_zero_gain_shadow_gate(self) -> None:
         hardware = complete_hardware()
-        hardware["can_adapter"]["rx_only_shadow"]["completed"] = False
+        hardware["can_adapter"]["commissioning_shadow"]["completed"] = False
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
         self.assertTrue(any("completed must be true" in error for error in report.errors))
 
-    def test_can_adapter_rejects_stale_receive_age(self) -> None:
+    def test_can_adapter_rejects_short_or_nonzero_shadow_evidence(self) -> None:
         hardware = complete_hardware()
-        hardware["can_adapter"]["rx_only_shadow"]["measured_rx_age_p99_ms"] = 6.1
+        hardware["can_adapter"]["commissioning_shadow"]["duration_s"] = 119.9
         report = validate_hardware_inventory(hardware, JOINTS)
         self.assertFalse(report.valid)
-        self.assertTrue(any("measured_rx_age_p99_ms" in error for error in report.errors))
+        self.assertTrue(any("duration_s" in error for error in report.errors))
+
+        hardware = complete_hardware()
+        hardware["can_adapter"]["commissioning_shadow"][
+            "nonzero_gain_or_torque_tx_attempts"
+        ] = 1
+        report = validate_hardware_inventory(hardware, JOINTS)
+        self.assertFalse(report.valid)
+        self.assertTrue(
+            any("nonzero_gain_or_torque_tx_attempts" in error for error in report.errors)
+        )
 
     def test_ankle_must_use_two_coupled_motors_per_side(self) -> None:
         hardware = complete_hardware()

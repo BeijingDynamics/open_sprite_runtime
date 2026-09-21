@@ -60,10 +60,14 @@ sprite-runtime heading-self-test --runtime-config config/runtime.example.json
 sprite-runtime timing-probe --duration 10 --state-hz 500
 ```
 
-Once the measured motor map is complete, `sprite-runtime damiao-rx-audit`
-collects a finite, hardware-timestamped four-bus shadow trace with kernel
-listen-only mode. It contains no transmit path and fails on missing or unknown
-motors, feedback-rate/gap/queue-age violations, or Damiao fault status.
+Damiao drives do not provide the required periodic disabled-state telemetry
+without a request frame. The qualified commissioning gate therefore uses the
+native active zero-gain position-echo probe while every motor remains disabled;
+velocity, Kp, Kd, and feed-forward torque are all encoded as zero. The hardware
+contract requires a 120-second report with complete feedback, zero timing/CAN
+errors, and zero nonzero-command, enable, or mode-switch attempts. The older
+listen-only receiver remains useful only when another approved controller is
+already producing bus traffic.
 
 The heading controller follows Isaac Lab's PM01 command interface: while
 walking straight it computes `wz = clip(0.5 * wrap(target_yaw - imu_yaw),

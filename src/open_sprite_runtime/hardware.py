@@ -158,35 +158,41 @@ def _validate_can_adapter(hardware: dict[str, Any], errors: list[str]) -> None:
     elif len(set(interfaces)) != 4:
         errors.append("can_adapter.interfaces must be unique")
 
-    shadow = adapter.get("rx_only_shadow")
+    shadow = adapter.get("commissioning_shadow")
     if not isinstance(shadow, dict):
-        errors.append("can_adapter.rx_only_shadow configuration is missing")
+        errors.append("can_adapter.commissioning_shadow configuration is missing")
         return
-    required_true = (
-        "required_before_arm",
-        "kernel_listen_only_required",
-        "hardware_timestamp_required",
-        "completed",
-    )
+    required_true = ("required_before_arm", "completed", "all_motors_disabled")
     for field in required_true:
         if shadow.get(field) is not True:
-            errors.append(f"can_adapter.rx_only_shadow.{field} must be true")
-    if shadow.get("kernel_ctrlmode") != "CAN_CTRLMODE_LISTENONLY":
+            errors.append(f"can_adapter.commissioning_shadow.{field} must be true")
+    if shadow.get("method") != "active_zero_gain_position_echo":
         errors.append(
-            "can_adapter.rx_only_shadow.kernel_ctrlmode must be CAN_CTRLMODE_LISTENONLY"
+            "can_adapter.commissioning_shadow.method must be active_zero_gain_position_echo"
         )
+    if shadow.get("payload") != "position_echo_v0_kp0_kd0_tau0":
+        errors.append("can_adapter.commissioning_shadow.payload is not the qualified zero-gain payload")
     if not _nonempty(shadow.get("evidence_report")):
-        errors.append("can_adapter.rx_only_shadow.evidence_report is empty or TODO")
-    if shadow.get("timestamp_source") not in ("device", "hardware"):
-        errors.append("can_adapter.rx_only_shadow.timestamp_source must be device or hardware")
-    try:
-        p99 = float(shadow["measured_rx_age_p99_ms"])
-        if not np.isfinite(p99) or p99 <= 0.0 or p99 > 6.0:
-            raise ValueError
-    except (KeyError, TypeError, ValueError):
-        errors.append(
-            "can_adapter.rx_only_shadow.measured_rx_age_p99_ms must be in (0, 6]"
-        )
+        errors.append("can_adapter.commissioning_shadow.evidence_report is empty or TODO")
+    numeric_requirements = {
+        "duration_s": (120.0, math.inf),
+        "minimum_motor_sample_coverage": (0.99, 1.0),
+        "deadline_misses": (0.0, 0.0),
+        "can_error_delta": (0.0, 0.0),
+        "can_drop_delta": (0.0, 0.0),
+        "nonzero_gain_or_torque_tx_attempts": (0.0, 0.0),
+        "automatic_enable_attempts": (0.0, 0.0),
+        "automatic_mode_switch_attempts": (0.0, 0.0),
+    }
+    for field, (minimum, maximum) in numeric_requirements.items():
+        try:
+            value = float(shadow[field])
+            if not np.isfinite(value) or value < minimum or value > maximum:
+                raise ValueError
+        except (KeyError, TypeError, ValueError):
+            errors.append(
+                f"can_adapter.commissioning_shadow.{field} must be in [{minimum}, {maximum}]"
+            )
 
 
 @dataclass(frozen=True)
@@ -699,19 +705,34 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
     for label, record in motor_map.items():
         endpoint_role = record.get("policy_joint", label)
         channel, can_id = CONFIRMED_CAN_ENDPOINTS[endpoint_role]
+        model = CONFIRMED_MOTOR_MODELS[endpoint_role]
         record.update(
             {
-                "model": CONFIRMED_MOTOR_MODELS[endpoint_role],
+                "model": model,
                 "can_channel": channel,
                 "can_id": can_id,
                 "master_id": can_id + 0x10,
             }
         )
+        if "4340P" in model:
+            record.update(
+                rated_torque_nm=14.0,
+                peak_torque_nm=40.0,
+                rated_speed_rad_s=3.77,
+                max_speed_rad_s=9.3,
+            )
+        elif "4310P" in model:
+            record.update(
+                rated_torque_nm=3.5,
+                peak_torque_nm=12.5,
+                rated_speed_rad_s=12.56,
+                max_speed_rad_s=36.2,
+            )
 
     if len(motor_map) != 31:
         raise AssertionError("generated hardware template must contain 31 physical motors")
     return {
-        "schema": "sprite0825_hardware_contract_v2",
+        "schema": "sprite0825_hardware_contract_v3",
         "configured": False,
         "controller": {
             "candidate": "jetson_orin_nano_or_raspberry_pi_5",
@@ -726,14 +747,20 @@ def make_hardware_template(policy_joint_names: Iterable[str]) -> dict[str, Any]:
             "sdk_version": "1.4.2",
             "logical_bus_names": ["CANFD1", "CANFD2", "CANFD3", "CANFD4"],
             "interfaces": [None, None, None, None],
-            "rx_only_shadow": {
+            "commissioning_shadow": {
                 "required_before_arm": True,
-                "kernel_listen_only_required": True,
-                "kernel_ctrlmode": "CAN_CTRLMODE_LISTENONLY",
-                "hardware_timestamp_required": True,
+                "method": "active_zero_gain_position_echo",
+                "payload": "position_echo_v0_kp0_kd0_tau0",
+                "all_motors_disabled": True,
                 "completed": False,
-                "timestamp_source": None,
-                "measured_rx_age_p99_ms": None,
+                "duration_s": None,
+                "minimum_motor_sample_coverage": None,
+                "deadline_misses": None,
+                "can_error_delta": None,
+                "can_drop_delta": None,
+                "nonzero_gain_or_torque_tx_attempts": None,
+                "automatic_enable_attempts": None,
+                "automatic_mode_switch_attempts": None,
                 "evidence_report": None,
             },
         },
