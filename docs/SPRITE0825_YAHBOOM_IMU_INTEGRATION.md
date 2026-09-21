@@ -116,6 +116,19 @@ PYTHONPATH=src .venv/bin/python -m open_sprite_runtime.cli imu-static-audit \
   --report reports/yahboom_imu_static.json
 ```
 
+The Sprite0825 Jetson installation uses a topology-pinned stable link because
+the CH340 adapter does not expose a unique per-device serial number. Install and
+verify it interactively on 253:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./install_sprite0825_imu_udev_on_253.sh
+```
+
+The rule matches USB VID/PID `1a86:7523` at physical topology `1-2.2` and
+creates `/dev/sprite0825-imu`. If the USB port changes, the script must fail
+rather than silently bind another CH340 device.
+
 To validate the physical mounting and live axis direction on the Jetson display,
 run the absolute-attitude MuJoCo viewer. Correct mounting displays the robot
 upright. A sensor lying flat with sensor +Z upward must not display upright. The

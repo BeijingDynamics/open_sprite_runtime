@@ -27,9 +27,14 @@
 - [x] Derive review-only direct and differential motor limit candidates from
   the contract-pinned URDF; physical hard-stop confirmation remains open.
 - Measure four-channel USB-CAN FD latency and sustained bus utilization.
-- Establish a hardware emergency-stop chain independent of the SBC process.
+- [x] Establish a hardware emergency-stop chain independent of the SBC process:
+  a safety operator controls the regulated supply's independent motor-bus switch.
+- Record the power-cut behavior and stop time before releasing ground walking.
 - Measure and record pelvis IMU mounting transform, axes, timestamps, update
   rate, gyro bias, and short-term integrated-yaw drift.
+- [x] Record a 120-second read-only stationary IMU audit at 99.94 Hz with zero
+  rejected frames and -0.0101 deg/min measured yaw drift.
+- Install and verify the topology-pinned `/dev/sprite0825-imu` udev link.
 
 ## Gate 2: ankle calibration
 

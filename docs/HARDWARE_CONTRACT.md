@@ -83,10 +83,13 @@ coverage for every motor, and zero deadline misses, CAN errors/drops, nonzero
 gain/torque writes, automatic enables, or automatic mode switches. A pure
 listen-only capture must not be presented as this evidence.
 
-During suspended commissioning, a dedicated safety operator controls the main
-motor-power switch and the robot remains mechanically supported. This is a
-required operating procedure for the current tests, but it is not the
-independent hardware emergency-stop chain required before walking tests.
+During suspended commissioning, a dedicated safety operator controls the
+regulated power supply's independent physical switch and the robot remains
+mechanically supported. The operator confirmed on 2026-09-21 that this switch
+removes the motor DC bus independently of the Jetson and CAN software, so it is
+the current independent hardware emergency-stop chain. Before ground walking,
+record a commanded-motion power-cut test and measured stop time; configuration
+alone is not a walking-release test.
 
 Generate a concise, model-grouped list of remaining physical inputs without
 opening CAN or serial devices:
@@ -230,6 +233,22 @@ the calibrated matrix. The resulting motor boxes are secondary guards only:
 the runtime must first enforce the pitch/roll joint-space limits. The 0.05 rad
 inset and all URDF limits remain candidates until the physical hard stops are
 measured and signed off.
+
+After reviewing that report, install the derived ranges as conservative runtime
+guards with an explicit confirmation token:
+
+```bash
+PYTHONPATH=src .venv/bin/python tools/apply_derived_motor_limits.py \
+  --hardware config/hardware.sprite0825.measurement.json \
+  --limits reports/sprite0825_urdf_limit_candidates.json \
+  --output config/hardware.sprite0825.measurement.with_limits.json \
+  --confirm USE_URDF_LIMITS_AS_CONSERVATIVE_RUNTIME_GUARDS
+```
+
+Here `hard_limit_rad` means the full contract-pinned URDF design range used by
+the runtime's hard software gate. It must lie inside the measured mechanical
+stop. Each motor record therefore carries `physical_hard_stop_measured=false`
+until that independent check is complete.
 
 ## IMU and heading
 

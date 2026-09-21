@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 
 from open_sprite_runtime.contracts import PolicyContract
-from open_sprite_runtime.limit_derivation import derive_limit_candidates
+from open_sprite_runtime.limit_derivation import apply_limit_candidates, derive_limit_candidates
 from tests.test_contracts import valid_policy_data
 from tests.test_hardware import JOINTS, complete_hardware
 
@@ -45,6 +45,28 @@ class LimitDerivationTests(unittest.TestCase):
             contract.data["asset_urdf_sha256"] = "0" * 64
             with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
                 derive_limit_candidates(complete_hardware(), contract, urdf)
+
+    def test_applies_strictly_nested_candidates_with_provenance(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            hardware = complete_hardware()
+            report = derive_limit_candidates(hardware, contract, urdf)
+            self.assertEqual(apply_limit_candidates(hardware, report), 62)
+        for record in hardware["motor_map"].values():
+            hard = record["hard_limit_rad"]
+            soft = record["soft_limit_rad"]
+            self.assertLess(hard[0], soft[0])
+            self.assertLess(soft[1], hard[1])
+            self.assertFalse(record["limit_provenance"]["physical_hard_stop_measured"])
+
+    def test_apply_rejects_incomplete_motor_set(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            hardware = complete_hardware()
+            report = derive_limit_candidates(hardware, contract, urdf)
+            report["motor_limits"].pop(next(iter(report["motor_limits"])))
+            with self.assertRaisesRegex(ValueError, "motor set mismatch"):
+                apply_limit_candidates(hardware, report)
 
 
 if __name__ == "__main__":

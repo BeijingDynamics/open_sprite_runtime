@@ -87,24 +87,28 @@
     "yaw_source": "integrated_body_gyro_z",
     "stand_resets_yaw": true,
     "magnetometer_yaw_safety_role": "monitor_only",
-    "measured_yaw_drift_deg_per_min": null,
+    "measured_yaw_drift_deg_per_min": -0.010112962067283593,
     "vendor_protocol_verified": true,
     "commissioning_evidence": [
       "reports/yahboom_imu_set_100hz.json",
       "reports/yahboom_imu_after_power_cycle_100hz.json",
-      "reports/yahboom_imu_static_desk_20260920.json"
+      "reports/yahboom_imu_static_desk_20260920.json",
+      "reports/yahboom_imu_static_120s_20260921.json"
     ]
   },
   "estop": {
-    "configured": false,
-    "hardware_chain": null,
+    "configured": true,
+    "hardware_chain": "dedicated safety operator opens the regulated power supply's independent physical switch, removing the motor DC bus independently of the Jetson and CAN software",
     "watchdog_timeout_ms": 20,
+    "actuation_independent": true,
+    "operator_confirmed_date": "2026-09-21",
+    "walking_release_requires_recorded_power_cut_test": true,
     "suspended_commissioning_power_safety": {
       "dedicated_operator_required": true,
       "operator_role": "safety operator controls the main motor-power switch",
       "robot_mechanically_supported": true,
       "qualified_scope": "suspended commissioning only",
-      "counts_as_independent_hardware_estop": false
+      "counts_as_independent_hardware_estop": true
     }
   },
   "motor_map": {
@@ -118,8 +122,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ],
+      "hard_limit_rad": [
+        -2.74,
+        2.74
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -151,7 +161,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_pitch_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_hip_pitch_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -163,8 +180,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ],
+      "hard_limit_rad": [
+        -2.74,
+        2.74
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -196,7 +219,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_pitch_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "waist_roll_motor": {
       "model": "DM-J6248P-2EC",
@@ -208,8 +238,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.5609999999999999,
+        0.5609999999999999
+      ],
+      "hard_limit_rad": [
+        -0.611,
+        0.611
+      ],
       "rated_torque_nm": 30.0,
       "peak_torque_nm": 97.0,
       "rated_speed_rad_s": null,
@@ -241,7 +277,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "waist_roll_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_hip_roll_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -253,8 +296,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.9969999999999999,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.047,
+        1.745
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -286,7 +335,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_roll_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_hip_roll_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -298,8 +354,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        0.9969999999999999
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.047
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -331,7 +393,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_roll_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "waist_yaw_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -343,8 +412,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.568,
+        2.568
+      ],
+      "hard_limit_rad": [
+        -2.618,
+        2.618
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -376,7 +451,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "waist_yaw_joint",
-      "policy_to_motor_sign": -1
+      "policy_to_motor_sign": -1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_hip_yaw_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -388,8 +470,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ],
+      "hard_limit_rad": [
+        -2.74,
+        2.74
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -421,7 +509,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_hip_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_hip_yaw_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -433,8 +528,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.6900000000000004,
+        2.6900000000000004
+      ],
+      "hard_limit_rad": [
+        -2.74,
+        2.74
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -466,7 +567,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_hip_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_shoulder_pitch_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -478,8 +586,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -3.092,
+        1.521
+      ],
+      "hard_limit_rad": [
+        -3.142,
+        1.571
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -511,7 +625,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_pitch_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_shoulder_pitch_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -523,8 +644,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.521,
+        3.092
+      ],
+      "hard_limit_rad": [
+        -1.571,
+        3.142
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -556,7 +683,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_pitch_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_knee_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -568,8 +702,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.12499999999999999,
+        2.3930000000000002
+      ],
+      "hard_limit_rad": [
+        -0.175,
+        2.443
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -601,7 +741,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_knee_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_knee_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -613,8 +760,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.3930000000000002,
+        0.12499999999999999
+      ],
+      "hard_limit_rad": [
+        -2.443,
+        0.175
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -646,7 +799,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_knee_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_shoulder_roll_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -658,8 +818,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.12499999999999999,
+        2.742
+      ],
+      "hard_limit_rad": [
+        -0.175,
+        2.792
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -691,7 +857,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_roll_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_shoulder_roll_motor": {
       "model": "DM-J4340P-2EC V1.1 (48V)",
@@ -703,8 +876,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.742,
+        0.12499999999999999
+      ],
+      "hard_limit_rad": [
+        -2.792,
+        0.175
+      ],
       "rated_torque_nm": 14.0,
       "peak_torque_nm": 40.0,
       "rated_speed_rad_s": 3.77,
@@ -736,7 +915,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_roll_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "head_yaw_motor": {
       "model": "DM-J3507-2EC (48V)",
@@ -748,8 +934,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.745
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -781,7 +973,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "head_yaw_joint",
-      "policy_to_motor_sign": -1
+      "policy_to_motor_sign": -1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_shoulder_yaw_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -793,8 +992,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.745
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -826,7 +1031,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_shoulder_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_shoulder_yaw_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -838,8 +1050,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.745
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -871,7 +1089,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_shoulder_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_elbow_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -883,8 +1108,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -2.568,
+        0.12499999999999999
+      ],
+      "hard_limit_rad": [
+        -2.618,
+        0.175
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -916,7 +1147,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_elbow_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_elbow_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -928,8 +1166,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.12499999999999999,
+        2.568
+      ],
+      "hard_limit_rad": [
+        -0.175,
+        2.618
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -961,7 +1205,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_elbow_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_wrist_yaw_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -973,8 +1224,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.745
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1006,7 +1263,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_wrist_yaw_motor": {
       "model": "DM-J4310P-2EC (48V)",
@@ -1018,8 +1282,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -1.695,
+        1.695
+      ],
+      "hard_limit_rad": [
+        -1.745,
+        1.745
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1051,7 +1321,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_yaw_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_wrist_pitch_motor": {
       "model": "DM-J3507-2EC (48V)",
@@ -1063,8 +1340,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.735,
+        0.735
+      ],
+      "hard_limit_rad": [
+        -0.785,
+        0.785
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1096,7 +1379,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_pitch_joint",
-      "policy_to_motor_sign": -1
+      "policy_to_motor_sign": -1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_wrist_pitch_motor": {
       "model": "DM-J3507-2EC (48V)",
@@ -1108,8 +1398,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.735,
+        0.735
+      ],
+      "hard_limit_rad": [
+        -0.785,
+        0.785
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1141,7 +1437,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_pitch_joint",
-      "policy_to_motor_sign": 1
+      "policy_to_motor_sign": 1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_wrist_roll_motor": {
       "model": "DM-J3507-2EC (48V)",
@@ -1153,8 +1456,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.7,
+        0.7
+      ],
+      "hard_limit_rad": [
+        -0.75,
+        0.75
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1186,7 +1495,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "left_wrist_roll_joint",
-      "policy_to_motor_sign": -1
+      "policy_to_motor_sign": -1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_wrist_roll_motor": {
       "model": "DM-J3507-2EC (48V)",
@@ -1198,8 +1514,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.7,
+        0.7
+      ],
+      "hard_limit_rad": [
+        -0.75,
+        0.75
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1231,7 +1553,14 @@
         "source": "operator_confirmed_drive_configuration"
       },
       "policy_joint": "right_wrist_roll_joint",
-      "policy_to_motor_sign": -1
+      "policy_to_motor_sign": -1,
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_ankle_motor_a": {
       "model": "DM-J4310P-2EC (48V)",
@@ -1243,8 +1572,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.9085992804377211,
+        0.8795592804377207
+      ],
+      "hard_limit_rad": [
+        -1.0244126587327627,
+        0.9953726587327622
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1278,7 +1613,14 @@
       "coupled_joints": [
         "left_ankle_pitch_joint",
         "left_ankle_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "left_ankle_motor_b": {
       "model": "DM-J4310P-2EC (48V)",
@@ -1290,8 +1632,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.8810797869129943,
+        0.9070797869129941
+      ],
+      "hard_limit_rad": [
+        -0.9968932308136411,
+        1.022893230813641
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1325,7 +1673,14 @@
       "coupled_joints": [
         "left_ankle_pitch_joint",
         "left_ankle_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_ankle_motor_a": {
       "model": "DM-J4310P-2EC (48V)",
@@ -1337,8 +1692,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.8799528001784472,
+        0.9089128001784473
+      ],
+      "hard_limit_rad": [
+        -0.995811971186018,
+        1.0247719711860181
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1372,7 +1733,14 @@
       "coupled_joints": [
         "right_ankle_pitch_joint",
         "right_ankle_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "right_ankle_motor_b": {
       "model": "DM-J4310P-2EC (48V)",
@@ -1384,8 +1752,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.9077173700024932,
+        0.8812373700024931
+      ],
+      "hard_limit_rad": [
+        -1.0235823143033345,
+        0.9971023143033343
+      ],
       "rated_torque_nm": 3.5,
       "peak_torque_nm": 12.5,
       "rated_speed_rad_s": 12.56,
@@ -1419,7 +1793,14 @@
       "coupled_joints": [
         "right_ankle_pitch_joint",
         "right_ankle_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "head_motor_a": {
       "model": "DM-J3507-2EC (48V)",
@@ -1431,8 +1812,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.9757945077611432,
+        0.7134888389119967
+      ],
+      "hard_limit_rad": [
+        -1.0567680293388269,
+        0.7944623604896802
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1466,7 +1853,14 @@
       "coupled_joints": [
         "head_pitch_joint",
         "head_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     },
     "head_motor_b": {
       "model": "DM-J3507-2EC (48V)",
@@ -1478,8 +1872,14 @@
       "encoder_sign": 1,
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
-      "soft_limit_rad": null,
-      "hard_limit_rad": null,
+      "soft_limit_rad": [
+        -0.7134888389119965,
+        0.9757945077611428
+      ],
+      "hard_limit_rad": [
+        -0.7944623604896802,
+        1.0567680293388264
+      ],
       "rated_torque_nm": 0.8,
       "peak_torque_nm": 3.0,
       "rated_speed_rad_s": null,
@@ -1513,7 +1913,14 @@
       "coupled_joints": [
         "head_pitch_joint",
         "head_roll_joint"
-      ]
+      ],
+      "limit_provenance": {
+        "source": "contract_pinned_urdf_design_limits",
+        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "soft_margin_rad_each_joint_boundary": 0.05,
+        "physical_hard_stop_measured": false,
+        "runtime_role": "conservative software guard"
+      }
     }
   },
   "differentials": {
