@@ -11,3 +11,10 @@ captures/
 *.bin
 config/hardware.local.json
 artifacts/*.bundle
+
+# Live hardware traces stay on the commissioning host/local backup by default.
+artifacts/**/reports/native_policy_ipc_actor_*.json
+artifacts/**/reports/native_policy_ipc_transport_*.json
+artifacts/**/reports/native_policy_ipc_transport_*.log
+artifacts/**/reports/native_policy_ipc_trace_*.json
+artifacts/**/reports/native_policy_ipc_trace_*.npz
