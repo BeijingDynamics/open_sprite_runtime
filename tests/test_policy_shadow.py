@@ -97,6 +97,13 @@ class LivePolicyShadowTests(unittest.TestCase):
         self.assertEqual(report.state_ticks, 20)
         self.assertEqual(report.nonzero_motor_command_tx_attempts, 0)
         self.assertLess(report.maximum_embedded_kd_requested, 3.01)
+        trace = shadow.last_policy_trace
+        self.assertIsNotNone(trace)
+        assert trace is not None
+        self.assertEqual(trace.observation.shape, (795,))
+        self.assertEqual(trace.raw_action.shape, (31,))
+        self.assertEqual(trace.handoff_action.shape, (31,))
+        self.assertEqual(trace.target_position_rad.shape, (31,))
 
 
 if __name__ == "__main__":

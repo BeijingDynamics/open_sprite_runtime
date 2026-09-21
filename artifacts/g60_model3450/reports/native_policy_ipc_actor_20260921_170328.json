@@ -1,0 +1,18 @@
+{
+  "mode": "python_onnx_native_ipc_policy_shadow_no_actuation",
+  "state_count": 500,
+  "target_count": 500,
+  "target_coverage": 1.0,
+  "raw_imu_count": 1010,
+  "quaternion_count": 1010,
+  "imu_rejected_frame_count": 0,
+  "inference_mean_ms": 1.775271674,
+  "inference_p99_ms": 2.332727,
+  "inference_max_ms": 6.953604,
+  "nonzero_can_tx_attempts": 0,
+  "trace_output": "/home/tony/open_sprite_runtime/reports/native_policy_ipc_trace_20260921_170328.npz",
+  "trace_sha256": "7331ea5ee183f3e4984bf38f2aab2e141215b40bc3771297977e379d53110600",
+  "trace_tick_count": 500,
+  "errors": [],
+  "passed": true
+}

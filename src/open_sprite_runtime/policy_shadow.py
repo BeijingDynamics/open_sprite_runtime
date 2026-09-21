@@ -163,6 +163,21 @@ class PolicyShadowReport:
         return {**asdict(self), "passed": self.passed}
 
 
+@dataclass(frozen=True)
+class PolicyTickTrace:
+    """Exact actor inputs and outputs for one auditable policy tick."""
+
+    monotonic_ns: int
+    joint_position_rad: np.ndarray
+    joint_velocity_rad_s: np.ndarray
+    base_angular_velocity_rad_s: np.ndarray
+    projected_gravity: np.ndarray
+    observation: np.ndarray
+    raw_action: np.ndarray
+    handoff_action: np.ndarray
+    target_position_rad: np.ndarray
+
+
 class LivePolicyShadow:
     """Consume live feedback and execute the deployment math without command TX."""
 
@@ -217,6 +232,7 @@ class LivePolicyShadow:
         self._max_direct_peak_ratio = 0.0
         self._max_embedded_kd = 0.0
         self._errors: list[str] = []
+        self.last_policy_trace: PolicyTickTrace | None = None
 
         kd_limit = float(hardware["controller"]["damiao_embedded_kd_max"])
         contract_kd = np.asarray(contract.data["damping"], dtype=np.float64)
@@ -306,6 +322,17 @@ class LivePolicyShadow:
         )
         self.previous_action = action.copy()
         self.previous_target = target.copy()
+        self.last_policy_trace = PolicyTickTrace(
+            monotonic_ns=int(now_ns),
+            joint_position_rad=joint_pos.copy(),
+            joint_velocity_rad_s=joint_vel.copy(),
+            base_angular_velocity_rad_s=pelvis.angular_velocity_body_rad_s.copy(),
+            projected_gravity=pelvis.projected_gravity_body.copy(),
+            observation=observation.copy(),
+            raw_action=raw_action.copy(),
+            handoff_action=action.copy(),
+            target_position_rad=target.copy(),
+        )
         self._policy_ticks += 1
 
     def infer_policy_target(self, now_ns: int) -> JointImpedanceTarget:

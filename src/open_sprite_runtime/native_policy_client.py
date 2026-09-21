@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -60,6 +61,23 @@ def run(args: argparse.Namespace) -> dict:
     last_state_sequence = 0
     inference_ms: list[float] = []
     errors: list[str] = []
+    trace: dict[str, list] | None = None
+    if args.trace_output:
+        trace = {
+            "state_sequence": [],
+            "state_monotonic_ns": [],
+            "target_monotonic_ns": [],
+            "motor_position_rad": [],
+            "motor_velocity_rad_s": [],
+            "joint_position_rad": [],
+            "joint_velocity_rad_s": [],
+            "base_angular_velocity_rad_s": [],
+            "projected_gravity": [],
+            "observation": [],
+            "raw_action": [],
+            "handoff_action": [],
+            "target_position_rad": [],
+        }
 
     try:
         import serial
@@ -136,6 +154,26 @@ def run(args: argparse.Namespace) -> dict:
                         kd=tuple(map(float, target.kd)),
                         feedforward_torque_nm=tuple(map(float, target.feedforward_torque_nm)),
                     )
+                    if trace is not None:
+                        policy_trace = shadow.last_policy_trace
+                        if policy_trace is None:
+                            raise RuntimeError("policy trace was not captured")
+                        trace["state_sequence"].append(state.sequence)
+                        trace["state_monotonic_ns"].append(state.monotonic_ns)
+                        trace["target_monotonic_ns"].append(packet.monotonic_ns)
+                        trace["motor_position_rad"].append(state.position_rad)
+                        trace["motor_velocity_rad_s"].append(state.velocity_rad_s)
+                        for field in (
+                            "joint_position_rad",
+                            "joint_velocity_rad_s",
+                            "base_angular_velocity_rad_s",
+                            "projected_gravity",
+                            "observation",
+                            "raw_action",
+                            "handoff_action",
+                            "target_position_rad",
+                        ):
+                            trace[field].append(getattr(policy_trace, field))
                     try:
                         connection.sendall(packet.pack())
                     except BrokenPipeError:
@@ -148,6 +186,18 @@ def run(args: argparse.Namespace) -> dict:
                     target_count += 1
 
     coverage = target_count / state_count if state_count else 0.0
+    trace_sha256 = None
+    if trace is not None:
+        trace_path = Path(args.trace_output)
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            trace_path,
+            motor_names=np.asarray(motor_names),
+            joint_names=np.asarray(contract.data["joint_names"]),
+            **{name: np.asarray(values) for name, values in trace.items()},
+        )
+        trace_sha256 = hashlib.sha256(trace_path.read_bytes()).hexdigest()
+
     report = {
         "mode": "python_onnx_native_ipc_policy_shadow_no_actuation",
         "state_count": state_count,
@@ -160,6 +210,9 @@ def run(args: argparse.Namespace) -> dict:
         "inference_p99_ms": _percentile(inference_ms, 0.99),
         "inference_max_ms": max(inference_ms) if inference_ms else None,
         "nonzero_can_tx_attempts": 0,
+        "trace_output": str(Path(args.trace_output).resolve()) if args.trace_output else None,
+        "trace_sha256": trace_sha256,
+        "trace_tick_count": len(trace["state_sequence"]) if trace is not None else 0,
         "errors": errors,
         "passed": (
             not errors
@@ -187,6 +240,7 @@ def main() -> None:
     parser.add_argument("--vy", type=float, default=0.0)
     parser.add_argument("--yaw-rate", type=float, default=0.0)
     parser.add_argument("--output", required=True)
+    parser.add_argument("--trace-output")
     args = parser.parse_args()
     report = run(args)
     print(json.dumps(report, indent=2))

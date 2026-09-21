@@ -8,6 +8,7 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
 POLICY_REPORT="$ROOT/reports/native_policy_ipc_actor_${STAMP}.json"
+POLICY_TRACE="$ROOT/reports/native_policy_ipc_trace_${STAMP}.npz"
 NATIVE_LOG="$ROOT/reports/native_policy_ipc_transport_${STAMP}.log"
 
 mkdir -p "$ROOT/reports"
@@ -25,6 +26,7 @@ echo "ACTIVE CAN TX remains position echo with velocity/Kp/Kd/torque all zero"
 echo "Policy targets cross IPC for validation only and cannot reach CAN frames"
 echo "The robot must remain mechanically supported and every motor disabled"
 echo "DURATION ${DURATION}s; NATIVE_REPORT $NATIVE_REPORT; POLICY_REPORT $POLICY_REPORT"
+echo "REPLAYABLE_TRACE $POLICY_TRACE"
 
 "$ROOT/build/native/sprite_can_shadow" \
   --config "$ROOT/build/native/motors.tsv" \
@@ -67,10 +69,11 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --socket "$SOCKET" \
   --hardware-config "$ROOT/config/hardware.sprite0825.measurement.json" \
   --contract "$CANDIDATE/deploy/contract.json" \
-  --imu-device /dev/ttyCH341USB0 \
+  --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
   --vx 0 --vy 0 --yaw-rate 0 \
-  --output "$POLICY_REPORT"
+  --output "$POLICY_REPORT" \
+  --trace-output "$POLICY_TRACE"
 POLICY_STATUS=$?
 
 wait "$NATIVE_PID"

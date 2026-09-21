@@ -84,7 +84,9 @@ required.
   deadline misses, complete expected feedback, and no new CAN errors or drops.
 - [x] Connect the 50 Hz Python/ONNX actor to the native layer through a versioned,
   sequence-numbered, stale-target-failing shadow interface and qualify it for
-  120 seconds under full CAN and IMU load.
+  120 seconds under full CAN and IMU load. Repeat against the stable IMU udev
+  path with 60,000 native ticks, 100% feedback coverage on all 31 motors, zero
+  deadline misses, and zero nonzero command attempts.
 - [x] Implement and qualify the frozen two-tick measured-pose-equivalent-action
   smoothstep handoff in the live policy path, matching the MuJoCo deployment.
 - [x] Fail closed on invalid target ABI/order, future source sequence, stale
@@ -92,6 +94,11 @@ required.
   target; verify all injected faults against the native process.
 - [ ] Qualify complete command envelopes before any nonzero motor command is
   permitted.
+- [ ] Record and deterministically replay a per-policy-tick live trace containing
+  measured joint state, IMU-derived actor inputs, observation history, raw
+  actor action, handoff action, proposed joint targets, and command margins.
+  The 10-second/500-tick trace path is implemented and replayed with zero actor
+  error; extend it to 120 seconds and add per-motor command margins.
 
 ## Gate 4: protected actuation
 

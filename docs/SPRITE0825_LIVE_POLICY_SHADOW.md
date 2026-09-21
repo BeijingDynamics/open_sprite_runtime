@@ -121,9 +121,22 @@ On 2026-09-21 the integrated runtime passed a 120-second live-hardware shadow:
 - approximately 100 Hz raw IMU and quaternion packets with zero rejected frames;
 - exact expected CAN TX/RX counts and zero new errors or drops on all four buses.
 
-This still does not authorize actuation. Measured-pose handoff, full target
-envelopes, stale-target safe hold, and deliberate fault-injection tests remain
-required before any nonzero command path is implemented.
+After installing the stable `/dev/sprite0825-imu` udev path and completing the
+drive register audits, the full qualification was repeated. The second
+120-second run produced 60,000 native ticks with zero deadline misses,
+0.0119 ms P99 and 0.424 ms maximum lateness; all 31 motors again had 100%
+feedback coverage. Python completed 6,000 policy targets from 6,000 states,
+accepted 12,005 IMU raw packets and 12,005 quaternions with zero rejected
+frames, and measured 1.74 ms mean, 2.06 ms P99, and 7.68 ms maximum ONNX
+inference time. The native side accepted 5,999 targets (99.983%, with only the
+final shutdown boundary outstanding), and the maximum accepted target age was
+0.861 ms. Nonzero gain/torque, automatic-enable, and mode-switch attempts all
+remained zero.
+
+This still does not authorize actuation. The measured-pose handoff and native
+IPC fault injection are now qualified below; complete target-envelope audit and
+replayable per-tick live traces remain required before any nonzero command path
+is implemented.
 
 ## Measured-pose handoff qualification
 
@@ -169,3 +182,17 @@ After the fault tests, a normal 10-second `SCHED_FIFO` live shadow regression
 passed with 5,000 native ticks, zero deadline misses, 100% motor feedback
 coverage, zero rejected IMU frames, and zero nonzero-command, enable, or mode
 switch attempts.
+
+## Replayable live trace
+
+The policy client can now write a compressed NPZ trace alongside its summary.
+Every 50 Hz tick records the native motor position/velocity packet, reconstructed
+joint state, pelvis angular velocity and projected gravity, the exact 795-value
+actor observation, raw ONNX action, measured-pose handoff action, and final
+joint position target. The trace contains no hardware command frames.
+
+The first 10-second capture on 2026-09-21 contained 500 complete ticks and was
+replayed through the frozen ONNX actor with a maximum absolute action error of
+exactly zero. The trace SHA256 is recorded both in the actor report and the
+artifact manifest. A 120-second trace and per-motor command-margin analysis are
+still required to close the command-envelope gate.

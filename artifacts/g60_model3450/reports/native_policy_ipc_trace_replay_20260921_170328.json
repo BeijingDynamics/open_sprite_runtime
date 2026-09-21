@@ -1,0 +1,8 @@
+{
+  "mode": "offline_native_policy_trace_deterministic_replay",
+  "trace": "/home/tony/open_sprite_runtime/reports/native_policy_ipc_trace_20260921_170328.npz",
+  "tick_count": 500,
+  "maximum_abs_action_error": 0.0,
+  "maximum_allowed_abs_error": 1e-06,
+  "passed": true
+}
