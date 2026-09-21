@@ -1,6 +1,7 @@
 import unittest
 import socket
 import struct
+from types import SimpleNamespace
 
 from open_sprite_runtime.socketcan import (
     CANFD_FRAME,
@@ -8,6 +9,7 @@ from open_sprite_runtime.socketcan import (
     SOF_TIMESTAMPING_RX_SOFTWARE,
     SocketCanDamiaoRegisterReader,
     SocketCanReceiver,
+    SocketCanSingleMotorMitWriter,
     SocketCanZeroGainPoller,
     audit_socketcan_active_fd_snapshot,
     audit_socketcan_rx_snapshot,
@@ -187,6 +189,27 @@ class SocketCanZeroGainPollerTests(unittest.TestCase):
             SocketCanReceiver(
                 "can0", FakeSocket(frame, ancillary), clock_ns=lambda: 6_000_000_000
             ).receive()
+
+
+class SocketCanSingleMotorMitWriterTests(unittest.TestCase):
+    def test_writer_is_restricted_to_one_endpoint_and_exact_special_frames(self) -> None:
+        raw = FakeSocket()
+        writer = SocketCanSingleMotorMitWriter("kcan3", raw, "head_yaw_motor", 8)
+        command = SimpleNamespace(
+            motor_name="head_yaw_motor", interface="kcan3", can_id=8, data=bytes(8)
+        )
+        writer.send_command(command)
+        writer.send_enable()
+        writer.send_disable()
+        self.assertEqual((writer.command_tx_attempts, writer.enable_attempts, writer.disable_attempts), (1, 1, 1))
+        frames = [CANFD_FRAME.unpack(value) for value in raw.sent]
+        self.assertTrue(all((value[0], value[1], value[2]) == (8, 8, 0x01) for value in frames))
+        self.assertEqual(frames[1][5][:8], bytes.fromhex("ff ff ff ff ff ff ff fc"))
+        self.assertEqual(frames[2][5][:8], bytes.fromhex("ff ff ff ff ff ff ff fd"))
+        with self.assertRaisesRegex(ValueError, "allowlist"):
+            writer.send_command(SimpleNamespace(
+                motor_name="other", interface="kcan3", can_id=8, data=bytes(8)
+            ))
 
 
 class SocketCanDamiaoRegisterReaderTests(unittest.TestCase):

@@ -546,3 +546,94 @@ class SocketCanSetZeroWriter:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+class SocketCanSingleMotorMitWriter:
+    """Writer restricted to one reviewed motor's MIT, enable, and disable frames."""
+
+    ENABLE_PAYLOAD = bytes((0xFF,) * 7 + (0xFC,))
+    DISABLE_PAYLOAD = bytes((0xFF,) * 7 + (0xFD,))
+
+    def __init__(self, interface: str, raw_socket: Any, motor_name: str, can_id: int):
+        if not motor_name or not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF:
+            raise ValueError("single-motor writer requires one named 11-bit CAN endpoint")
+        self.interface = interface
+        self.motor_name = motor_name
+        self.can_id = can_id
+        self._socket = raw_socket
+        self._receiver = SocketCanReceiver(interface, raw_socket)
+        self.command_tx_attempts = 0
+        self.enable_attempts = 0
+        self.disable_attempts = 0
+
+    @classmethod
+    def open(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        motor_name: str,
+        can_id: int,
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanSingleMotorMitWriter":
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            timestamp_flags = (
+                SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
+                | SOF_TIMESTAMPING_SOFTWARE
+                | SOF_TIMESTAMPING_RAW_HARDWARE
+            )
+            raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
+            raw_socket.bind((interface,))
+            raw_socket.setblocking(False)
+            return cls(interface, raw_socket, motor_name, can_id)
+        except BaseException:
+            raw_socket.close()
+            raise
+
+    def _send_payload(self, data: bytes) -> None:
+        if len(data) != 8:
+            raise ValueError("single-motor MIT payload must contain exactly eight bytes")
+        frame = CANFD_FRAME.pack(
+            self.can_id, 8, 0x01, 0, 0, data.ljust(64, b"\0")
+        )
+        sent = self._socket.send(frame)
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+    def send_command(self, command: Any) -> None:
+        if (
+            command.motor_name != self.motor_name
+            or command.interface != self.interface
+            or command.can_id != self.can_id
+        ):
+            raise ValueError("encoded MIT command is outside the single-motor allowlist")
+        self._send_payload(command.data)
+        self.command_tx_attempts += 1
+
+    def send_enable(self) -> None:
+        self._send_payload(self.ENABLE_PAYLOAD)
+        self.enable_attempts += 1
+
+    def send_disable(self) -> None:
+        self._send_payload(self.DISABLE_PAYLOAD)
+        self.disable_attempts += 1
+
+    def receive(self) -> ReceivedCanFrame:
+        return self._receiver.receive()
+
+    def fileno(self) -> int:
+        return self._socket.fileno()
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def __enter__(self) -> "SocketCanSingleMotorMitWriter":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
