@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
+import gc
 import time
 from typing import Any, Mapping
 
@@ -48,6 +49,7 @@ class MujocoRxViewer(AbstractContextManager["MujocoRxViewer"]):
         if len(free_joints) != 1:
             raise ValueError("MuJoCo viewer model must contain exactly one free joint")
         root_qpos = int(self._model.jnt_qposadr[int(free_joints[0])])
+        self._root_qpos = root_qpos
         self._data.qpos[root_qpos : root_qpos + 3] = (0.0, 0.0, root_height_m)
         self._data.qpos[root_qpos + 3 : root_qpos + 7] = (1.0, 0.0, 0.0, 0.0)
 
@@ -74,12 +76,25 @@ class MujocoRxViewer(AbstractContextManager["MujocoRxViewer"]):
         return tuple(sorted(self._frozen_joints))
 
     def is_running(self) -> bool:
-        return bool(self._viewer.is_running())
+        return self._viewer is not None and bool(self._viewer.is_running())
 
     def update(self, feedback: DamiaoFeedback) -> None:
         if feedback.motor_name not in self._motor_positions:
             raise ValueError(f"unexpected motor feedback {feedback.motor_name}")
         self._motor_positions[feedback.motor_name] = feedback.position_rad
+        self._sync_if_due()
+
+    def update_body_orientation_wxyz(self, quaternion_wxyz: tuple[float, ...]) -> None:
+        values = np.asarray(quaternion_wxyz, dtype=np.float64)
+        if values.shape != (4,) or not np.all(np.isfinite(values)):
+            raise ValueError("body quaternion must be a finite wxyz four-vector")
+        norm = float(np.linalg.norm(values))
+        if norm <= 1.0e-9:
+            raise ValueError("body quaternion norm must be positive")
+        self._data.qpos[self._root_qpos + 3 : self._root_qpos + 7] = values / norm
+        self._sync_if_due()
+
+    def _sync_if_due(self) -> None:
         now = time.monotonic()
         if now - self._last_sync < self._minimum_sync_interval_s:
             return
@@ -93,7 +108,13 @@ class MujocoRxViewer(AbstractContextManager["MujocoRxViewer"]):
         self._last_sync = now
 
     def close(self) -> None:
+        if self._viewer is None:
+            return
         self._viewer.close()
+        self._viewer = None
+        # MuJoCo's passive viewer can otherwise survive until interpreter
+        # teardown and crash GLFW on Jetson/aarch64.
+        gc.collect()
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()

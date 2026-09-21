@@ -24,13 +24,18 @@ from .damiao import (
 )
 from .heading import HeadingCommandController, HeadingControllerConfig
 from .hardware import make_hardware_template, validate_hardware_inventory
-from .imu import ImuMount, quaternion_wxyz_to_matrix
+from .full_body_probe import collect_full_body_shadow
+from .imu import ImuMount, matrix_to_quaternion_wxyz, quaternion_wxyz_to_matrix
 from .imu_serial import (
     HARDWARE_TX_CONFIRMATION,
     capture_serial_read_only,
     configure_report_rate,
 )
-from .imu_commissioning import collect_static_imu_audit, run_mujoco_imu_viewer
+from .imu_commissioning import (
+    body_orientation_matrix,
+    collect_static_imu_audit,
+    run_mujoco_imu_viewer,
+)
 from .safety import (
     RuntimeMode,
     SafetyInputs,
@@ -51,6 +56,7 @@ from .telemetry import (
     evaluate_motor_bank,
     limits_from_hardware_record,
 )
+from .yahboom_imu import YahboomQuaternion
 
 
 def imu_mount_self_test(args) -> None:
@@ -804,6 +810,128 @@ def damiao_zero_gain_group_probe(args: argparse.Namespace) -> None:
         raise SystemExit("Damiao zero-gain group position-echo probe failed")
 
 
+def full_body_shadow_probe(args: argparse.Namespace) -> None:
+    if args.acknowledge_hardware_tx != "ZERO_GAIN_FULL_BODY_POSITION_ECHO":
+        raise SystemExit(
+            "refusing hardware TX: pass --acknowledge-hardware-tx "
+            "ZERO_GAIN_FULL_BODY_POSITION_ECHO"
+        )
+    if not args.mit_mode_confirmed:
+        raise SystemExit("refusing hardware TX: --mit-mode-confirmed is required")
+    if not args.supported_unloaded:
+        raise SystemExit("refusing hardware TX: --supported-unloaded is required")
+    if not args.all_motors_disabled_confirmed:
+        raise SystemExit(
+            "refusing full-body probe: --all-motors-disabled-confirmed is required"
+        )
+
+    hardware = load_json(args.hardware_config)
+    interfaces = tuple(hardware.get("can_adapter", {}).get("interfaces", ()))
+    if len(interfaces) != 4:
+        raise SystemExit("hardware configuration must contain four CAN interfaces")
+    endpoints = endpoints_from_hardware_config(hardware)
+    snapshot = load_json(args.snapshot)
+    preflights = {
+        interface: audit_socketcan_active_fd_snapshot(
+            snapshot,
+            interface,
+            arbitration_bitrate=1_000_000,
+            data_bitrate=5_000_000,
+        )
+        for interface in interfaces
+    }
+    failed = {
+        interface: report.errors
+        for interface, report in preflights.items()
+        if not report.passed
+    }
+    if failed:
+        raise SystemExit(f"active CAN-FD preflight failed: {failed}")
+    if args.display:
+        os.environ["DISPLAY"] = args.display
+
+    try:
+        import serial
+    except ImportError as exc:
+        raise SystemExit("pyserial is required for the full-body probe") from exc
+
+    contract = PolicyContract.load(args.contract)
+    mount = ImuMount.sprite0825_rear_pelvis()
+    print(
+        "TX_ARMED_FULL_BODY "
+        f"interfaces={','.join(interfaces)} motors={len(endpoints)} "
+        f"duration={args.duration:.3f}s rate_per_motor={args.rate_hz:.1f}Hz "
+        "payload=position_echo,v=0,Kp=0,Kd=0,tau=0 CANFD_BRS=on",
+        flush=True,
+    )
+    with ExitStack() as stack:
+        from .mujoco_rx_viewer import MujocoRxViewer
+
+        viewer = stack.enter_context(
+            MujocoRxViewer(
+                hardware,
+                contract.data["joint_names"],
+                args.mjcf,
+                root_height_m=args.root_height,
+                refresh_hz=args.viewer_hz,
+            )
+        )
+        pollers = {
+            interface: stack.enter_context(
+                SocketCanZeroGainPoller.open(interface, preflights[interface])
+            )
+            for interface in interfaces
+        }
+        imu_port = stack.enter_context(
+            serial.Serial(
+                port=args.imu_device,
+                baudrate=args.imu_baud,
+                timeout=0,
+                write_timeout=0,
+                exclusive=True,
+            )
+        )
+        imu_port.dtr = False
+        imu_port.rts = False
+
+        def show_imu(packet) -> None:
+            if not isinstance(packet, YahboomQuaternion):
+                return
+            world_from_body = body_orientation_matrix(packet.wxyz, mount)
+            viewer.update_body_orientation_wxyz(
+                tuple(matrix_to_quaternion_wxyz(world_from_body))
+            )
+
+        report = collect_full_body_shadow(
+            pollers,
+            endpoints,
+            imu_port,
+            args.duration,
+            args.rate_hz,
+            feedback_timeout_s=args.feedback_timeout,
+            minimum_motor_sample_coverage=args.minimum_sample_coverage,
+            minimum_imu_rate_hz=args.minimum_imu_rate_hz,
+            on_feedback=viewer.update,
+            on_imu_packet=show_imu,
+            keep_running=viewer.is_running,
+        )
+
+    result = {
+        "mode": "full_body_zero_gain_position_echo_plus_read_only_imu_shadow",
+        "preflight": {
+            interface: report.to_dict()
+            for interface, report in preflights.items()
+        },
+        **report.to_dict(),
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result, indent=2))
+    if not report.passed:
+        raise SystemExit("full-body shadow probe failed")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(required=True)
@@ -1012,6 +1140,32 @@ def main() -> None:
     group_parser.add_argument("--root-height", type=float, default=0.52)
     group_parser.add_argument("--viewer-hz", type=float, default=50.0)
     group_parser.set_defaults(handler=damiao_zero_gain_group_probe)
+    full_body_parser = subparsers.add_parser(
+        "full-body-shadow-probe",
+        help="poll all 31 disabled motors and read the IMU while displaying MuJoCo",
+    )
+    full_body_parser.add_argument("--hardware-config", required=True)
+    full_body_parser.add_argument("--snapshot", required=True)
+    full_body_parser.add_argument("--contract", required=True)
+    full_body_parser.add_argument("--mjcf", required=True)
+    full_body_parser.add_argument("--output", required=True)
+    full_body_parser.add_argument("--imu-device", default="/dev/ttyCH341USB0")
+    full_body_parser.add_argument("--imu-baud", type=int, default=115200)
+    full_body_parser.add_argument("--duration", type=float, default=30.0)
+    full_body_parser.add_argument("--rate-hz", type=float, default=50.0)
+    full_body_parser.add_argument("--feedback-timeout", type=float, default=0.2)
+    full_body_parser.add_argument("--minimum-sample-coverage", type=float, default=0.9)
+    full_body_parser.add_argument("--minimum-imu-rate-hz", type=float, default=80.0)
+    full_body_parser.add_argument("--display", default=":1")
+    full_body_parser.add_argument("--root-height", type=float, default=0.52)
+    full_body_parser.add_argument("--viewer-hz", type=float, default=50.0)
+    full_body_parser.add_argument("--mit-mode-confirmed", action="store_true")
+    full_body_parser.add_argument("--supported-unloaded", action="store_true")
+    full_body_parser.add_argument(
+        "--all-motors-disabled-confirmed", action="store_true"
+    )
+    full_body_parser.add_argument("--acknowledge-hardware-tx")
+    full_body_parser.set_defaults(handler=full_body_shadow_probe)
     args = parser.parse_args()
     args.handler(args)
 
