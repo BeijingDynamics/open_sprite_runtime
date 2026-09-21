@@ -289,6 +289,10 @@ deadline misses, full feedback coverage on all 31 motors, no rejected IMU
 frames, and no nonzero CAN, enable, or mode-switch attempts. The ramp reached
 alpha 1.0 and limited the maximum target change between adjacent 50 Hz ticks to
 0.01881 rad. The native protected envelope accepted the complete sequence.
+The command-margin audit now consumes the exact final per-tick startup position,
+velocity, Kp, Kd, and feedforward arrays instead of reconstructing fixed gains
+from the contract. The 500-tick trace passed with zero joint-reconstruction
+error, zero ankle torque saturation, and no violating physical motor.
 
 This qualifies only the target-generation and IPC startup sequence. It does not
 authorize motor enable or nonzero gains. The next gate is a separately reviewed

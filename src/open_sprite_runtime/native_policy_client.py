@@ -101,11 +101,15 @@ def run(args: argparse.Namespace) -> dict:
             "handoff_action": [],
             "target_position_rad": [],
             "projected_target_position_rad": [],
+            "projected_target_velocity_rad_s": [],
             "projected_kp": [],
             "projected_kd": [],
+            "projected_feedforward_torque_nm": [],
             "startup_target_position_rad": [],
+            "startup_target_velocity_rad_s": [],
             "startup_kp": [],
             "startup_kd": [],
+            "startup_feedforward_torque_nm": [],
             "startup_alpha": [],
         }
 
@@ -215,11 +219,23 @@ def run(args: argparse.Namespace) -> dict:
                         trace["projected_target_position_rad"].append(
                             projected_target.position_rad
                         )
+                        trace["projected_target_velocity_rad_s"].append(
+                            projected_target.velocity_rad_s
+                        )
                         trace["projected_kp"].append(projected_target.kp)
                         trace["projected_kd"].append(projected_target.kd)
+                        trace["projected_feedforward_torque_nm"].append(
+                            projected_target.feedforward_torque_nm
+                        )
                         trace["startup_target_position_rad"].append(target.position_rad)
+                        trace["startup_target_velocity_rad_s"].append(
+                            target.velocity_rad_s
+                        )
                         trace["startup_kp"].append(target.kp)
                         trace["startup_kd"].append(target.kd)
+                        trace["startup_feedforward_torque_nm"].append(
+                            target.feedforward_torque_nm
+                        )
                         trace["startup_alpha"].append(
                             startup.last_alpha if startup is not None else 1.0
                         )

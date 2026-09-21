@@ -46,26 +46,63 @@ def audit(
     motor_velocity = np.asarray(data["motor_velocity_rad_s"], dtype=np.float64)
     joint_position = np.asarray(data["joint_position_rad"], dtype=np.float64)
     joint_velocity = np.asarray(data["joint_velocity_rad_s"], dtype=np.float64)
-    target_position = np.asarray(data["target_position_rad"], dtype=np.float64)
+    exact_transmitted_target = all(
+        name in data.files
+        for name in (
+            "startup_target_position_rad",
+            "startup_target_velocity_rad_s",
+            "startup_kp",
+            "startup_kd",
+            "startup_feedforward_torque_nm",
+        )
+    )
+    target_position_key = (
+        "startup_target_position_rad" if exact_transmitted_target else "target_position_rad"
+    )
+    target_position = np.asarray(data[target_position_key], dtype=np.float64)
     tick_count = target_position.shape[0]
     expected_shapes = {
         "motor_position_rad": (tick_count, 31),
         "motor_velocity_rad_s": (tick_count, 31),
         "joint_position_rad": (tick_count, 31),
         "joint_velocity_rad_s": (tick_count, 31),
-        "target_position_rad": (tick_count, 31),
+        target_position_key: (tick_count, 31),
     }
     for name, shape in expected_shapes.items():
         if np.asarray(data[name]).shape != shape or not np.isfinite(data[name]).all():
             raise ValueError(f"trace {name} must have finite shape {shape}")
 
-    kp = gain_scale * np.asarray(contract.data["stiffness"], dtype=np.float64)
     kd_limit = float(hardware["controller"]["damiao_embedded_kd_max"])
-    kd = gain_scale * np.minimum(
-        np.asarray(contract.data["damping"], dtype=np.float64), kd_limit
-    )
+    if exact_transmitted_target:
+        target_velocity = np.asarray(
+            data["startup_target_velocity_rad_s"], dtype=np.float64
+        )
+        kp = np.asarray(data["startup_kp"], dtype=np.float64)
+        kd = np.asarray(data["startup_kd"], dtype=np.float64)
+        feedforward = np.asarray(
+            data["startup_feedforward_torque_nm"], dtype=np.float64
+        )
+        for name, value in (
+            ("startup_target_velocity_rad_s", target_velocity),
+            ("startup_kp", kp),
+            ("startup_kd", kd),
+            ("startup_feedforward_torque_nm", feedforward),
+        ):
+            if value.shape != (tick_count, 31) or not np.isfinite(value).all():
+                raise ValueError(f"trace {name} must have finite shape {(tick_count, 31)}")
+    else:
+        target_velocity = np.zeros((tick_count, 31), dtype=np.float64)
+        kp = np.broadcast_to(
+            gain_scale * np.asarray(contract.data["stiffness"], dtype=np.float64),
+            (tick_count, 31),
+        )
+        kd = np.broadcast_to(
+            gain_scale
+            * np.minimum(np.asarray(contract.data["damping"], dtype=np.float64), kd_limit),
+            (tick_count, 31),
+        )
+        feedforward = np.zeros((tick_count, 31), dtype=np.float64)
     effort_limit = np.asarray(contract.data["effort_limit"], dtype=np.float64)
-    zeros = np.zeros(31, dtype=np.float64)
     indices = {name: index for index, name in enumerate(joint_names)}
     motor_index = {name: index for index, name in enumerate(motor_names)}
     records = hardware["motor_map"]
@@ -134,16 +171,24 @@ def audit(
                 )
                 bounded_target[index] = limited
         commands = mapping.joint_impedance_to_motor_commands(
-            bounded_target, zeros, joint_position[tick], joint_velocity[tick],
-            kp, kd, zeros,
+            bounded_target,
+            target_velocity[tick],
+            joint_position[tick],
+            joint_velocity[tick],
+            kp[tick],
+            kd[tick],
+            feedforward[tick],
         )
 
         for pair_name in ANKLES:
             pair = mapping.differentials[pair_name]
             pair_indices = np.asarray([indices[name] for name in pair.joint_names])
             raw_torque = (
-                kp[pair_indices] * (bounded_target[pair_indices] - joint_position[tick, pair_indices])
-                + kd[pair_indices] * (0.0 - joint_velocity[tick, pair_indices])
+                kp[tick, pair_indices]
+                * (bounded_target[pair_indices] - joint_position[tick, pair_indices])
+                + kd[tick, pair_indices]
+                * (target_velocity[tick, pair_indices] - joint_velocity[tick, pair_indices])
+                + feedforward[tick, pair_indices]
             )
             limits = effort_limit[pair_indices]
             limited_torque = np.clip(raw_torque, -limits, limits)
@@ -236,6 +281,11 @@ def audit(
         "trace": str(trace_path.resolve()),
         "tick_count": tick_count,
         "gain_scale": gain_scale,
+        "command_source": (
+            "exact_final_startup_trace"
+            if exact_transmitted_target
+            else "legacy_reconstructed_from_contract"
+        ),
         "joint_target_soft_limit_projection_enabled": joint_limits is not None,
         "joint_target_clamp_count": joint_target_clamp_count,
         "maximum_joint_reconstruction_error_rad": maximum_joint_reconstruction_error,
