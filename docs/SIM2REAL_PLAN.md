@@ -141,6 +141,11 @@ required.
   2026-09-21 run completed 225/225 command/feedback cycles, stayed below
   0.0611 rad/s and 0.0306 Nm, reached at most 40/35 C MOS/rotor temperature,
   reported no guard errors, and verified `disabled` after three disable frames.
+- [x] Execute a visible unloaded head-yaw test with frozen relative `+10/-10`
+  degree commands. Two conservative commissioning attempts failed closed on
+  the position-error and speed guards. The final 15-second run completed
+  750/750 cycles, measured approximately `+8.59/-8.79` degrees at low gain,
+  stayed below 0.526 rad/s and 0.080 Nm, and verified `disabled` on exit.
 - Single-joint unloaded tests, then whole-body zero pose in a lifting frame.
 - Low Kp/Kd and strict current limits first.
 - Stand, weight shift, one step, 0.15 m/s walk, stop, and restart.

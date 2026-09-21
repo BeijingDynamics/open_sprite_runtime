@@ -60,3 +60,22 @@ The first physical run passed on 2026-09-21. It completed 225 command and 225
 feedback cycles, observed at most 0.0611 rad/s and 0.0306 Nm, and verified the
 motor was disabled after the trajectory. The preserved report is
 `reports/head_yaw_low_gain_motion_20260921_192055.json` on the Jetson.
+
+## Visible ten-degree test
+
+The next frozen gate commands the unloaded shaft from its measured start to
+relative `+10 degrees`, then `-10 degrees`, and back to the start using quintic
+four-second transitions and one-second dwells. It runs at 50 Hz with `Kp=2.0`,
+`Kd=0.2`, zero feedforward, and 0.08 rad/0.8 rad/s/0.25 Nm guards:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./move_sprite0825_head_yaw_visible_10deg_on_253.sh \
+  ENABLE_HEAD_YAW_VISIBLE_10DEG_MOTION
+```
+
+The final 2026-09-21 physical run completed all 750 command/feedback cycles and
+verified disabled feedback. Low-gain measured travel was approximately
+`+8.59/-8.79 degrees`; maximum measured speed was 0.526 rad/s and maximum
+estimated torque was 0.080 Nm. The preserved report is
+`reports/head_yaw_visible_10deg_20260921_192909.json` on the Jetson.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import math
 import time
 from typing import Any, Callable
 
@@ -59,6 +60,9 @@ class SingleJointMotionReport:
     initial_position_rad: float | None
     requested_minimum_position_rad: float | None
     requested_maximum_position_rad: float | None
+    measured_minimum_position_rad: float | None
+    measured_maximum_position_rad: float | None
+    final_measured_position_rad: float | None
     duration_s: float
     rate_hz: float
     kp: float
@@ -309,19 +313,42 @@ def run_head_yaw_low_gain_motion(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> SingleJointMotionReport:
-    """Run the frozen unloaded head-yaw +/-0.02 rad trajectory, then disable."""
+    """Run one of the two frozen unloaded head-yaw trajectories, then disable."""
     if (
         endpoint.motor_name != "head_yaw_motor"
         or endpoint.interface != "kcan3"
         or endpoint.can_id != 8
     ):
         raise ValueError("powered motion is restricted to kcan3 ID 0x08 head_yaw_motor")
-    if (excursion_rad, transition_s, dwell_s, rate_hz, kp, kd) != (
-        0.02, 1.0, 0.5, 50.0, 1.0, 0.2
-    ):
-        raise ValueError("head-yaw powered-motion trajectory and gains are frozen")
-    if maximum_torque_nm > 0.1 or maximum_velocity_rad_s > 0.2:
-        raise ValueError("head-yaw powered-motion safety envelope cannot be widened")
+    requested_profile = (
+        excursion_rad,
+        transition_s,
+        dwell_s,
+        rate_hz,
+        kp,
+        kd,
+        maximum_position_error_rad,
+        maximum_velocity_rad_s,
+        maximum_torque_nm,
+        mos_temperature_limit_c,
+        rotor_temperature_limit_c,
+    )
+    micro_profile = (0.02, 1.0, 0.5, 50.0, 1.0, 0.2, 0.05, 0.2, 0.1, 100, 80)
+    visible_profile = (
+        math.radians(10.0),
+        4.0,
+        1.0,
+        50.0,
+        2.0,
+        0.2,
+        0.08,
+        0.8,
+        0.25,
+        100,
+        80,
+    )
+    if requested_profile not in (micro_profile, visible_profile):
+        raise ValueError("head-yaw powered-motion trajectory, gains, and guards are frozen")
     soft_low, soft_high = map(float, soft_position_rad)
     if soft_low >= soft_high:
         raise ValueError("head-yaw soft position range is invalid")
@@ -331,6 +358,9 @@ def run_head_yaw_low_gain_motion(
     initial_position: float | None = None
     requested_minimum: float | None = None
     requested_maximum: float | None = None
+    measured_minimum: float | None = None
+    measured_maximum: float | None = None
+    final_measured: float | None = None
     feedback_count = 0
     command_count = 0
     max_error = 0.0
@@ -364,6 +394,7 @@ def run_head_yaw_low_gain_motion(
 
     def accept(feedback: DamiaoFeedback, target_position: float) -> None:
         nonlocal feedback_count, max_error, max_velocity, max_torque, max_mos, max_rotor
+        nonlocal measured_minimum, measured_maximum, final_measured
         feedback_count += 1
         if feedback.status_name != "enabled":
             raise RuntimeError(f"head-yaw status must be enabled, observed {feedback.status_name}")
@@ -373,6 +404,17 @@ def run_head_yaw_low_gain_motion(
         max_torque = max(max_torque, abs(feedback.estimated_output_torque_nm))
         max_mos = max(max_mos, feedback.mos_temperature_c)
         max_rotor = max(max_rotor, feedback.rotor_temperature_c)
+        measured_minimum = (
+            feedback.position_rad
+            if measured_minimum is None
+            else min(measured_minimum, feedback.position_rad)
+        )
+        measured_maximum = (
+            feedback.position_rad
+            if measured_maximum is None
+            else max(measured_maximum, feedback.position_rad)
+        )
+        final_measured = feedback.position_rad
         if abs(error) > maximum_position_error_rad:
             raise RuntimeError("head-yaw position-error guard tripped")
         if abs(feedback.velocity_rad_s) > maximum_velocity_rad_s:
@@ -453,6 +495,7 @@ def run_head_yaw_low_gain_motion(
                     writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
                 )
                 final_status = final.status_name
+                final_measured = final.position_rad
                 if writer.disable_attempts >= 3 and final_status == "disabled":
                     break
             except BaseException as exc:
@@ -466,6 +509,9 @@ def run_head_yaw_low_gain_motion(
         initial_position_rad=initial_position,
         requested_minimum_position_rad=requested_minimum,
         requested_maximum_position_rad=requested_maximum,
+        measured_minimum_position_rad=measured_minimum,
+        measured_maximum_position_rad=measured_maximum,
+        final_measured_position_rad=final_measured,
         duration_s=duration_s,
         rate_hz=rate_hz,
         kp=kp,

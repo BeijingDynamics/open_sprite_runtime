@@ -1,3 +1,4 @@
+import math
 import unittest
 
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
@@ -24,7 +25,10 @@ class Clock:
 class FakeWriter:
     interface = "kcan3"
 
-    def __init__(self, endpoint, *, torque_raw=2048, stale_enabled_after_disable=0):
+    def __init__(
+        self, endpoint, *, torque_raw=2048, stale_enabled_after_disable=0,
+        track_command=False,
+    ):
         self.endpoint = endpoint
         self.status = 0
         self.torque_raw = torque_raw
@@ -33,10 +37,14 @@ class FakeWriter:
         self.disable_attempts = 0
         self.stale_enabled_after_disable = stale_enabled_after_disable
         self.commands = []
+        self.track_command = track_command
+        self.position_raw = 32768
 
     def send_command(self, command):
         self.command_tx_attempts += 1
         self.commands.append(command)
+        if self.track_command and self.status == 1:
+            self.position_raw = (command.data[0] << 8) | command.data[1]
 
     def send_enable(self):
         self.enable_attempts += 1
@@ -47,7 +55,7 @@ class FakeWriter:
         self.status = 0
 
     def receive(self):
-        position_raw = 32768
+        position_raw = self.position_raw
         velocity_raw = 2048
         reported_status = self.status
         if self.status == 0 and self.enable_attempts and self.stale_enabled_after_disable:
@@ -199,6 +207,37 @@ class SingleJointMotionTests(unittest.TestCase):
         self.assertTrue(any("soft-limit margin" in value for value in report.errors))
         self.assertEqual(report.enable_attempts, 0)
         self.assertGreaterEqual(report.disable_attempts, 3)
+
+    def test_visible_ten_degree_profile_tracks_both_sides_and_disables(self):
+        clock = Clock()
+        writer = FakeWriter(endpoint(), track_command=True)
+        report = run_head_yaw_low_gain_motion(
+            writer,
+            endpoint(),
+            soft_position_rad=(-1.0, 1.0),
+            excursion_rad=math.radians(10.0),
+            transition_s=4.0,
+            dwell_s=1.0,
+            kp=2.0,
+            maximum_position_error_rad=0.08,
+            maximum_velocity_rad_s=0.8,
+            maximum_torque_nm=0.25,
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertGreater(
+            report.measured_maximum_position_rad - report.initial_position_rad,
+            math.radians(9.9),
+        )
+        self.assertLess(
+            report.measured_minimum_position_rad - report.initial_position_rad,
+            -math.radians(9.9),
+        )
+        self.assertAlmostEqual(
+            report.final_measured_position_rad, report.initial_position_rad, delta=0.001
+        )
+        self.assertEqual(report.final_status, "disabled")
 
 
 if __name__ == "__main__":
