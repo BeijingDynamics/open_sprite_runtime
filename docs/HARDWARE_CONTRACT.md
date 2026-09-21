@@ -76,6 +76,12 @@ cd /home/tony/open_sprite_runtime
 ./read_sprite0825_damiao_mit_ranges_on_253.sh
 ```
 
+The 2026-09-21 full-body readback completed 93/93 transactions with no discarded
+frames: J4340P reported `12.5/20/28`, J4310P `12.5/50/10`, J3507
+`12.566/50/5`, and J6248P `12.566/20/120` for PMAX/VMAX/TMAX. These protocol
+ranges are preserved separately from each model's rated and peak mechanical
+torque.
+
 Run `sprite-runtime inspect` after filling the hardware file. The
 `hardware_inventory` report is fail-closed: it requires 25 one-to-one joint
 motors plus two coupled motors for each left ankle, right ankle, and head

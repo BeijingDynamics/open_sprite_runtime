@@ -26,6 +26,9 @@
 - Complete all 31 motor mappings, limits, and MIT ranges.
 - [x] Derive review-only direct and differential motor limit candidates from
   the contract-pinned URDF; physical hard-stop confirmation remains open.
+- [x] Read PMAX/VMAX/TMAX registers from all 31 disabled motors using 93
+  capability-limited read-only transactions with no write, enable, or mode
+  switch attempts, then pin the evidence in the hardware contract.
 - Measure four-channel USB-CAN FD latency and sustained bus utilization.
 - [x] Establish a hardware emergency-stop chain independent of the SBC process:
   a safety operator controls the regulated supply's independent motor-bus switch.

@@ -159,7 +159,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_hip_pitch_joint",
       "policy_to_motor_sign": 1,
@@ -217,7 +219,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_hip_pitch_joint",
       "policy_to_motor_sign": 1,
@@ -256,8 +260,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -20.0,
@@ -275,7 +279,9 @@
           -120.0,
           120.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "waist_roll_joint",
       "policy_to_motor_sign": 1,
@@ -333,7 +339,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_hip_roll_joint",
       "policy_to_motor_sign": 1,
@@ -391,7 +399,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_hip_roll_joint",
       "policy_to_motor_sign": 1,
@@ -449,7 +459,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "waist_yaw_joint",
       "policy_to_motor_sign": -1,
@@ -507,7 +519,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_hip_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -565,7 +579,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_hip_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -623,7 +639,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_shoulder_pitch_joint",
       "policy_to_motor_sign": 1,
@@ -681,7 +699,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_shoulder_pitch_joint",
       "policy_to_motor_sign": 1,
@@ -739,7 +759,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_knee_joint",
       "policy_to_motor_sign": 1,
@@ -797,7 +819,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_knee_joint",
       "policy_to_motor_sign": 1,
@@ -855,7 +879,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_shoulder_roll_joint",
       "policy_to_motor_sign": 1,
@@ -913,7 +939,9 @@
           -28.0,
           28.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_shoulder_roll_joint",
       "policy_to_motor_sign": 1,
@@ -952,8 +980,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -971,7 +999,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "head_yaw_joint",
       "policy_to_motor_sign": -1,
@@ -1029,7 +1059,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_shoulder_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -1087,7 +1119,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_shoulder_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -1145,7 +1179,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_elbow_joint",
       "policy_to_motor_sign": 1,
@@ -1203,7 +1239,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_elbow_joint",
       "policy_to_motor_sign": 1,
@@ -1261,7 +1299,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_wrist_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -1319,7 +1359,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_wrist_yaw_joint",
       "policy_to_motor_sign": 1,
@@ -1358,8 +1400,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1377,7 +1419,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_wrist_pitch_joint",
       "policy_to_motor_sign": -1,
@@ -1416,8 +1460,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1435,7 +1479,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_wrist_pitch_joint",
       "policy_to_motor_sign": 1,
@@ -1474,8 +1520,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1493,7 +1539,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "left_wrist_roll_joint",
       "policy_to_motor_sign": -1,
@@ -1532,8 +1580,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1551,7 +1599,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "policy_joint": "right_wrist_roll_joint",
       "policy_to_motor_sign": -1,
@@ -1609,7 +1659,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -1669,7 +1721,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "left_ankle_pitch_joint",
@@ -1729,7 +1783,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",
@@ -1789,7 +1845,9 @@
           -10.0,
           10.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "right_ankle_pitch_joint",
@@ -1830,8 +1888,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1849,7 +1907,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "head_pitch_joint",
@@ -1890,8 +1950,8 @@
       "temperature_limit_c": null,
       "mit_ranges": {
         "position_rad": [
-          -12.566,
-          12.566
+          -12.565999984741211,
+          12.565999984741211
         ],
         "velocity_rad_s": [
           -50.0,
@@ -1909,7 +1969,9 @@
           -5.0,
           5.0
         ],
-        "source": "operator_confirmed_drive_configuration"
+        "source": "motor_register_readback",
+        "evidence_report": "reports/damiao_mit_ranges_20260921_164005.json",
+        "report_content_sha256": "c15c62c197b2b9bba7a97539dac13ef7c964a23322c402c778660845721bf119"
       },
       "coupled_joints": [
         "head_pitch_joint",

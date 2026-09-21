@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import math
 import struct
 import time
@@ -47,6 +49,7 @@ class DamiaoRegisterValue:
 def decode_read_response(
     frame: ReceivedCanFrame,
     *,
+    expected_command_can_id: int,
     expected_master_id: int,
     expected_register_id: int,
 ) -> DamiaoRegisterValue:
@@ -56,9 +59,14 @@ def decode_read_response(
         raise ValueError("register response must be CAN-FD with bit-rate switching")
     if len(frame.data) != 8:
         raise ValueError("register response must contain exactly eight bytes")
-    payload_master_id = frame.data[0] | (frame.data[1] << 8)
-    if payload_master_id != expected_master_id:
-        raise ValueError("register response payload Master ID mismatch")
+    payload_command_id = frame.data[0] | (frame.data[1] << 8)
+    if payload_command_id != expected_command_can_id:
+        raise ValueError(
+            "register response payload command CAN ID mismatch: "
+            f"arbitration={frame.can_id:#x} expected_master={expected_master_id:#x} "
+            f"expected_command={expected_command_can_id:#x} "
+            f"payload_id={payload_command_id:#x} data={frame.data.hex()}"
+        )
     if frame.data[2] != READ_OPCODE:
         raise ValueError("register response is not a read response")
     if frame.data[3] != expected_register_id:
@@ -125,6 +133,7 @@ def collect_mit_range_registers(
                         continue
                     decoded = decode_read_response(
                         frame,
+                        expected_command_can_id=endpoint.can_id,
                         expected_master_id=endpoint.master_id,
                         expected_register_id=register_id,
                     )
@@ -153,3 +162,42 @@ def collect_mit_range_registers(
         "motors": values,
         "passed": len(values) == len(selected),
     }
+
+
+def apply_mit_range_readback(hardware: dict, report: dict, evidence_report: str) -> int:
+    """Install an exact 31-motor PMAX/VMAX/TMAX readback into the contract."""
+    if report.get("mode") != "read_only_damiao_mit_range_register_audit":
+        raise ValueError("unexpected MIT range report mode")
+    if report.get("passed") is not True:
+        raise ValueError("MIT range report did not pass")
+    if any(report.get(key) != 0 for key in (
+        "write_register_attempts", "enable_attempts", "mode_switch_attempts"
+    )):
+        raise ValueError("MIT range report contains prohibited TX attempts")
+    motors = report.get("motors")
+    motor_map = hardware.get("motor_map")
+    if not isinstance(motors, dict) or not isinstance(motor_map, dict):
+        raise ValueError("report motors and hardware motor_map must be objects")
+    if set(motors) != set(motor_map):
+        raise ValueError("MIT range report must exactly cover the hardware motor map")
+    digest = hashlib.sha256(
+        json.dumps(report, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    updated = 0
+    for motor_name, record in motor_map.items():
+        values = motors[motor_name]
+        pmax, vmax, tmax = (float(values[name]) for name in ("PMAX", "VMAX", "TMAX"))
+        if not all(math.isfinite(value) and value > 0.0 for value in (pmax, vmax, tmax)):
+            raise ValueError(f"invalid MIT range readback for {motor_name}")
+        record["mit_ranges"] = {
+            "position_rad": [-pmax, pmax],
+            "velocity_rad_s": [-vmax, vmax],
+            "kp": [0.0, 500.0],
+            "kd": [0.0, 5.0],
+            "torque_nm": [-tmax, tmax],
+            "source": "motor_register_readback",
+            "evidence_report": evidence_report,
+            "report_content_sha256": digest,
+        }
+        updated += 1
+    return updated
