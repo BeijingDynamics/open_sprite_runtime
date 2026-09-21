@@ -146,3 +146,26 @@ This completes the measured-pose handoff gate only. The hardware inventory is
 still intentionally non-armable: physical soft/hard limits, drive register
 readback provenance, current/temperature thresholds, and the independent
 hardware e-stop must be completed before any nonzero actuation test.
+
+## Native IPC fault injection
+
+Run the process-level fail-closed cases only while the robot is mechanically
+supported and all motors report disabled:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./probe_sprite0825_native_ipc_faults_on_253.sh
+```
+
+The harness can only exercise the restricted zero-gain position-echo CAN
+writer. It deliberately injects a wrong joint-order hash, a future source-state
+sequence, a stale target timestamp, embedded `Kd=3.01`, and a client that never
+sends its first target. On 2026-09-21 all five cases were rejected by the native
+process with their exact expected invariant failure. A new initial-target
+watchdog now stops the native loop after five unanswered 50 Hz state packets;
+the existing 100 ms watchdog still covers loss after the first accepted target.
+
+After the fault tests, a normal 10-second `SCHED_FIFO` live shadow regression
+passed with 5,000 native ticks, zero deadline misses, 100% motor feedback
+coverage, zero rejected IMU frames, and zero nonzero-command, enable, or mode
+switch attempts.

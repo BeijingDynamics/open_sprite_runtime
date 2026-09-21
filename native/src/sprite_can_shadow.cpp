@@ -635,6 +635,9 @@ int main(int argc, char** argv) {
         if (slot % 40 == 39 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
           send_state_packet(ipc, motors, motor_hash, monotonic_ns());
+          if (ipc.target_count == 0 && ipc.state_sequence >= 5) {
+            throw std::runtime_error("policy IPC initial target watchdog expired");
+          }
           if (ipc.last_target_ns > 0 && monotonic_ns() - ipc.last_target_ns > kTargetTimeoutNs) {
             throw std::runtime_error("policy IPC target watchdog expired");
           }

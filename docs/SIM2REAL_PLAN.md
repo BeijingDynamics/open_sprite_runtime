@@ -74,6 +74,9 @@ required.
   120 seconds under full CAN and IMU load.
 - [x] Implement and qualify the frozen two-tick measured-pose-equivalent-action
   smoothstep handoff in the live policy path, matching the MuJoCo deployment.
+- [x] Fail closed on invalid target ABI/order, future source sequence, stale
+  timestamp, embedded `Kd > 3`, ordinary target timeout, and missing first
+  target; verify all injected faults against the native process.
 - [ ] Qualify complete command envelopes before any nonzero motor command is
   permitted.
 
