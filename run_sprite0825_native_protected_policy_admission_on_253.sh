@@ -4,6 +4,8 @@ set -euo pipefail
 ACK="${1:-}"
 TIER="${2:-first_admission}"
 COMMAND_VX=0.0
+LEG_COMMAND_CAP_NM=""
+LEG_FEEDBACK_CAP_NM=""
 
 case "$TIER" in
   first_admission)
@@ -40,6 +42,15 @@ case "$TIER" in
     GAIN_SCALE=0.02
     DM3507_GAIN_MULTIPLIER=0.1
     MAXIMUM_COMMAND_TORQUE_NM=1.0
+    ;;
+  stand_leg_20nm_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_20NM_STAND
+    DURATION=8.0
+    GAIN_SCALE=0.04
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
     ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
@@ -99,18 +110,44 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   echo "Startup readiness preflight did not produce a native report" >&2
   exit 1
 }
-"$ROOT/.venv/bin/python" - "$PREFLIGHT_NATIVE_REPORT" "$MAXIMUM_COMMAND_TORQUE_NM" <<'PY'
+"$ROOT/.venv/bin/python" - \
+  "$PREFLIGHT_NATIVE_REPORT" \
+  "$MAXIMUM_COMMAND_TORQUE_NM" \
+  "$LEG_COMMAND_CAP_NM" <<'PY'
 import json
 import sys
 
 report = json.load(open(sys.argv[1], encoding="utf-8"))
-observed = float(report["preview_maximum_abs_estimated_torque_nm"])
-limit = float(sys.argv[2])
-if observed > limit:
+default_limit = float(sys.argv[2])
+leg_limit = float(sys.argv[3]) if sys.argv[3] else None
+leg_motors = {
+    f"{side}_{joint}_motor"
+    for side in ("left", "right")
+    for joint in ("hip_pitch", "hip_roll", "hip_yaw", "knee")
+}
+leg_motors.update(
+    f"{side}_ankle_motor_{motor}"
+    for side in ("left", "right")
+    for motor in ("a", "b")
+)
+violations = []
+for name, raw_observed in report[
+    "preview_maximum_abs_estimated_torque_nm_by_motor"
+].items():
+    observed = float(raw_observed)
+    limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
+    if observed > limit:
+        violations.append(f"{name}={observed:.6f}>{limit:.6f}Nm")
+if violations:
     raise SystemExit(
-        f"startup command torque preview {observed:.6f} Nm exceeds {limit:.6f} Nm"
+        "startup command torque preview exceeds per-motor limits: "
+        + ", ".join(violations)
     )
-print(f"STARTUP_COMMAND_TORQUE_PASSED observed={observed:.6f}Nm limit={limit:.6f}Nm")
+print(
+    "STARTUP_COMMAND_TORQUE_PASSED "
+    f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
+    f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit}"
+)
 PY
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
@@ -138,10 +175,22 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
   done
 fi
+MOTOR_CAP_ARGS=()
+if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
+  for motor in \
+    left_hip_pitch_motor left_hip_roll_motor left_hip_yaw_motor left_knee_motor \
+    left_ankle_motor_a left_ankle_motor_b \
+    right_hip_pitch_motor right_hip_roll_motor right_hip_yaw_motor right_knee_motor \
+    right_ankle_motor_a right_ankle_motor_b; do
+    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$LEG_COMMAND_CAP_NM")
+    MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$LEG_FEEDBACK_CAP_NM")
+  done
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
   --maximum-commissioning-torque-nm "$MAXIMUM_COMMAND_TORQUE_NM" \
+  "${MOTOR_CAP_ARGS[@]}" \
   --output "$ROOT/build/native/motors.tsv"
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_kinematics_config.py" \

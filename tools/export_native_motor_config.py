@@ -34,6 +34,22 @@ FIELDS = (
 )
 
 
+def _parse_motor_caps(values: list[str], option: str) -> dict[str, float]:
+    caps: dict[str, float] = {}
+    for value in values:
+        try:
+            name, raw_cap = value.rsplit("=", 1)
+            cap = float(raw_cap)
+        except ValueError as exc:
+            raise SystemExit(f"{option} must use MOTOR_NAME=NM") from exc
+        if not name or cap <= 0.0:
+            raise SystemExit(f"{option} must use MOTOR_NAME=positive_NM")
+        if name in caps:
+            raise SystemExit(f"duplicate {option} for {name}")
+        caps[name] = cap
+    return caps
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hardware", type=Path, required=True)
@@ -46,6 +62,20 @@ def main() -> None:
             "minimum of this value and 10%% of each motor's rated torque."
         ),
     )
+    parser.add_argument(
+        "--motor-command-cap",
+        action="append",
+        default=[],
+        metavar="MOTOR_NAME=NM",
+        help="Override the commissioning command cap for one named motor.",
+    )
+    parser.add_argument(
+        "--motor-feedback-cap",
+        action="append",
+        default=[],
+        metavar="MOTOR_NAME=NM",
+        help="Override the independent feedback anomaly cap for one named motor.",
+    )
     args = parser.parse_args()
     if (
         args.maximum_commissioning_torque_nm is not None
@@ -53,12 +83,38 @@ def main() -> None:
     ):
         raise SystemExit("--maximum-commissioning-torque-nm must be positive")
     hardware = json.loads(args.hardware.read_text(encoding="utf-8"))
+    command_caps = _parse_motor_caps(args.motor_command_cap, "--motor-command-cap")
+    feedback_caps = _parse_motor_caps(args.motor_feedback_cap, "--motor-feedback-cap")
+    motor_names = set(hardware["motor_map"])
+    unknown = (set(command_caps) | set(feedback_caps)) - motor_names
+    if unknown:
+        raise SystemExit(f"unknown motor cap override(s): {', '.join(sorted(unknown))}")
     interfaces = hardware["can_adapter"]["interfaces"]
     model_specs = hardware["motor_model_specs"]
     rows = []
     for name, motor in hardware["motor_map"].items():
         ranges = motor["mit_ranges"]
         specs = model_specs[motor["model"]]
+        mechanical_peak = float(motor["peak_torque_nm"])
+        protocol_torque_cap = min(map(abs, map(float, ranges["torque_nm"])))
+        command_cap = command_caps.get(
+            name,
+            min(
+                0.1 * float(motor["rated_torque_nm"]),
+                args.maximum_commissioning_torque_nm
+                if args.maximum_commissioning_torque_nm is not None
+                else float("inf"),
+            ),
+        )
+        feedback_cap = feedback_caps.get(
+            name, 0.1 * float(motor["rated_torque_nm"])
+        )
+        if command_cap > min(mechanical_peak, protocol_torque_cap):
+            raise SystemExit(f"command cap exceeds hardware/protocol limit for {name}")
+        if feedback_cap < command_cap:
+            raise SystemExit(f"feedback cap is below command cap for {name}")
+        if feedback_cap > mechanical_peak:
+            raise SystemExit(f"feedback cap exceeds mechanical peak for {name}")
         configured_speed = motor.get("max_speed_rad_s")
         deployment_speed = min(
             float(ranges["velocity_rad_s"][1]),
@@ -85,19 +141,13 @@ def main() -> None:
                 "hard_position_min_rad": float(motor["hard_limit_rad"][0]),
                 "hard_position_max_rad": float(motor["hard_limit_rad"][1]),
                 "deployment_velocity_max_rad_s": deployment_speed,
-                "mechanical_peak_torque_nm": float(motor["peak_torque_nm"]),
-                # First policy-admission tier: deliberately independent from
-                # protocol TMAX and the much larger mechanical peak rating.
-                "commissioning_torque_cap_nm": min(
-                    0.1 * float(motor["rated_torque_nm"]),
-                    args.maximum_commissioning_torque_nm
-                    if args.maximum_commissioning_torque_nm is not None
-                    else float("inf"),
-                ),
+                "mechanical_peak_torque_nm": mechanical_peak,
+                # Commissioning caps remain independent from protocol TMAX and
+                # may only be raised for explicitly named, reviewed motors.
+                "commissioning_torque_cap_nm": command_cap,
                 # Feedback includes suspended static load and sensor offset. Keep
                 # its independent, previously qualified anomaly threshold.
-                "feedback_torque_cap_nm": 0.1
-                * float(motor["rated_torque_nm"]),
+                "feedback_torque_cap_nm": feedback_cap,
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]
                 ),
