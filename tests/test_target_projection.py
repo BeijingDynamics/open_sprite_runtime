@@ -66,6 +66,26 @@ class ProtectedTargetProjectorTests(unittest.TestCase):
                 NAMES, limit_report(), gain_scale=0.0
             )
 
+    def test_identifies_measured_pose_outside_soft_limits(self) -> None:
+        projector = ProtectedTargetProjector.from_limit_report(
+            NAMES, limit_report(), gain_scale=0.1
+        )
+        position = np.zeros(31)
+        position[3] = 0.6
+        position[9] = -0.7
+
+        with self.assertRaisesRegex(
+            ValueError,
+            r"physical startup measured pose.*joint_3=\+0\.600000.*joint_9=-0\.700000",
+        ):
+            projector.require_position_within_limits(
+                position, label="physical startup measured pose"
+            )
+
+        np.testing.assert_allclose(
+            projector.require_position_within_limits(np.zeros(31)), 0.0
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1376,13 +1376,31 @@ int run_native_protected_policy(
           measured_joint[joint] += kinematics.motor_to_joint[joint][motor] *
               (motors[motor].last_position - kinematics.motor_offset[motor]);
         }
-        if (std::abs(ipc.latest_target.position_rad[joint] - measured_joint[joint]) > 0.03 ||
-            std::abs(ipc.latest_target.velocity_rad_s[joint]) > 1.0e-9 ||
-            std::abs(ipc.latest_target.kp[joint]) > 1.0e-9 ||
-            std::abs(ipc.latest_target.kd[joint]) > 1.0e-9 ||
-            std::abs(ipc.latest_target.feedforward_torque_nm[joint]) > 1.0e-9) {
-          throw std::runtime_error(
-              "first protected-policy target is not measured-pose zero-gain startup");
+        const double position_delta =
+            ipc.latest_target.position_rad[joint] - measured_joint[joint];
+        auto startup_error = [&](const std::string& field, double value) {
+          std::ostringstream message;
+          message << "first protected-policy target failed for "
+                  << joint_safety[joint].name << " field=" << field
+                  << " value=" << value;
+          throw std::runtime_error(message.str());
+        };
+        if (std::abs(position_delta) > 0.03) {
+          startup_error("position_delta_rad", position_delta);
+        }
+        if (std::abs(ipc.latest_target.velocity_rad_s[joint]) > 1.0e-9) {
+          startup_error("velocity_rad_s", ipc.latest_target.velocity_rad_s[joint]);
+        }
+        if (std::abs(ipc.latest_target.kp[joint]) > 1.0e-9) {
+          startup_error("kp", ipc.latest_target.kp[joint]);
+        }
+        if (std::abs(ipc.latest_target.kd[joint]) > 1.0e-9) {
+          startup_error("kd", ipc.latest_target.kd[joint]);
+        }
+        if (std::abs(ipc.latest_target.feedforward_torque_nm[joint]) > 1.0e-9) {
+          startup_error(
+              "feedforward_torque_nm",
+              ipc.latest_target.feedforward_torque_nm[joint]);
         }
       }
       prepared = true;

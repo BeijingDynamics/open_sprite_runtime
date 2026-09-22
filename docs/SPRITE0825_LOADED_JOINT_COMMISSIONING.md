@@ -285,3 +285,23 @@ This preparation does not authorize actuation. The suspended physical run must
 be reviewed and approved separately using the exact token printed by
 `run_sprite0825_native_protected_policy_admission_on_253.sh`. No motor-zero or
 mode-switch command exists in this path.
+
+The first explicitly authorized attempt on 2026-09-22 failed closed before
+nonzero policy commands were admitted. The measured suspended pose had left
+ankle pitch `0.544104 rad` and right ankle pitch `0.497345 rad`, both above the
+reviewed `0.386 rad` soft maximum (and the `0.436 rad` hard candidate). The
+Python startup projection therefore produced boundary targets, while the native
+writer correctly rejected their `-0.158104 rad` and `-0.111345 rad` jumps from
+the measured pose. All other joints matched exactly; target velocity, Kp, Kd,
+and feedforward were zero. The runtime sent no nonzero policy command, attempted
+no mode switch or zero reset, and verified all 31 motors disabled at exit.
+Evidence:
+
+- `reports/native_protected_policy_admission_20260922_143734.json`
+- `reports/native_protected_policy_actor_20260922_143734.json`
+- `reports/native_protected_policy_trace_20260922_143734.npz`
+
+The software now reports measured-pose soft-limit violations by joint and value
+instead of silently clamping the startup pose. The safety limits were not
+widened. Before another authorized attempt, both disabled ankles must be moved
+inside the reviewed soft range and a fresh zero-gain shadow must pass.

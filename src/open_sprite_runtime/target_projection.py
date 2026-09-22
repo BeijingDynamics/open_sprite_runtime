@@ -116,6 +116,25 @@ class ProtectedTargetProjector:
             raise ValueError("protected position must be a finite 31-vector")
         return np.clip(position, self.lower_rad, self.upper_rad)
 
+    def require_position_within_limits(
+        self, position_rad: Any, *, label: str = "position"
+    ) -> np.ndarray:
+        """Return a validated pose or identify every joint outside soft limits."""
+        position = np.asarray(position_rad, dtype=np.float64)
+        if position.shape != (31,) or not np.isfinite(position).all():
+            raise ValueError(f"{label} must be a finite 31-vector")
+        outside = np.flatnonzero(
+            (position < self.lower_rad) | (position > self.upper_rad)
+        )
+        if outside.size:
+            details = ", ".join(
+                f"{self.joint_names[int(index)]}={position[index]:+.6f} "
+                f"not in [{self.lower_rad[index]:+.6f}, {self.upper_rad[index]:+.6f}]"
+                for index in outside
+            )
+            raise ValueError(f"{label} is outside reviewed soft limits: {details}")
+        return position.copy()
+
     def report(self) -> dict[str, Any]:
         return {
             "enabled": True,

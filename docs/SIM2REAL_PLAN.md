@@ -266,7 +266,12 @@ torque was 0.03315 Nm. Evidence:
 
 The active launcher intentionally refuses to run without the exact token
 `ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION`. Its physical execution is still
-pending separate operator approval.
+pending a fresh operator approval after startup-pose correction. The first
+authorized attempt on 2026-09-22 failed closed before nonzero policy admission:
+both suspended ankle-pitch measurements were outside the reviewed soft range.
+All 31 motors were verified disabled, with zero mode-switch and zero-reset
+attempts. The limits were not widened; both ankles must first be moved inside
+the reviewed range and requalified in zero-gain shadow.
 
 ## First milestone
 

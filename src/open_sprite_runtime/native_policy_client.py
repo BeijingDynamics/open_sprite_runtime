@@ -185,7 +185,10 @@ def run(args: argparse.Namespace) -> dict:
                     if startup is not None:
                         target = startup.apply(
                             projected_target,
-                            projector.project_position(policy_trace.joint_position_rad),
+                            projector.require_position_within_limits(
+                                policy_trace.joint_position_rad,
+                                label="physical startup measured pose",
+                            ),
                         )
                     target_sequence += 1
                     packet = PolicyTargetPacket(
