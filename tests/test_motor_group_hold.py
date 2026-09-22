@@ -1,7 +1,13 @@
 import unittest
 
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
-from open_sprite_runtime.motor_group_hold import run_right_wrist_group_low_gain_hold
+from open_sprite_runtime.motor_group_hold import (
+    LEFT_ARM_GROUP,
+    RIGHT_ARM_GROUP,
+    run_left_arm_group_low_gain_hold,
+    run_right_arm_group_low_gain_hold,
+    run_right_wrist_group_low_gain_hold,
+)
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
 
@@ -28,11 +34,30 @@ def endpoints():
     )
 
 
-class FakeGroupWriter:
-    interface = "kcan4"
+def right_arm_endpoints():
+    ranges = DamiaoMitRanges(
+        (-12.566, 12.566), (-50.0, 50.0), (-5.0, 5.0), "motor_register_readback"
+    )
+    return tuple(
+        DamiaoFeedbackEndpoint(name, interface, can_id, master_id, ranges)
+        for name, interface, can_id, master_id in RIGHT_ARM_GROUP
+    )
 
+
+def left_arm_endpoints():
+    ranges = DamiaoMitRanges(
+        (-12.566, 12.566), (-50.0, 50.0), (-5.0, 5.0), "motor_register_readback"
+    )
+    return tuple(
+        DamiaoFeedbackEndpoint(name, interface, can_id, master_id, ranges)
+        for name, interface, can_id, master_id in LEFT_ARM_GROUP
+    )
+
+
+class FakeGroupWriter:
     def __init__(self, selected, *, bad_torque_motor=None):
         self.selected = {item.motor_name: item for item in selected}
+        self.interface = next(iter(self.selected.values())).interface
         self.status = {name: 0 for name in self.selected}
         self.last_name = next(iter(self.selected))
         self.bad_torque_motor = bad_torque_motor
@@ -60,7 +85,7 @@ class FakeGroupWriter:
             0x80, 0x00, 0x80, torque_raw >> 8, torque_raw & 0xFF, 30, 29,
         ))
         return ReceivedCanFrame(
-            interface="kcan4", can_id=endpoint.master_id, data=data,
+            interface=self.interface, can_id=endpoint.master_id, data=data,
             is_extended=False, is_remote=False, is_error=False,
             is_fd=True, bit_rate_switch=True, error_state_indicator=False,
             software_timestamp_ns=1, hardware_timestamp_ns=1,
@@ -104,7 +129,7 @@ class MotorGroupHoldTests(unittest.TestCase):
 
     def test_rejects_reordered_or_incomplete_group(self):
         selected = endpoints()
-        with self.assertRaisesRegex(ValueError, "ordered right-wrist"):
+        with self.assertRaisesRegex(ValueError, "frozen ordered group"):
             run_right_wrist_group_low_gain_hold(
                 FakeGroupWriter(selected[:2]),
                 selected[:2],
@@ -130,6 +155,38 @@ class MotorGroupHoldTests(unittest.TestCase):
         )
         self.assertTrue(any("soft-limit margin" in value for value in report.errors))
         self.assertTrue(all(value == 0 for value in report.enable_attempts.values()))
+
+    def test_right_arm_group_hold_uses_all_seven_fixed_endpoints(self):
+        selected = right_arm_endpoints()
+        writer = FakeGroupWriter(selected)
+        clock = Clock()
+        report = run_right_arm_group_low_gain_hold(
+            writer,
+            selected,
+            soft_position_rad={item.motor_name: (-0.7, 0.7) for item in selected},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(len(report.motor_names), 7)
+        self.assertTrue(all(value == 1 for value in report.enable_attempts.values()))
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_left_arm_group_excludes_head_yaw_and_uses_kcan3(self):
+        selected = left_arm_endpoints()
+        writer = FakeGroupWriter(selected)
+        clock = Clock()
+        report = run_left_arm_group_low_gain_hold(
+            writer,
+            selected,
+            soft_position_rad={item.motor_name: (-0.7, 0.7) for item in selected},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.interface, "kcan3")
+        self.assertNotIn("head_yaw_motor", report.motor_names)
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
 
 
 if __name__ == "__main__":

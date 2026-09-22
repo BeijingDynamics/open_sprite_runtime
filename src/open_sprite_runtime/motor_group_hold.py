@@ -24,6 +24,24 @@ RIGHT_WRIST_GROUP = (
     ("right_wrist_roll_motor", "kcan4", 7, 0x17),
 )
 
+RIGHT_ARM_GROUP = (
+    ("right_shoulder_pitch_motor", "kcan4", 1, 0x11),
+    ("right_shoulder_roll_motor", "kcan4", 2, 0x12),
+    ("right_shoulder_yaw_motor", "kcan4", 3, 0x13),
+    ("right_elbow_motor", "kcan4", 4, 0x14),
+    *RIGHT_WRIST_GROUP,
+)
+
+LEFT_ARM_GROUP = (
+    ("left_shoulder_pitch_motor", "kcan3", 1, 0x11),
+    ("left_shoulder_roll_motor", "kcan3", 2, 0x12),
+    ("left_shoulder_yaw_motor", "kcan3", 3, 0x13),
+    ("left_elbow_motor", "kcan3", 4, 0x14),
+    ("left_wrist_yaw_motor", "kcan3", 5, 0x15),
+    ("left_wrist_pitch_motor", "kcan3", 6, 0x16),
+    ("left_wrist_roll_motor", "kcan3", 7, 0x17),
+)
+
 
 @dataclass(frozen=True)
 class MotorGroupHoldReport:
@@ -80,26 +98,33 @@ def _receive_endpoint(
     raise RuntimeError(f"{endpoint.motor_name} feedback watchdog expired")
 
 
-def run_right_wrist_group_low_gain_hold(
+def _run_fixed_group_low_gain_hold(
     writer: Any,
     endpoints: Sequence[DamiaoFeedbackEndpoint],
     *,
     soft_position_rad: Mapping[str, tuple[float, float]],
+    maximum_torque_nm: Mapping[str, float],
+    expected_identity: tuple[tuple[str, str, int, int], ...],
+    expected_interface: str,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> MotorGroupHoldReport:
-    """Hold the exact three right-wrist motors at their measured positions."""
+    """Hold one exact same-bus motor group at its measured positions."""
     selected = tuple(endpoints)
     identity = tuple(
         (item.motor_name, item.interface, item.can_id, item.master_id) for item in selected
     )
-    if identity != RIGHT_WRIST_GROUP:
-        raise ValueError("powered group hold is restricted to the ordered right-wrist group")
+    if identity != expected_identity:
+        raise ValueError("powered group hold does not match the frozen ordered group")
     names = tuple(item.motor_name for item in selected)
     if set(soft_position_rad) != set(names):
-        raise ValueError("right-wrist soft limits must exactly cover the motor group")
-    if writer.interface != "kcan4":
-        raise ValueError("right-wrist group writer must use kcan4")
+        raise ValueError("soft limits must exactly cover the frozen motor group")
+    if set(maximum_torque_nm) != set(names) or any(
+        not 0.0 < value <= 0.5 for value in maximum_torque_nm.values()
+    ):
+        raise ValueError("torque guards must exactly cover the group and be in (0, 0.5] Nm")
+    if writer.interface != expected_interface:
+        raise ValueError(f"motor-group writer must use {expected_interface}")
 
     duration_s = 2.0
     rate_hz = 50.0
@@ -107,7 +132,6 @@ def run_right_wrist_group_low_gain_hold(
     kd = 0.05
     maximum_position_error_rad = 0.05
     maximum_velocity_rad_s = 0.2
-    maximum_torque_nm = 0.1
     feedback_timeout_s = 0.1
     mos_temperature_limit_c = 100
     rotor_temperature_limit_c = 80
@@ -141,7 +165,7 @@ def run_right_wrist_group_low_gain_hold(
             raise RuntimeError(f"{name} position-error guard tripped")
         if abs(feedback.velocity_rad_s) > maximum_velocity_rad_s:
             raise RuntimeError(f"{name} velocity guard tripped")
-        if abs(feedback.estimated_output_torque_nm) > maximum_torque_nm:
+        if abs(feedback.estimated_output_torque_nm) > maximum_torque_nm[name]:
             raise RuntimeError(f"{name} torque guard tripped")
         if feedback.mos_temperature_c >= mos_temperature_limit_c:
             raise RuntimeError(f"{name} MOS-temperature guard tripped")
@@ -190,8 +214,8 @@ def run_right_wrist_group_low_gain_hold(
                 envelope = DamiaoMitCommandEnvelope(
                     position_rad=(low, high),
                     maximum_velocity_rad_s=maximum_velocity_rad_s,
-                    maximum_feedforward_torque_nm=maximum_torque_nm,
-                    maximum_output_torque_nm=maximum_torque_nm,
+                    maximum_feedforward_torque_nm=maximum_torque_nm[name],
+                    maximum_output_torque_nm=maximum_torque_nm[name],
                 )
                 measured = DamiaoMitState(
                     latest[name].position_rad, latest[name].velocity_rad_s
@@ -264,4 +288,83 @@ def run_right_wrist_group_low_gain_hold(
         maximum_rotor_temperature_c=max_rotor,
         final_status=final_status,
         errors=tuple(errors),
+    )
+
+
+def run_right_wrist_group_low_gain_hold(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    *,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> MotorGroupHoldReport:
+    """Hold the exact three right-wrist motors at their measured positions."""
+    return _run_fixed_group_low_gain_hold(
+        writer,
+        endpoints,
+        soft_position_rad=soft_position_rad,
+        maximum_torque_nm={item.motor_name: 0.1 for item in endpoints},
+        expected_identity=RIGHT_WRIST_GROUP,
+        expected_interface="kcan4",
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
+def run_right_arm_group_low_gain_hold(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    *,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> MotorGroupHoldReport:
+    """Hold the exact seven right-arm motors at their measured positions."""
+    return _run_fixed_group_low_gain_hold(
+        writer,
+        endpoints,
+        soft_position_rad=soft_position_rad,
+        maximum_torque_nm={
+            item.motor_name: (
+                0.5 if item.motor_name in {
+                    "right_shoulder_pitch_motor",
+                    "right_shoulder_roll_motor",
+                } else 0.1
+            )
+            for item in endpoints
+        },
+        expected_identity=RIGHT_ARM_GROUP,
+        expected_interface="kcan4",
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
+def run_left_arm_group_low_gain_hold(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    *,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> MotorGroupHoldReport:
+    """Hold the exact seven left-arm motors at their measured positions."""
+    return _run_fixed_group_low_gain_hold(
+        writer,
+        endpoints,
+        soft_position_rad=soft_position_rad,
+        maximum_torque_nm={
+            item.motor_name: (
+                0.5 if item.motor_name in {
+                    "left_shoulder_pitch_motor",
+                    "left_shoulder_roll_motor",
+                } else 0.1
+            )
+            for item in endpoints
+        },
+        expected_identity=LEFT_ARM_GROUP,
+        expected_interface="kcan3",
+        monotonic=monotonic,
+        sleep=sleep,
     )

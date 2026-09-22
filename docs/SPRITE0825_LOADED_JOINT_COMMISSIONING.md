@@ -69,3 +69,45 @@ only `0.00833 rad` (about 0.48 degrees) from the negative hard boundary. Wrist
 pitch and roll were `+0.139782 rad` and `+0.081492 rad`. Do not widen the limit:
 with all motors disabled, return wrist yaw toward its neutral pose and repeat
 the zero-gain read before rerunning this gate.
+
+After the wrist yaw was manually returned to `+0.01545 rad`, the repeated
+three-motor gate passed 100/100 cycles per motor. Peak error was 0.000384 rad,
+peak speed was 0.0611 rad/s, peak estimated torque was 0.0171 Nm, and all three
+motors were verified disabled at exit. The Jetson report is
+`reports/right_wrist_group_low_gain_hold_20260922_110740.json`.
+
+## Fixed arm groups
+
+The fixed right-arm group contains only `kcan4` IDs `0x01..0x07`. The fixed
+left-arm group contains only `kcan3` IDs `0x01..0x07`; `head_yaw_motor` at ID
+`0x08` is deliberately outside its writer allowlist. Both groups hold the
+measured pose for two seconds at 50 Hz with `Kp=0.2`, `Kd=0.05`, and zero
+feedforward. Position and speed guards remain 0.05 rad and 0.2 rad/s. The two
+DM-J4340 shoulder motors use a 0.5 Nm estimated-torque guard; all DM-J4310 and
+DM-J3507 arm motors retain the 0.1 Nm guard.
+
+```bash
+cd /home/tony/open_sprite_runtime
+./hold_sprite0825_right_arm_group_low_gain_on_253.sh \
+  ENABLE_RIGHT_ARM_GROUP_LOW_GAIN_HOLD
+./hold_sprite0825_left_arm_group_low_gain_on_253.sh \
+  ENABLE_LEFT_ARM_GROUP_LOW_GAIN_HOLD
+```
+
+The right-arm run passed 100/100 cycles on all seven motors with peak estimated
+torque 0.1026 Nm and verified all motors disabled. The left-arm run passed
+100/100 cycles on all seven motors with peak estimated torque 0.3077 Nm on the
+loaded left shoulder pitch and also verified all motors disabled. Reports:
+
+- `reports/right_arm_group_low_gain_hold_20260922_111440.json`
+- `reports/left_arm_group_low_gain_hold_20260922_112119.json`
+
+These arm results do not authorize directly applying the same group hold to a
+leg. Ankle commands require differential kinematics and the dedicated 500 Hz
+ankle layer.
+
+## Zero-position writes
+
+Motor zero-position reset/write commands are forbidden unless the robot owner
+gives explicit approval for that exact operation. Commissioning scripts in this
+document neither reset zero positions nor switch motor modes.

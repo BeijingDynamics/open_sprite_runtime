@@ -153,10 +153,20 @@ required.
 - [x] Extend the fail-closed writer from one endpoint to the fixed right-wrist
   yaw/pitch/roll group on `kcan4`, including all-group disable and per-motor
   disabled verification on every exit path.
-- [ ] Commission the fixed right-wrist current-position hold before any larger
-  arm or whole-body enable. Its first gate attempt correctly sent zero enable
-  frames because wrist yaw was measured 0.00833 rad from its negative hard
-  boundary; return that disabled joint toward neutral and repeat the gate.
+- [x] Commission the fixed right-wrist current-position hold before any larger
+  arm or whole-body enable. Its first attempt correctly sent zero enable frames
+  because wrist yaw was 0.00833 rad from its negative hard boundary. After the
+  disabled joint was manually returned toward neutral, the gate completed
+  100/100 cycles per motor below 0.0171 Nm and disabled all motors at exit.
+- [x] Commission both fixed seven-motor arm groups at measured pose. Both sides
+  completed 100/100 cycles per motor and verified every endpoint disabled;
+  head yaw remained excluded from the left-arm writer allowlist.
+- [ ] Build the next leg/waist gate around the calibrated differential ankle
+  mapping and dedicated 500 Hz ankle layer. Do not reuse the direct arm-group
+  hold for either ankle motor pair.
+- [ ] Treat every motor zero-position reset/write as a separately authorized
+  maintenance operation. Never emit one without explicit owner approval for
+  that exact operation.
 - Single-joint tests, then fixed arm groups, then whole-body measured pose in a
   lifting frame.
 - Low Kp/Kd and strict current limits first.
