@@ -133,6 +133,27 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  stand_hip_pr_45nm_gain08_partial_contact_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_HIP_PR_45NM_GAIN08_PARTIAL_CONTACT
+    DURATION=8.0
+    GAIN_SCALE=0.08
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
+    SUPPORT_INSTRUCTION="Lifting frame must retain the previously qualified support height; both soles remain on a flat floor; no disturbance"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
     DURATION=8.0

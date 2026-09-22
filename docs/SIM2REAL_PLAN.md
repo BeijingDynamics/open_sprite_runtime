@@ -429,6 +429,20 @@ non-leg limits remain unchanged. The harness stays at the previously qualified
 height and no disturbance is allowed. A zero-gain shadow preview must pass
 before this tier may be actively authorized.
 
+That 0.06-gain tier completed all eight seconds with zero deadline misses, no
+target projection or ankle clamp, and all 31 motors verified disabled. Total
+tilt started at 1.74 degrees, ended at 1.70 degrees, and peaked at 1.80 degrees.
+The largest measured leg feedback was 1.265 Nm at the right knee; the largest
+proximal-hip feedback was 0.732 Nm. Right ankle pitch reached a -0.3604 rad raw
+target during the ramp and stayed between -0.3572 and -0.3391 rad after the
+ramp, while measured ankle position stayed near +0.297 rad. An exact actor
+counterfactual showed the target changes sign with measured ankle position and
+therefore does not indicate another feedback-sign error. The next candidate
+keeps every torque and position guard unchanged and raises only gain scale to
+0.08; it requires a new zero-gain preview and explicit active-test approval.
+Evidence: `reports/native_protected_policy_admission_20260922_184812.json` and
+`reports/native_protected_policy_trace_20260922_184812.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
