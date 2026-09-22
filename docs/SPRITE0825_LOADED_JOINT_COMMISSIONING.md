@@ -183,8 +183,8 @@ Because the target was the measured suspended pose, these runs qualify the
 
 ## Remaining subsystem gates before whole-body hold
 
-Two isolated subsystem gates remain. They are implemented and covered by unit
-tests, but have not been physically executed:
+One isolated subsystem gate remains. Both gates are implemented and covered by
+unit tests; the waist gate has now been physically qualified:
 
 - Waist yaw/roll measured-pose hold on `kcan1` IDs `0x07/0x08`: 2 seconds at
   50 Hz, embedded `Kp=0.2`, `Kd=0.05`, and zero feedforward. Its first physical
@@ -193,12 +193,18 @@ tests, but have not been physically executed:
   zero-gain baseline held exactly constant position while torque feedback ranged
   from -1.495 to +1.670 Nm. The revised gate keeps the command-torque estimate
   capped at 0.5 Nm and independently caps J6248 feedback at 2.5 Nm (8.3% of its
-  30 Nm rated torque); it has not yet been physically rerun.
+  30 Nm rated torque). The authorized rerun completed 100/100 command and
+  feedback cycles per motor with zero position error. Maximum command-torque
+  estimates were 0.000244 Nm yaw and 0.000733 Nm roll; maximum feedback torque
+  magnitudes were 0.1983 Nm yaw and 1.3187 Nm roll. Both motors were verified
+  disabled at exit. Report:
+  `reports/waist_group_low_gain_hold_20260922_124056.json`.
 - Head pitch/roll differential measured-pose hold on `kcan2` IDs `0x07/0x08`:
   2 seconds at 500 Hz, host `Kp=0.2`, `Kd=0.03`, 0.05 Nm joint torque cap,
   0.10 Nm motor cap, and embedded motor gains zero.
 
-They require separate explicit physical authorization. Their launchers refuse
+The remaining head gate requires separate explicit physical authorization.
+Both launchers refuse
 to run without exact acknowledgement tokens:
 
 ```bash
@@ -208,5 +214,6 @@ to run without exact acknowledgement tokens:
   ENABLE_HEAD_PAIR_LOW_JOINT_PD_500HZ
 ```
 
-Only after both pass may the project prepare a separately reviewed 31-motor
-measured-pose hold. Neither script resets motor zero positions or switches mode.
+Only after the head gate also passes may the project prepare a separately
+reviewed 31-motor measured-pose hold. Neither script resets motor zero positions
+or switches mode.

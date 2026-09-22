@@ -184,12 +184,14 @@ required.
   pitch/roll/yaw and knee; ankle, waist, and head endpoints are excluded. Both
   sides completed 100/100 cycles per motor and verified disabled on exit.
 - [x] Prepare and unit-test isolated waist yaw/roll and head pitch/roll
-  differential measured-pose gates. No physical command has been sent by these
-  new gates yet.
-- [ ] Physically commission the waist yaw/roll gate with separate approval. Its
+  differential measured-pose gates.
+- [x] Physically commission the waist yaw/roll gate with separate approval. Its
   first run failed closed on the J6248 feedback guard; disabled zero-gain data
   proved a -1.495 to +1.670 Nm feedback-noise span at fixed position. The revised
   gate separates a 0.5 Nm command estimate from a 2.5 Nm J6248 feedback guard.
+  The authorized rerun completed 100/100 cycles per motor with zero position
+  error, command estimates below 0.000733 Nm, and verified both motors disabled.
+  Evidence: `reports/waist_group_low_gain_hold_20260922_124056.json`.
 - [ ] Physically commission the lower-torque head differential gate with
   separate approval.
 - [ ] After every subsystem passes, implement and review one capability-limited
