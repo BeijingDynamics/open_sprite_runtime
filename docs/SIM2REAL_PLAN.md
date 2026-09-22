@@ -440,9 +440,12 @@ counterfactual showed the target changes sign with measured ankle position and
 therefore does not indicate another feedback-sign error. A global 0.08 preview
 was rejected before actuation because predicted right-shoulder-pitch torque was
 1.125 Nm, above its unchanged 1.0 Nm command guard. The revised candidate keeps
-global gain scale at 0.06 and applies a 1.3333 multiplier only to the four hip
-pitch/roll joints. Every torque and position guard remains unchanged. It
-requires a matching zero-gain preview and explicit active-test approval.
+the four hip pitch/roll joints at global gain scale 0.08, applies a 0.75
+multiplier to every other non-DM3507 joint, and applies 0.075 to DM3507 joints.
+This preserves effective gains of 0.06 and 0.006 outside the four proximal hip
+joints without weakening the safety layer's multiplier range of (0, 1]. Every
+torque and position guard remains unchanged. It requires a matching zero-gain
+preview and explicit active-test approval.
 Evidence: `reports/native_protected_policy_admission_20260922_184812.json` and
 `reports/native_protected_policy_trace_20260922_184812.npz`.
 

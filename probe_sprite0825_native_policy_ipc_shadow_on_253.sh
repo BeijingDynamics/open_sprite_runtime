@@ -9,7 +9,7 @@ STARTUP_HOLD_SECONDS="${3:-0}"
 STARTUP_RAMP_SECONDS="${4:-0}"
 DM3507_GAIN_MULTIPLIER="${5:-1.0}"
 COMMAND_VX="${6:-0.0}"
-HIP_PITCH_ROLL_GAIN_MULTIPLIER="${7:-1.0}"
+NON_HIP_GAIN_MULTIPLIER="${7:-1.0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -45,11 +45,19 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
   done
 fi
-if [[ "$HIP_PITCH_ROLL_GAIN_MULTIPLIER" != "1.0" ]]; then
+if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
-    left_hip_pitch_joint left_hip_roll_joint \
-    right_hip_pitch_joint right_hip_roll_joint; do
-    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_PITCH_ROLL_GAIN_MULTIPLIER")
+    waist_roll_joint waist_yaw_joint \
+    left_hip_yaw_joint right_hip_yaw_joint \
+    left_knee_joint right_knee_joint \
+    left_shoulder_pitch_joint right_shoulder_pitch_joint \
+    left_shoulder_roll_joint right_shoulder_roll_joint \
+    left_shoulder_yaw_joint right_shoulder_yaw_joint \
+    left_ankle_pitch_joint right_ankle_pitch_joint \
+    left_ankle_roll_joint right_ankle_roll_joint \
+    left_elbow_joint right_elbow_joint \
+    left_wrist_yaw_joint right_wrist_yaw_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$NON_HIP_GAIN_MULTIPLIER")
   done
 fi
 if [[ -n "$GAIN_SCALE" ]]; then
@@ -88,7 +96,7 @@ echo "REPLAYABLE_TRACE $POLICY_TRACE"
 echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
 echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
-echo "HIP_PITCH_ROLL_GAIN_MULTIPLIER $HIP_PITCH_ROLL_GAIN_MULTIPLIER"
+echo "NON_HIP_GAIN_MULTIPLIER $NON_HIP_GAIN_MULTIPLIER"
 echo "COMMAND_VX $COMMAND_VX"
 
 "$ROOT/build/native/sprite_can_shadow" \
