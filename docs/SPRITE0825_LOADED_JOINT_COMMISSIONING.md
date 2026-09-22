@@ -253,6 +253,15 @@ qualified guard. The runtime made zero mode-switch and zero-position-reset
 attempts. Evidence:
 `reports/native_full_body_measured_pose_hold_20260922_135007.json`.
 
+After separate approval, the same gains, limits, rates, and guards were extended
+unchanged to 2.0 seconds. Each ankle motor completed 1000 active command cycles
+and every other motor completed 100. There were zero deadline misses, maximum
+lateness was 0.060251 ms, maximum measured drift remained 0.000383 rad, and all
+31 endpoints were finally verified disabled. Maximum feedback torque was
+1.084249 Nm on waist roll; maximum commanded torque estimate across all motors
+was 0.003129 Nm. The run made zero mode-switch and zero-position-reset attempts.
+Evidence: `reports/native_full_body_measured_pose_hold_20260922_140134.json`.
+
 The qualified launcher is:
 
 ```bash
@@ -260,6 +269,5 @@ cd /home/tony/open_sprite_runtime
 ./hold_sprite0825_native_full_body_measured_pose_on_253.sh 0.5
 ```
 
-Durations of 1.0 and 2.0 seconds remain separately gated follow-up tests. This
-result qualifies suspended measured-pose hold only; it does not yet authorize
-policy targets, loaded standing, or walking.
+The 2.0 second suspended measured-pose gate is now qualified. This result does
+not yet authorize policy targets, loaded standing, or walking.

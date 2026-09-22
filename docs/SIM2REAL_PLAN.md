@@ -204,9 +204,12 @@ required.
   path was rejected after measuring only 280-306 Hz ankle coverage rather than
   weakening the gate. Evidence:
   `reports/native_full_body_measured_pose_hold_20260922_135007.json`.
-- [ ] With renewed physical approval, extend the same unchanged native
-  measured-pose hold from 0.5 seconds to 2.0 seconds and confirm timing,
-  temperature, drift, torque, and final-disable margins.
+- [x] With renewed physical approval, extend the same unchanged native
+  measured-pose hold from 0.5 seconds to 2.0 seconds. The run delivered 1000
+  active cycles per ankle motor and 100 per remaining motor, zero deadline
+  misses, 0.060251 ms maximum lateness, 0.000383 rad maximum drift, and final
+  disabled confirmation for all 31 motors. Evidence:
+  `reports/native_full_body_measured_pose_hold_20260922_140134.json`.
 - [ ] Connect protected policy targets only after the 2.0 second measured-pose
   hold passes. Preserve the measured-pose startup hold/ramp, 50 Hz policy,
   500 Hz ankle controller, watchdogs, and independent power cut-off.
