@@ -221,3 +221,45 @@ These runs qualify the suspended measured-pose transport, feedback, torque-map,
 and final-disable paths. They do not qualify loaded head motion or walking gains.
 The project may now prepare a separately reviewed 31-motor measured-pose hold.
 Neither script resets motor zero positions or switches mode.
+
+## Whole-body measured-pose hold
+
+The first Python implementation was deliberately rejected as a physical-runtime
+path. In two 0.5 second suspended attempts it preserved the safety envelope and
+disabled all motors, but `kcan1/kcan2` reached only about 280-306 Hz for the
+ankle endpoints and about 28-32 Hz for their direct endpoints. Lowering the
+coverage threshold would have hidden a real scheduling limitation, so the
+active gate was moved into the already qualified native C++ transport.
+
+The native gate captures all 31 motor positions while disabled, reconstructs
+the 31-joint measured pose, and then uses the frozen mixed-rate architecture:
+
+- ankle pitch/roll: 500 Hz host joint PD, `Kp=0.5`, `Kd=0.05`, 0.15 Nm joint
+  cap, `A^-T` differential mapping, 0.10 Nm motor cap, embedded gains zero;
+- head pitch/roll: 50 Hz host joint PD, `Kp=0.2`, `Kd=0.03`, 0.05 Nm joint cap,
+  `A^-T` mapping, 0.10 Nm motor cap, embedded gains zero;
+- all 25 direct joints: 50 Hz embedded MIT hold at the captured motor position,
+  `Kp=0.2`, `Kd=0.05`, zero feedforward, and a 0.50 Nm command estimate cap;
+- waist roll retains its separately qualified 2.50 Nm feedback-noise guard;
+- every failure path sends three whole-body disable passes and polls until the
+  final observed state of every endpoint is disabled.
+
+The first native 0.5 second run on 2026-09-22 passed. Each ankle motor completed
+250 active command cycles; every other motor completed 25. There were zero
+deadline misses, maximum lateness was 0.059544 ms, maximum measured drift was
+0.000383 rad, and all 31 endpoints were finally verified disabled. The largest
+reported feedback torque was 1.142857 Nm on waist roll, inside its independently
+qualified guard. The runtime made zero mode-switch and zero-position-reset
+attempts. Evidence:
+`reports/native_full_body_measured_pose_hold_20260922_135007.json`.
+
+The qualified launcher is:
+
+```bash
+cd /home/tony/open_sprite_runtime
+./hold_sprite0825_native_full_body_measured_pose_on_253.sh 0.5
+```
+
+Durations of 1.0 and 2.0 seconds remain separately gated follow-up tests. This
+result qualifies suspended measured-pose hold only; it does not yet authorize
+policy targets, loaded standing, or walking.

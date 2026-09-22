@@ -109,6 +109,12 @@ struct Motor {
   double preview_kd = 0.0;
   double preview_feedforward_torque = 0.0;
   bool preview_initialized = false;
+  double captured_position = 0.0;
+  double maximum_abs_position_drift = 0.0;
+  double maximum_abs_speed = 0.0;
+  double maximum_abs_commanded_torque = 0.0;
+  double maximum_abs_feedback_torque = 0.0;
+  bool final_disabled = false;
 };
 
 struct NativeKinematics {
@@ -141,6 +147,7 @@ struct Options {
   std::string kinematics_config;
   std::uint64_t policy_joint_hash = 0;
   int realtime_priority = 0;
+  bool measured_pose_hold = false;
 };
 
 struct Socket {
@@ -467,6 +474,7 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--realtime-priority") {
       result.realtime_priority = static_cast<int>(number(value()));
     }
+    else if (argument == "--measured-pose-hold") result.measured_pose_hold = true;
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -475,8 +483,11 @@ Options parse_options(int argc, char** argv) {
   if (!(result.duration_s > 0.0 && result.duration_s <= 120.0)) {
     throw std::runtime_error("duration must be in (0, 120]");
   }
-  if (result.acknowledgement != "ZERO_GAIN_NATIVE_SHADOW" || !result.all_disabled) {
-    throw std::runtime_error("explicit zero-gain TX acknowledgement and disabled confirmation required");
+  const std::string required_ack = result.measured_pose_hold
+      ? "ENABLE_NATIVE_FULL_BODY_MEASURED_POSE_HOLD"
+      : "ZERO_GAIN_NATIVE_SHADOW";
+  if (result.acknowledgement != required_ack || !result.all_disabled) {
+    throw std::runtime_error("explicit hardware TX acknowledgement and disabled confirmation required");
   }
   if (result.ipc_socket.empty() != (result.policy_joint_hash == 0)) {
     throw std::runtime_error("--ipc-socket and nonzero --policy-joint-hash must be provided together");
@@ -484,8 +495,17 @@ Options parse_options(int argc, char** argv) {
   if (!result.joint_safety_config.empty() && result.ipc_socket.empty()) {
     throw std::runtime_error("--joint-safety-config requires policy IPC");
   }
-  if (result.kinematics_config.empty() != result.ipc_socket.empty()) {
+  if (!result.measured_pose_hold &&
+      result.kinematics_config.empty() != result.ipc_socket.empty()) {
     throw std::runtime_error("--kinematics-config is required exactly when policy IPC is enabled");
+  }
+  if (result.measured_pose_hold) {
+    if (!result.ipc_socket.empty() || result.kinematics_config.empty()) {
+      throw std::runtime_error("measured-pose hold requires kinematics and forbids policy IPC");
+    }
+    if (result.duration_s > 2.0) {
+      throw std::runtime_error("first measured-pose hold duration must not exceed 2 seconds");
+    }
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
     throw std::runtime_error("realtime priority must be in [0, 80]");
@@ -798,6 +818,364 @@ void send_poll(Socket& socket, Motor& motor) {
   ++motor.tx_count;
 }
 
+std::array<std::uint8_t, 8> hold_payload(
+    Motor& motor, double position, double kp, double kd, double feedforward,
+    double maximum_output_torque) {
+  if (position < motor.soft_position_min || position > motor.soft_position_max ||
+      std::abs(feedforward) > maximum_output_torque || kp < 0.0 || kp > 0.2 ||
+      kd < 0.0 || kd > 0.05) {
+    throw std::runtime_error("measured-hold command envelope failed for " + motor.name);
+  }
+  const double estimated = kp * (position - motor.last_position) -
+      kd * motor.last_velocity + feedforward;
+  if (!std::isfinite(estimated) || std::abs(estimated) > maximum_output_torque) {
+    throw std::runtime_error("measured-hold torque guard failed for " + motor.name);
+  }
+  motor.maximum_abs_commanded_torque =
+      std::max(motor.maximum_abs_commanded_torque, std::abs(estimated));
+  const auto p = encode_uint(position, motor.position_min, motor.position_max, 16);
+  const auto v = encode_uint(0.0, motor.velocity_min, motor.velocity_max, 12);
+  const auto kp_raw = encode_uint(kp, 0.0, 500.0, 12);
+  const auto kd_raw = encode_uint(kd, 0.0, 5.0, 12);
+  const auto torque = encode_uint(feedforward, motor.torque_min, motor.torque_max, 12);
+  return {
+      static_cast<std::uint8_t>(p >> 8), static_cast<std::uint8_t>(p),
+      static_cast<std::uint8_t>(v >> 4),
+      static_cast<std::uint8_t>((v & 0xF) << 4 | kp_raw >> 8),
+      static_cast<std::uint8_t>(kp_raw), static_cast<std::uint8_t>(kd_raw >> 4),
+      static_cast<std::uint8_t>((kd_raw & 0xF) << 4 | torque >> 8),
+      static_cast<std::uint8_t>(torque)};
+}
+
+void send_payload(Socket& socket, Motor& motor,
+                  const std::array<std::uint8_t, 8>& data) {
+  canfd_frame frame{};
+  frame.can_id = static_cast<canid_t>(motor.can_id);
+  frame.len = 8;
+  frame.flags = CANFD_BRS;
+  std::copy(data.begin(), data.end(), frame.data);
+  if (write(socket.fd, &frame, CANFD_MTU) != CANFD_MTU) {
+    throw std::runtime_error("CAN-FD hold write failed for " + motor.name);
+  }
+  ++motor.tx_count;
+}
+
+void send_special(Socket& socket, Motor& motor, std::uint8_t opcode) {
+  if (opcode != 0xFC && opcode != 0xFD) {
+    throw std::runtime_error("native hold special opcode is not enable/disable");
+  }
+  std::array<std::uint8_t, 8> data{};
+  data.fill(0xFF);
+  data[7] = opcode;
+  send_payload(socket, motor, data);
+}
+
+void drain_hold_feedback(
+    std::vector<Socket>& sockets, std::vector<Motor>& motors,
+    const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
+    int expected_status, bool enforce_motion_guards) {
+  for (auto& can_socket : sockets) {
+    while (true) {
+      canfd_frame frame{};
+      const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
+      if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+      if (received != CANFD_MTU || frame.len != 8 || (frame.flags & CANFD_BRS) == 0) {
+        throw std::runtime_error("invalid measured-hold CAN-FD feedback frame");
+      }
+      const int frame_id = static_cast<int>(frame.can_id & CAN_SFF_MASK);
+      const auto found = feedback_map.find({can_socket.interface, frame_id});
+      if (found == feedback_map.end()) continue;
+      auto& motor = motors[found->second];
+      const int controller_id = frame.data[0] & 0x0F;
+      const int status_code = (frame.data[0] >> 4) & 0x0F;
+      const bool status_valid = expected_status >= 0
+          ? status_code == expected_status
+          : status_code == 0 || status_code == 1;
+      if (controller_id != motor.can_id || !status_valid) {
+        throw std::runtime_error("measured-hold identity/status failed for " + motor.name);
+      }
+      const auto raw_position =
+          (static_cast<unsigned>(frame.data[1]) << 8) | frame.data[2];
+      const auto raw_velocity =
+          (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
+      const auto raw_torque =
+          (static_cast<unsigned>(frame.data[4] & 0x0F) << 8) | frame.data[5];
+      motor.last_position =
+          decode_uint(raw_position, motor.position_min, motor.position_max, 16);
+      motor.last_velocity =
+          decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
+      const double feedback_torque =
+          decode_uint(raw_torque, motor.torque_min, motor.torque_max, 12);
+      motor.maximum_abs_position_drift = std::max(
+          motor.maximum_abs_position_drift,
+          std::abs(motor.last_position - motor.captured_position));
+      motor.maximum_abs_speed =
+          std::max(motor.maximum_abs_speed, std::abs(motor.last_velocity));
+      motor.maximum_abs_feedback_torque = std::max(
+          motor.maximum_abs_feedback_torque, std::abs(feedback_torque));
+      motor.maximum_mos_temperature =
+          std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
+      motor.maximum_rotor_temperature =
+          std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
+      if (frame.data[6] >= motor.mos_temperature_limit ||
+          frame.data[7] >= motor.rotor_temperature_limit) {
+        throw std::runtime_error("measured-hold temperature failed for " + motor.name);
+      }
+      if (enforce_motion_guards) {
+        const bool differential = motor.name.find("ankle_motor") != std::string::npos ||
+            motor.name == "head_motor_a" || motor.name == "head_motor_b";
+        double torque_guard = differential ? 0.10 : 0.50;
+        if (motor.name == "waist_roll_motor") torque_guard = 2.50;
+        if (motor.maximum_abs_position_drift > 0.05 ||
+            motor.maximum_abs_speed > 0.20 ||
+            std::abs(feedback_torque) > torque_guard) {
+          throw std::runtime_error("measured-hold motion/torque guard failed for " + motor.name);
+        }
+      }
+      ++motor.rx_count;
+      motor.seen = true;
+      if (expected_status == 0) {
+        motor.final_disabled = true;
+      } else if (expected_status < 0) {
+        // During shutdown, consume stale enabled replies until the later disabled
+        // poll replies become the final observed state for every endpoint.
+        motor.final_disabled = status_code == 0;
+      }
+    }
+  }
+}
+
+int run_native_measured_pose_hold(
+    const Options& options, std::vector<Socket>& sockets, std::vector<Motor>& motors,
+    const std::map<std::string, std::size_t>& socket_index,
+    const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
+    const NativeKinematics& kinematics, bool memory_locked) {
+  std::string failure;
+  std::size_t deadline_misses = 0;
+  double maximum_lateness_ms = 0.0;
+  std::array<double, kJointCount> target_joint{};
+  std::array<double, kJointCount> joint_torque{};
+  std::vector<std::size_t> active_tx(kJointCount, 0);
+  std::vector<std::size_t> active_rx(kJointCount, 0);
+  auto due = [](const Motor& motor, std::size_t slot) {
+    return motor.poll_rate_hz == 500
+        ? static_cast<int>(slot % 4) == motor.poll_phase
+        : static_cast<int>(slot % 40) == motor.poll_phase;
+  };
+  auto sleep_until = [](std::int64_t deadline_ns) {
+    const timespec deadline = from_ns(deadline_ns);
+    int status = 0;
+    do status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, nullptr);
+    while (status == EINTR);
+    if (status != 0) throw std::runtime_error("clock_nanosleep failed");
+  };
+  auto joint_index = [&](const std::string& name) -> std::size_t {
+    const auto found = std::find(
+        kinematics.joint_names.begin(), kinematics.joint_names.end(), name);
+    if (found == kinematics.joint_names.end()) {
+      throw std::runtime_error("missing measured-hold joint: " + name);
+    }
+    return static_cast<std::size_t>(found - kinematics.joint_names.begin());
+  };
+  const std::array<std::size_t, 6> controlled_joints{
+      joint_index("left_ankle_pitch_joint"), joint_index("left_ankle_roll_joint"),
+      joint_index("right_ankle_pitch_joint"), joint_index("right_ankle_roll_joint"),
+      joint_index("head_pitch_joint"), joint_index("head_roll_joint")};
+
+  try {
+    // Capture every endpoint while all drives are still disabled.
+    constexpr std::size_t warmup_slots = 400;
+    const std::int64_t warmup_start = monotonic_ns() + 50'000'000LL;
+    for (std::size_t slot = 0; slot < warmup_slots; ++slot) {
+      sleep_until(warmup_start + static_cast<std::int64_t>(slot) * kTransportPeriodNs);
+      for (auto& motor : motors) {
+        if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
+      }
+      drain_hold_feedback(sockets, motors, feedback_map, 0, false);
+    }
+    usleep(2000);
+    drain_hold_feedback(sockets, motors, feedback_map, 0, false);
+    for (auto& motor : motors) {
+      if (!motor.seen || motor.rx_count == 0 ||
+          motor.last_position < motor.soft_position_min + 0.05 ||
+          motor.last_position > motor.soft_position_max - 0.05 ||
+          std::abs(motor.last_velocity) > 0.20) {
+        throw std::runtime_error("disabled capture invariant failed for " + motor.name);
+      }
+      motor.captured_position = motor.last_position;
+      motor.tx_count = 0;
+      motor.rx_count = 0;
+      motor.seen = false;
+      motor.maximum_abs_position_drift = 0.0;
+      motor.maximum_abs_speed = 0.0;
+      motor.maximum_abs_commanded_torque = 0.0;
+      motor.maximum_abs_feedback_torque = 0.0;
+      motor.final_disabled = false;
+    }
+    for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+      for (std::size_t motor = 0; motor < kJointCount; ++motor) {
+        target_joint[joint] += kinematics.motor_to_joint[joint][motor] *
+            (motors[motor].captured_position - kinematics.motor_offset[motor]);
+      }
+    }
+
+    for (auto& motor : motors) {
+      send_special(sockets[socket_index.at(motor.interface)], motor, 0xFC);
+    }
+    for (auto& motor : motors) motor.tx_count = 0;
+
+    const std::size_t transport_slots =
+        static_cast<std::size_t>(std::llround(options.duration_s * kTransportRateHz));
+    const std::int64_t start_ns = monotonic_ns() + 20'000'000LL;
+    for (std::size_t slot = 0; slot < transport_slots; ++slot) {
+      const std::int64_t deadline_ns =
+          start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
+      sleep_until(deadline_ns);
+      const std::int64_t woke_ns = monotonic_ns();
+      if (slot % 4 == 0) {
+        const double lateness_ms =
+            std::max(0.0, static_cast<double>(woke_ns - deadline_ns) / 1.0e6);
+        maximum_lateness_ms = std::max(maximum_lateness_ms, lateness_ms);
+        deadline_misses += static_cast<std::size_t>(lateness_ms >= 2.0);
+
+        std::array<double, kJointCount> position{};
+        std::array<double, kJointCount> velocity{};
+        for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+          for (std::size_t motor = 0; motor < kJointCount; ++motor) {
+            position[joint] += kinematics.motor_to_joint[joint][motor] *
+                (motors[motor].last_position - kinematics.motor_offset[motor]);
+            velocity[joint] += kinematics.motor_to_joint[joint][motor] *
+                motors[motor].last_velocity;
+          }
+        }
+        joint_torque.fill(0.0);
+        for (std::size_t offset = 0; offset < controlled_joints.size(); ++offset) {
+          const std::size_t joint = controlled_joints[offset];
+          const bool head = offset >= 4;
+          const double kp = head ? 0.2 : 0.5;
+          const double kd = head ? 0.03 : 0.05;
+          const double cap = head ? 0.05 : 0.15;
+          const double error = target_joint[joint] - position[joint];
+          if (std::abs(error) > 0.05) {
+            throw std::runtime_error(
+                "measured-hold joint error failed for " + kinematics.joint_names[joint]);
+          }
+          joint_torque[joint] = std::clamp(kp * error - kd * velocity[joint], -cap, cap);
+        }
+      }
+
+      for (std::size_t index = 0; index < motors.size(); ++index) {
+        auto& motor = motors[index];
+        if (!due(motor, slot)) continue;
+        const bool differential = motor.name.find("ankle_motor") != std::string::npos ||
+            motor.name == "head_motor_a" || motor.name == "head_motor_b";
+        double feedforward = 0.0;
+        if (differential) {
+          for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+            feedforward += kinematics.motor_to_joint[joint][index] * joint_torque[joint];
+          }
+          if (std::abs(feedforward) > 0.10) {
+            throw std::runtime_error("differential motor torque cap failed for " + motor.name);
+          }
+        }
+        const auto payload = differential
+            ? hold_payload(motor, motor.last_position, 0.0, 0.0, feedforward, 0.10)
+            : hold_payload(motor, motor.captured_position, 0.2, 0.05, 0.0, 0.50);
+        send_payload(sockets[socket_index.at(motor.interface)], motor, payload);
+      }
+      drain_hold_feedback(sockets, motors, feedback_map, 1, true);
+    }
+    usleep(2000);
+    drain_hold_feedback(sockets, motors, feedback_map, 1, true);
+    for (std::size_t index = 0; index < motors.size(); ++index) {
+      active_tx[index] = motors[index].tx_count;
+      active_rx[index] = motors[index].rx_count;
+      const double coverage = active_tx[index] > 0
+          ? static_cast<double>(active_rx[index]) / active_tx[index] : 0.0;
+      if (coverage < 0.95) {
+        throw std::runtime_error("measured-hold coverage failed for " + motors[index].name);
+      }
+    }
+    if (deadline_misses != 0 || maximum_lateness_ms >= 2.0) {
+      throw std::runtime_error("measured-hold realtime deadline gate failed");
+    }
+  } catch (const std::exception& error) {
+    failure = error.what();
+  }
+
+  // Preserve partial active-run counts even when a guard aborts the hold.
+  for (std::size_t index = 0; index < motors.size(); ++index) {
+    active_tx[index] = motors[index].tx_count;
+    active_rx[index] = motors[index].rx_count;
+  }
+
+  // This block runs after success and every failure. 0xFD is disable, never set-zero.
+  try {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+      for (auto& motor : motors) {
+        send_special(sockets[socket_index.at(motor.interface)], motor, 0xFD);
+      }
+      usleep(10000);
+    }
+    for (auto& motor : motors) {
+      motor.seen = false;
+      motor.final_disabled = false;
+    }
+    const std::int64_t verify_start = monotonic_ns() + 10'000'000LL;
+    for (std::size_t slot = 0; slot < 400; ++slot) {
+      sleep_until(verify_start + static_cast<std::int64_t>(slot) * kTransportPeriodNs);
+      for (auto& motor : motors) {
+        if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
+      }
+      drain_hold_feedback(sockets, motors, feedback_map, -1, false);
+    }
+    usleep(2000);
+    drain_hold_feedback(sockets, motors, feedback_map, -1, false);
+    for (const auto& motor : motors) {
+      if (!motor.final_disabled) {
+        throw std::runtime_error("final disabled verification failed for " + motor.name);
+      }
+    }
+  } catch (const std::exception& error) {
+    if (!failure.empty()) failure += "; ";
+    failure += error.what();
+  }
+
+  std::ostringstream report;
+  report << std::fixed << std::setprecision(6)
+      << "{\n  \"mode\": \"native_suspended_31_motor_measured_pose_hold\",\n"
+      << "  \"duration_s\": " << options.duration_s << ",\n"
+      << "  \"scheduler\": \""
+      << (options.realtime_priority > 0 ? "SCHED_FIFO" : "SCHED_OTHER") << "\",\n"
+      << "  \"realtime_priority\": " << options.realtime_priority << ",\n"
+      << "  \"memory_locked\": " << (memory_locked ? "true" : "false") << ",\n"
+      << "  \"deadline_misses\": " << deadline_misses << ",\n"
+      << "  \"maximum_lateness_ms\": " << maximum_lateness_ms << ",\n"
+      << "  \"automatic_mode_switch_attempts\": 0,\n"
+      << "  \"automatic_zero_reset_attempts\": 0,\n"
+      << "  \"motors\": {\n";
+  for (std::size_t index = 0; index < motors.size(); ++index) {
+    const auto& motor = motors[index];
+    report << "    \"" << motor.name << "\": {"
+        << "\"tx\": " << active_tx[index] << ", \"rx\": " << active_rx[index]
+        << ", \"max_drift_rad\": " << motor.maximum_abs_position_drift
+        << ", \"max_speed_rad_s\": " << motor.maximum_abs_speed
+        << ", \"max_command_torque_nm\": " << motor.maximum_abs_commanded_torque
+        << ", \"max_feedback_torque_nm\": " << motor.maximum_abs_feedback_torque
+        << ", \"final_disabled\": " << (motor.final_disabled ? "true" : "false")
+        << "}" << (index + 1 == motors.size() ? "\n" : ",\n");
+  }
+  const bool passed = failure.empty();
+  report << "  },\n  \"errors\": [";
+  if (!failure.empty()) report << "\"" << failure << "\"";
+  report << "],\n  \"passed\": " << (passed ? "true" : "false") << "\n}\n";
+  std::cout << report.str();
+  std::ofstream output(options.output);
+  if (!output) throw std::runtime_error("cannot open measured-hold report output");
+  output << report.str();
+  return passed ? 0 : 2;
+}
+
 void apply_affinity(int cpu) {
   cpu_set_t set;
   CPU_ZERO(&set);
@@ -965,7 +1343,7 @@ int main(int argc, char** argv) {
         ordered_joint_name_hash(joint_safety) != options.policy_joint_hash) {
       throw std::runtime_error("native joint safety order/hash mismatch");
     }
-    if (!options.kinematics_config.empty()) {
+    if (!options.kinematics_config.empty() && !options.measured_pose_hold) {
       if (ordered_joint_name_hash(kinematics.joint_names) != options.policy_joint_hash) {
         throw std::runtime_error("native kinematics joint order/hash mismatch");
       }
@@ -995,6 +1373,14 @@ int main(int argc, char** argv) {
     apply_affinity(options.cpu);
     apply_realtime_priority(options.realtime_priority);
     const bool memory_locked = mlockall(MCL_CURRENT | MCL_FUTURE) == 0;
+    if (options.measured_pose_hold) {
+      const int result = run_native_measured_pose_hold(
+          options, sockets, motors, socket_index, feedback_map, kinematics,
+          memory_locked);
+      for (auto& can_socket : sockets) close(can_socket.fd);
+      close_ipc(ipc);
+      return result;
+    }
     const std::int64_t start_ns = monotonic_ns() + 100'000'000LL;
     std::size_t deadline_misses = 0;
     std::size_t state_tick = 0;

@@ -196,8 +196,20 @@ required.
   separate approval. It completed 1000/1000 cycles per motor at 500 Hz, stayed
   below 0.00313 Nm commanded motor torque, and verified both motors disabled.
   Evidence: `reports/head_pair_low_joint_pd_500hz_20260922_130434.json`.
-- [ ] After every subsystem passes, implement and review one capability-limited
-  native 31-motor measured-pose hold before connecting policy targets.
+- [x] Implement and physically qualify the capability-limited native 31-motor
+  measured-pose hold before connecting policy targets. The 0.5 second suspended
+  run delivered exact 500 Hz ankle and 50 Hz remaining-joint coverage, zero
+  deadline misses, 0.059544 ms maximum lateness, at most 0.000383 rad measured
+  drift, and final disabled confirmation for all 31 motors. The earlier Python
+  path was rejected after measuring only 280-306 Hz ankle coverage rather than
+  weakening the gate. Evidence:
+  `reports/native_full_body_measured_pose_hold_20260922_135007.json`.
+- [ ] With renewed physical approval, extend the same unchanged native
+  measured-pose hold from 0.5 seconds to 2.0 seconds and confirm timing,
+  temperature, drift, torque, and final-disable margins.
+- [ ] Connect protected policy targets only after the 2.0 second measured-pose
+  hold passes. Preserve the measured-pose startup hold/ramp, 50 Hz policy,
+  500 Hz ankle controller, watchdogs, and independent power cut-off.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.
