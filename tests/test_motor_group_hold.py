@@ -6,10 +6,12 @@ from open_sprite_runtime.motor_group_hold import (
     LEFT_PROXIMAL_LEG_GROUP,
     RIGHT_ARM_GROUP,
     RIGHT_PROXIMAL_LEG_GROUP,
+    WAIST_GROUP,
     run_left_arm_group_low_gain_hold,
     run_right_arm_group_low_gain_hold,
     run_proximal_leg_group_low_gain_hold,
     run_right_wrist_group_low_gain_hold,
+    run_waist_group_low_gain_hold,
 )
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
@@ -223,6 +225,22 @@ class MotorGroupHoldTests(unittest.TestCase):
                 self.assertEqual(len(report.motor_names), 4)
                 self.assertFalse(any("ankle" in name for name in report.motor_names))
                 self.assertFalse(any("waist" in name or "head" in name for name in report.motor_names))
+
+    def test_waist_group_is_exactly_two_kcan1_endpoints(self):
+        selected = group_endpoints(WAIST_GROUP)
+        writer = FakeGroupWriter(selected)
+        clock = Clock()
+        report = run_waist_group_low_gain_hold(
+            writer,
+            selected,
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in selected},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.interface, "kcan1")
+        self.assertEqual(report.motor_names, ("waist_yaw_motor", "waist_roll_motor"))
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
 
 
 if __name__ == "__main__":

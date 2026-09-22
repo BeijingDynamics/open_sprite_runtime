@@ -56,6 +56,11 @@ RIGHT_PROXIMAL_LEG_GROUP = (
     ("right_knee_motor", "kcan2", 4, 0x14),
 )
 
+WAIST_GROUP = (
+    ("waist_yaw_motor", "kcan1", 7, 0x17),
+    ("waist_roll_motor", "kcan1", 8, 0x18),
+)
+
 
 @dataclass(frozen=True)
 class MotorGroupHoldReport:
@@ -408,6 +413,27 @@ def run_proximal_leg_group_low_gain_hold(
         maximum_torque_nm={item.motor_name: 0.5 for item in endpoints},
         expected_identity=expected_identity,
         expected_interface=expected_interface,
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
+def run_waist_group_low_gain_hold(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    *,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> MotorGroupHoldReport:
+    """Hold the exact waist yaw/roll pair; all leg endpoints remain excluded."""
+    return _run_fixed_group_low_gain_hold(
+        writer,
+        endpoints,
+        soft_position_rad=soft_position_rad,
+        maximum_torque_nm={item.motor_name: 0.5 for item in endpoints},
+        expected_identity=WAIST_GROUP,
+        expected_interface="kcan1",
         monotonic=monotonic,
         sleep=sleep,
     )

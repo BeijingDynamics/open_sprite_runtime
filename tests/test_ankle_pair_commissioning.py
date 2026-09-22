@@ -4,8 +4,10 @@ import numpy as np
 
 from open_sprite_runtime.ankle_pair_commissioning import (
     ANKLE_GROUPS,
+    HEAD_GROUP,
     run_ankle_pair_joint_pd_gate,
     run_ankle_pair_zero_torque_gate,
+    run_head_pair_joint_pd_gate,
 )
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
 from open_sprite_runtime.motor_mapping import DifferentialPairDriveMap
@@ -81,6 +83,27 @@ def fixture(side="left"):
     return endpoints, pair
 
 
+def head_fixture():
+    ranges = DamiaoMitRanges(
+        (-12.566, 12.566), (-50.0, 50.0), (-5.0, 5.0), "motor_register_readback"
+    )
+    endpoints = tuple(
+        DamiaoFeedbackEndpoint(name, interface, can_id, master_id, ranges)
+        for name, interface, can_id, master_id in HEAD_GROUP
+    )
+    pair = DifferentialPairDriveMap(
+        name="head",
+        joint_names=("head_pitch_joint", "head_roll_joint"),
+        motor_names=tuple(item.motor_name for item in endpoints),
+        drive_zero_rad=np.zeros(2),
+        encoder_sign=np.ones(2),
+        coupling=DifferentialPair(
+            np.asarray([[1.0047, 0.6148], [-1.0047, 0.6148]]), np.zeros(2)
+        ),
+    )
+    return endpoints, pair
+
+
 class AnklePairCommissioningTests(unittest.TestCase):
     def test_zero_torque_gate_runs_500hz_and_disables_pair(self):
         endpoints, pair = fixture()
@@ -127,6 +150,24 @@ class AnklePairCommissioningTests(unittest.TestCase):
         self.assertTrue(all(value >= 950 for value in report.command_count.values()))
         self.assertEqual(report.joint_kp_nm_rad, 0.5)
         self.assertEqual(report.maximum_joint_torque_nm, 0.15)
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_head_pair_uses_lower_torque_envelope_and_disables(self):
+        endpoints, pair = head_fixture()
+        writer = Writer(endpoints)
+        clock = Clock()
+        report = run_head_pair_joint_pd_gate(
+            writer,
+            endpoints,
+            pair,
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.side, "head")
+        self.assertEqual(report.joint_kp_nm_rad, 0.2)
+        self.assertEqual(report.maximum_joint_torque_nm, 0.05)
         self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
 
 

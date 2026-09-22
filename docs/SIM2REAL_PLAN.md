@@ -44,9 +44,11 @@
 
 ## Gate 2: ankle calibration
 
-- Identify left/right position matrices, signs, and motor zeros with legs unloaded.
-- Verify position and velocity round trips.
-- Verify power-consistent torque mapping at low commanded torque.
+- [x] Identify left/right position matrices, signs, and motor zeros with legs unloaded.
+- [x] Verify position and velocity round trips.
+- [x] Verify power-consistent `A^-T` torque mapping at low commanded torque on
+  both suspended ankle pairs at 500 Hz. This qualifies transport and mapping,
+  not load capacity or walking gains.
 
 ## Gate 3: shadow mode
 
@@ -161,9 +163,9 @@ required.
 - [x] Commission both fixed seven-motor arm groups at measured pose. Both sides
   completed 100/100 cycles per motor and verified every endpoint disabled;
   head yaw remained excluded from the left-arm writer allowlist.
-- [ ] Build the next leg/waist gate around the calibrated differential ankle
-  mapping and dedicated 500 Hz ankle layer. Do not reuse the direct arm-group
-  hold for either ankle motor pair.
+- [x] Build the leg/waist commissioning path around the calibrated differential
+  ankle mapping and dedicated 500 Hz ankle layer. The direct arm-group hold is
+  not used for either ankle motor pair.
 - [x] Prepare and offline-test the first powered differential-ankle transport
   gate. It reconstructs pitch/roll through the measured matrix, then enables
   only one ankle pair for two seconds at 500 Hz per motor with embedded gains
@@ -174,12 +176,21 @@ required.
 - [x] Implement and offline-test the next low joint-space ankle-PD gate with
   `Kp=0.5`, `Kd=0.05`, 0.15 Nm joint torque caps, `A^-T` motor mapping, zero
   embedded motor gains, and fail-closed pair disable.
-- [ ] Execute the low ankle-PD gate only after separate explicit owner approval
-  for this nonzero-torque experiment; zero-torque approval is not sufficient.
+- [x] Execute both low ankle-PD gates after separate explicit owner approvals.
+  Both completed 1000/1000 cycles per motor, stayed below 0.047 Nm estimated
+  motor torque, and verified both endpoints disabled at exit.
 - [x] Prepare, offline-test, and physically commission fixed four-motor
   proximal-leg groups for each side. Their allowlists contain only hip
   pitch/roll/yaw and knee; ankle, waist, and head endpoints are excluded. Both
   sides completed 100/100 cycles per motor and verified disabled on exit.
+- [x] Prepare and unit-test isolated waist yaw/roll and head pitch/roll
+  differential measured-pose gates. No physical command has been sent by these
+  new gates yet.
+- [ ] Physically commission the waist yaw/roll gate with separate approval.
+- [ ] Physically commission the lower-torque head differential gate with
+  separate approval.
+- [ ] After every subsystem passes, implement and review one capability-limited
+  native 31-motor measured-pose hold before connecting policy targets.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.

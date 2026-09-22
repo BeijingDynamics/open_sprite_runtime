@@ -31,6 +31,11 @@ ANKLE_GROUPS = {
     ),
 }
 
+HEAD_GROUP = (
+    ("head_motor_a", "kcan2", 7, 0x17),
+    ("head_motor_b", "kcan2", 8, 0x18),
+)
+
 
 @dataclass(frozen=True)
 class AnkleZeroTorqueReport:
@@ -283,42 +288,53 @@ def run_ankle_pair_zero_torque_gate(
     )
 
 
-def run_ankle_pair_joint_pd_gate(
+def _run_differential_pair_joint_pd_gate(
     writer: Any,
     endpoints: Sequence[DamiaoFeedbackEndpoint],
     pair: DifferentialPairDriveMap,
     *,
-    side: str,
+    mechanism: str,
+    expected: tuple[tuple[str, str, int, int], tuple[str, str, int, int]],
     soft_position_rad: Mapping[str, tuple[float, float]],
+    joint_kp: float,
+    joint_kd: float,
+    maximum_joint_torque: float,
+    maximum_motor_torque: float,
+    maximum_motor_velocity: float,
+    maximum_motor_position_drift: float,
+    maximum_joint_position_error: float,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> AnkleJointPdReport:
-    """Hold the measured ankle joint pose with low host-PD torque at 500 Hz."""
-    if side not in ANKLE_GROUPS:
-        raise ValueError("ankle side must be left or right")
-    expected = ANKLE_GROUPS[side]
+    """Hold one measured differential-joint pose with host-PD torque at 500 Hz."""
     selected = tuple(endpoints)
     identity = tuple(
         (item.motor_name, item.interface, item.can_id, item.master_id) for item in selected
     )
     if identity != expected or tuple(pair.motor_names) != tuple(item[0] for item in expected):
-        raise ValueError("ankle PD gate does not match the frozen ordered differential pair")
+        raise ValueError(
+            f"{mechanism} PD gate does not match the frozen ordered differential pair"
+        )
     names = tuple(item.motor_name for item in selected)
     interface = expected[0][1]
     if writer.interface != interface or set(soft_position_rad) != set(names):
-        raise ValueError("ankle writer or soft-limit coverage mismatch")
+        raise ValueError(f"{mechanism} writer or soft-limit coverage mismatch")
 
     duration_s = 2.0
     rate_hz = 500.0
     period = 1.0 / rate_hz
     feedback_timeout_s = 0.02
-    joint_kp = 0.5
-    joint_kd = 0.05
-    maximum_joint_torque = 0.15
-    maximum_motor_torque = 0.25
-    maximum_motor_velocity = 0.3
-    maximum_motor_position_drift = 0.08
-    maximum_joint_position_error = 0.08
+    numeric_limits = (
+        joint_kp,
+        joint_kd,
+        maximum_joint_torque,
+        maximum_motor_torque,
+        maximum_motor_velocity,
+        maximum_motor_position_drift,
+        maximum_joint_position_error,
+    )
+    if not all(math.isfinite(value) and value > 0.0 for value in numeric_limits):
+        raise ValueError(f"{mechanism} PD limits must be finite and positive")
 
     errors: list[str] = []
     initial_motor: dict[str, float] = {}
@@ -351,7 +367,7 @@ def run_ankle_pair_joint_pd_gate(
         if len(target_values) != 2 or not all(
             math.isfinite(float(value)) for value in target_values
         ):
-            raise RuntimeError("ankle differential reconstruction is not finite")
+            raise RuntimeError(f"{mechanism} differential reconstruction is not finite")
         target_joint = dict(zip(pair.joint_names, map(float, target_values), strict=True))
 
         for endpoint in selected:
@@ -392,7 +408,7 @@ def run_ankle_pair_joint_pd_gate(
                 joint_torque.append(torque)
             motor_torque = pair.joint_to_drive_torque(joint_torque)
             if any(abs(float(value)) > maximum_motor_torque for value in motor_torque):
-                raise RuntimeError("mapped ankle motor torque guard tripped")
+                raise RuntimeError(f"mapped {mechanism} motor torque guard tripped")
 
             for index, endpoint in enumerate(selected):
                 name = endpoint.motor_name
@@ -461,7 +477,7 @@ def run_ankle_pair_joint_pd_gate(
                 errors.append(f"{name} final disabled verification failed{detail}")
 
     return AnkleJointPdReport(
-        side=side,
+        side=mechanism,
         interface=interface,
         motor_names=names,
         target_joint_position_rad=target_joint,
@@ -481,4 +497,65 @@ def run_ankle_pair_joint_pd_gate(
         maximum_abs_estimated_motor_torque_nm=max_motor_estimated,
         final_status=final_status,
         errors=tuple(errors),
+    )
+
+
+def run_ankle_pair_joint_pd_gate(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    pair: DifferentialPairDriveMap,
+    *,
+    side: str,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> AnkleJointPdReport:
+    """Hold the measured ankle joint pose with low host-PD torque at 500 Hz."""
+    if side not in ANKLE_GROUPS:
+        raise ValueError("ankle side must be left or right")
+    return _run_differential_pair_joint_pd_gate(
+        writer,
+        endpoints,
+        pair,
+        mechanism=side,
+        expected=ANKLE_GROUPS[side],
+        soft_position_rad=soft_position_rad,
+        joint_kp=0.5,
+        joint_kd=0.05,
+        maximum_joint_torque=0.15,
+        maximum_motor_torque=0.25,
+        maximum_motor_velocity=0.3,
+        maximum_motor_position_drift=0.08,
+        maximum_joint_position_error=0.08,
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
+def run_head_pair_joint_pd_gate(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    pair: DifferentialPairDriveMap,
+    *,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> AnkleJointPdReport:
+    """Hold measured head pitch/roll with a conservative host-PD torque loop."""
+    return _run_differential_pair_joint_pd_gate(
+        writer,
+        endpoints,
+        pair,
+        mechanism="head",
+        expected=HEAD_GROUP,
+        soft_position_rad=soft_position_rad,
+        joint_kp=0.2,
+        joint_kd=0.03,
+        maximum_joint_torque=0.05,
+        maximum_motor_torque=0.10,
+        maximum_motor_velocity=0.2,
+        maximum_motor_position_drift=0.05,
+        maximum_joint_position_error=0.05,
+        monotonic=monotonic,
+        sleep=sleep,
     )

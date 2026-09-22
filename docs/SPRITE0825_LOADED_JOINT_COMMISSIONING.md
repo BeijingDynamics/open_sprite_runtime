@@ -167,8 +167,40 @@ speed and estimated motor torque were 0.01222 rad/s and 0.03175 Nm. Reports:
 - `reports/left_ankle_zero_torque_500hz_20260922_114646.json`
 - `reports/right_ankle_zero_torque_500hz_20260922_114712.json`
 
-The next gate is implemented and offline-tested but requires separate explicit
-approval because it applies nonzero host-computed torque. It holds the measured
-joint pose with joint-space `Kp=0.5 Nm/rad`, `Kd=0.05 Nm s/rad`, caps each joint
-torque at 0.15 Nm, maps through `A^-T`, and leaves embedded motor gains at zero.
-Do not execute it based only on approval of the zero-torque transport gate.
+The low-PD gates were separately approved and physically executed on both
+sides. Each motor completed 1000/1000 command/feedback cycles at 500 Hz, and
+both pairs were verified disabled at exit. They held the measured joint pose
+with joint-space `Kp=0.5 Nm/rad`, `Kd=0.05 Nm s/rad`, capped each joint torque
+at 0.15 Nm, mapped through `A^-T`, and left embedded motor gains at zero. Peak
+estimated motor torque was 0.0464 Nm on the left and 0.0269 Nm on the right.
+Reports:
+
+- `reports/left_ankle_low_joint_pd_500hz_20260922_115643.json`
+- `reports/right_ankle_low_joint_pd_500hz_20260922_authorized.json`
+
+Because the target was the measured suspended pose, these runs qualify the
+500 Hz feedback/torque/disable path, not ankle load capacity or walking gains.
+
+## Remaining subsystem gates before whole-body hold
+
+Two isolated subsystem gates remain. They are implemented and covered by unit
+tests, but have not been physically executed:
+
+- Waist yaw/roll measured-pose hold on `kcan1` IDs `0x07/0x08`: 2 seconds at
+  50 Hz, embedded `Kp=0.2`, `Kd=0.05`, zero feedforward, 0.5 Nm guard.
+- Head pitch/roll differential measured-pose hold on `kcan2` IDs `0x07/0x08`:
+  2 seconds at 500 Hz, host `Kp=0.2`, `Kd=0.03`, 0.05 Nm joint torque cap,
+  0.10 Nm motor cap, and embedded motor gains zero.
+
+They require separate explicit physical authorization. Their launchers refuse
+to run without exact acknowledgement tokens:
+
+```bash
+./hold_sprite0825_waist_group_low_gain_on_253.sh \
+  ENABLE_WAIST_GROUP_LOW_GAIN_HOLD
+./run_sprite0825_head_pair_low_joint_pd_500hz_on_253.sh \
+  ENABLE_HEAD_PAIR_LOW_JOINT_PD_500HZ
+```
+
+Only after both pass may the project prepare a separately reviewed 31-motor
+measured-pose hold. Neither script resets motor zero positions or switches mode.
