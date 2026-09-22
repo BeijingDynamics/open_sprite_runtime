@@ -367,6 +367,17 @@ ankle 100 ms consecutive-clamp watchdog. It exists only to capture separated
 front/back and left/right disturbances plus complete recovery; it requires a
 fresh exact operator acknowledgement and the native extended-duration token.
 
+The first 20-second attempt stopped safely at approximately 17.2 seconds when
+the right ankle-pitch raw target exceeded its reviewed soft limit by 0.0557 rad
+for five consecutive policy ticks. All motors were verified disabled. The robot
+was supported by two flat straps attached at the shoulders. This fixture strongly
+constrains roll but permits substantially more pelvis pitch, so the front/back
+and left/right pushes are not comparable independent balance tests. The ankle
+pitch event may be delayed recovery from the earlier front/back disturbance.
+Do not use this fixture to qualify roll balance, and do not widen the ankle
+limit. Repeat with a pitch-only disturbance and preserved partial-fault trace
+before changing gains, torque caps, or supported weight.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
