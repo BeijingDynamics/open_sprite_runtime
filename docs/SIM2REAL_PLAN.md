@@ -489,6 +489,32 @@ the same zero-gain readiness gate. Evidence:
 `reports/native_policy_ipc_actor_20260922_191024.json` and
 `reports/native_policy_ipc_trace_20260922_191024.npz`.
 
+After the harness was raised partway back, the hip-only 0.08-gain tier passed
+its zero-gain preview but was stopped fail-closed about 5.9 seconds into active
+control by the 1.0 Nm right-shoulder-pitch command guard. All 31 motors were
+verified disabled. The trace showed the actual right ankle pitch moving from
++0.129 rad to +0.327 rad while its projected target reached the -0.386 rad soft
+limit. The right shoulder command was a downstream whole-body compensation,
+not the support root cause, so its guard was not relaxed. Evidence:
+`reports/native_protected_policy_admission_20260922_191449.json` and
+`reports/native_protected_policy_trace_20260922_191449.npz`.
+
+The corrected candidate keeps arms and waist at effective gain 0.06 and DM3507
+joints at 0.006, but raises hip yaw, knees, and ankles to effective gain 0.08 so
+all leg joints match the already-qualified hip pitch/roll gain. Motor torque
+caps remain unchanged. This all-leg 0.08 tier completed eight seconds at the
+adjusted intermediate harness height with zero deadline misses, no target
+projection or ankle clamp, and all 31 motors verified disabled. Total tilt
+started at 1.49 degrees, ended at 1.46 degrees, and averaged 1.46 degrees after
+the startup ramp. Right ankle-pitch feedback stayed nearly fixed at +0.3441 to
++0.3432 rad; its post-ramp target stayed between -0.2534 and -0.2292 rad,
+retaining at least about 0.133 rad to the -0.386 rad soft limit. Maximum measured
+feedback was 0.814 Nm at right hip pitch, 0.595 Nm at right knee, and 0.354 Nm
+among the right ankle motors. This qualifies only static contact at this harness
+height, with no disturbance. Evidence:
+`reports/native_protected_policy_admission_20260922_192258.json` and
+`reports/native_protected_policy_trace_20260922_192258.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
