@@ -271,3 +271,17 @@ cd /home/tony/open_sprite_runtime
 
 The 2.0 second suspended measured-pose gate is now qualified. This result does
 not yet authorize policy targets, loaded standing, or walking.
+
+## Next gate: protected policy targets
+
+The first protected-policy tier is implemented and has passed disabled-motor
+shadow, deterministic replay, and exact physical-command margin audit. It is
+fixed to 2.0 seconds with `gain_scale=0.02`, a 1.0 second measured-pose hold,
+and a 4.0 second ramp. The native writer limits each motor to 10% of rated
+torque after MIT encoding and independently monitors returned torque, speed,
+position, status, temperature, policy freshness, CAN coverage, and timing.
+
+This preparation does not authorize actuation. The suspended physical run must
+be reviewed and approved separately using the exact token printed by
+`run_sprite0825_native_protected_policy_admission_on_253.sh`. No motor-zero or
+mode-switch command exists in this path.

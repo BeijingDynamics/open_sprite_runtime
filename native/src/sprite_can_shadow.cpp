@@ -2,6 +2,7 @@
 #include <array>
 #include <cerrno>
 #include <cmath>
+#include <csignal>
 #include <cstdint>
 #include <cstring>
 #include <fstream>
@@ -37,6 +38,11 @@ constexpr std::uint16_t kStateKind = 1;
 constexpr std::uint16_t kTargetKind = 2;
 constexpr std::size_t kJointCount = 31;
 constexpr std::int64_t kTargetTimeoutNs = 100'000'000LL;
+volatile std::sig_atomic_t g_shutdown_requested = 0;
+
+void request_shutdown(int) {
+  g_shutdown_requested = 1;
+}
 
 #pragma pack(push, 1)
 struct StatePacket {
@@ -86,6 +92,7 @@ struct Motor {
   double hard_position_max = 0.0;
   double deployment_velocity_max = 0.0;
   double mechanical_peak_torque = 0.0;
+  double commissioning_torque_cap = 0.0;
   double mos_temperature_limit = 0.0;
   double rotor_temperature_limit = 0.0;
   int poll_rate_hz = 0;
@@ -115,6 +122,7 @@ struct Motor {
   double maximum_abs_commanded_torque = 0.0;
   double maximum_abs_feedback_torque = 0.0;
   bool final_disabled = false;
+  int last_status_code = -1;
 };
 
 struct NativeKinematics {
@@ -148,6 +156,7 @@ struct Options {
   std::uint64_t policy_joint_hash = 0;
   int realtime_priority = 0;
   bool measured_pose_hold = false;
+  bool policy_actuation = false;
 };
 
 struct Socket {
@@ -265,7 +274,8 @@ std::vector<Motor> load_motors(const std::string& path) {
       "torque_min_nm", "torque_max_nm", "soft_position_min_rad",
       "soft_position_max_rad", "hard_position_min_rad", "hard_position_max_rad",
       "deployment_velocity_max_rad_s", "mechanical_peak_torque_nm",
-      "mos_temperature_limit_c", "rotor_temperature_limit_c", "poll_rate_hz"};
+      "commissioning_torque_cap_nm", "mos_temperature_limit_c",
+      "rotor_temperature_limit_c", "poll_rate_hz"};
   if (split(line, '\t') != expected_header) {
     throw std::runtime_error("native motor config header mismatch");
   }
@@ -296,9 +306,10 @@ std::vector<Motor> load_motors(const std::string& path) {
     motor.hard_position_max = number(fields[13]);
     motor.deployment_velocity_max = number(fields[14]);
     motor.mechanical_peak_torque = number(fields[15]);
-    motor.mos_temperature_limit = number(fields[16]);
-    motor.rotor_temperature_limit = number(fields[17]);
-    motor.poll_rate_hz = static_cast<int>(number(fields[18]));
+    motor.commissioning_torque_cap = number(fields[16]);
+    motor.mos_temperature_limit = number(fields[17]);
+    motor.rotor_temperature_limit = number(fields[18]);
+    motor.poll_rate_hz = static_cast<int>(number(fields[19]));
     if (motor.can_id < 1 || motor.can_id > 8 || motor.master_id != motor.can_id + 0x10 ||
         motor.position_min >= motor.soft_position_min ||
         motor.soft_position_min >= motor.soft_position_max ||
@@ -308,6 +319,8 @@ std::vector<Motor> load_motors(const std::string& path) {
         motor.deployment_velocity_max <= 0.0 ||
         motor.deployment_velocity_max > motor.velocity_max ||
         motor.mechanical_peak_torque <= 0.0 ||
+        motor.commissioning_torque_cap <= 0.0 ||
+        motor.commissioning_torque_cap > motor.mechanical_peak_torque ||
         motor.mos_temperature_limit <= 0.0 || motor.rotor_temperature_limit <= 0.0 ||
         (motor.poll_rate_hz != 50 && motor.poll_rate_hz != 500)) {
       throw std::runtime_error("native motor config endpoint/rate invariant failed");
@@ -475,6 +488,7 @@ Options parse_options(int argc, char** argv) {
       result.realtime_priority = static_cast<int>(number(value()));
     }
     else if (argument == "--measured-pose-hold") result.measured_pose_hold = true;
+    else if (argument == "--policy-actuation") result.policy_actuation = true;
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -483,9 +497,13 @@ Options parse_options(int argc, char** argv) {
   if (!(result.duration_s > 0.0 && result.duration_s <= 120.0)) {
     throw std::runtime_error("duration must be in (0, 120]");
   }
+  if (result.measured_pose_hold && result.policy_actuation) {
+    throw std::runtime_error("measured-pose hold and policy actuation are mutually exclusive");
+  }
   const std::string required_ack = result.measured_pose_hold
       ? "ENABLE_NATIVE_FULL_BODY_MEASURED_POSE_HOLD"
-      : "ZERO_GAIN_NATIVE_SHADOW";
+      : result.policy_actuation ? "ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION"
+                                : "ZERO_GAIN_NATIVE_SHADOW";
   if (result.acknowledgement != required_ack || !result.all_disabled) {
     throw std::runtime_error("explicit hardware TX acknowledgement and disabled confirmation required");
   }
@@ -505,6 +523,16 @@ Options parse_options(int argc, char** argv) {
     }
     if (result.duration_s > 2.0) {
       throw std::runtime_error("first measured-pose hold duration must not exceed 2 seconds");
+    }
+  }
+  if (result.policy_actuation) {
+    if (result.ipc_socket.empty() || result.kinematics_config.empty() ||
+        result.joint_safety_config.empty() || result.policy_joint_hash == 0) {
+      throw std::runtime_error(
+          "policy actuation requires IPC, kinematics, joint safety, and joint hash");
+    }
+    if (result.duration_s > 10.0) {
+      throw std::runtime_error("first protected policy actuation must not exceed 10 seconds");
     }
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
@@ -847,6 +875,55 @@ std::array<std::uint8_t, 8> hold_payload(
       static_cast<std::uint8_t>(torque)};
 }
 
+std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor) {
+  constexpr double tolerance = 1.0e-9;
+  const double position = motor.preview_position;
+  const double velocity = motor.preview_velocity;
+  const double kp = motor.preview_kp;
+  const double kd = motor.preview_kd;
+  const double feedforward = motor.preview_feedforward_torque;
+  if (!motor.preview_initialized || !std::isfinite(position) ||
+      !std::isfinite(velocity) || !std::isfinite(kp) || !std::isfinite(kd) ||
+      !std::isfinite(feedforward) ||
+      position < motor.soft_position_min - tolerance ||
+      position > motor.soft_position_max + tolerance ||
+      position < motor.hard_position_min - tolerance ||
+      position > motor.hard_position_max + tolerance ||
+      position < motor.position_min - tolerance ||
+      position > motor.position_max + tolerance ||
+      std::abs(velocity) > motor.deployment_velocity_max + tolerance ||
+      kp < 0.0 || kp > 500.0 || kd < 0.0 || kd > 3.0 ||
+      std::abs(feedforward) > motor.commissioning_torque_cap + tolerance) {
+    throw std::runtime_error("protected policy command envelope failed for " + motor.name);
+  }
+  const auto p = encode_uint(position, motor.position_min, motor.position_max, 16);
+  const auto v = encode_uint(velocity, motor.velocity_min, motor.velocity_max, 12);
+  const auto kp_raw = encode_uint(kp, 0.0, 500.0, 12);
+  const auto kd_raw = encode_uint(kd, 0.0, 5.0, 12);
+  const auto torque = encode_uint(feedforward, motor.torque_min, motor.torque_max, 12);
+  const double encoded_position = decode_uint(p, motor.position_min, motor.position_max, 16);
+  const double encoded_velocity = decode_uint(v, motor.velocity_min, motor.velocity_max, 12);
+  const double encoded_kp = decode_uint(kp_raw, 0.0, 500.0, 12);
+  const double encoded_kd = decode_uint(kd_raw, 0.0, 5.0, 12);
+  const double encoded_feedforward =
+      decode_uint(torque, motor.torque_min, motor.torque_max, 12);
+  const double estimated = encoded_kp * (encoded_position - motor.last_position) +
+      encoded_kd * (encoded_velocity - motor.last_velocity) + encoded_feedforward;
+  if (!std::isfinite(estimated) ||
+      std::abs(estimated) > motor.commissioning_torque_cap + tolerance) {
+    throw std::runtime_error("protected policy torque cap failed for " + motor.name);
+  }
+  motor.maximum_abs_commanded_torque =
+      std::max(motor.maximum_abs_commanded_torque, std::abs(estimated));
+  return {
+      static_cast<std::uint8_t>(p >> 8), static_cast<std::uint8_t>(p),
+      static_cast<std::uint8_t>(v >> 4),
+      static_cast<std::uint8_t>((v & 0xF) << 4 | kp_raw >> 8),
+      static_cast<std::uint8_t>(kp_raw), static_cast<std::uint8_t>(kd_raw >> 4),
+      static_cast<std::uint8_t>((kd_raw & 0xF) << 4 | torque >> 8),
+      static_cast<std::uint8_t>(torque)};
+}
+
 void send_payload(Socket& socket, Motor& motor,
                   const std::array<std::uint8_t, 8>& data) {
   canfd_frame frame{};
@@ -939,6 +1016,73 @@ void drain_hold_feedback(
       } else if (expected_status < 0) {
         // During shutdown, consume stale enabled replies until the later disabled
         // poll replies become the final observed state for every endpoint.
+        motor.final_disabled = status_code == 0;
+      }
+    }
+  }
+}
+
+void drain_policy_feedback(
+    std::vector<Socket>& sockets, std::vector<Motor>& motors,
+    const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
+    int expected_status, bool enforce_dynamic_guards) {
+  for (auto& can_socket : sockets) {
+    while (true) {
+      canfd_frame frame{};
+      const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
+      if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+      if (received != CANFD_MTU || frame.len != 8 || (frame.flags & CANFD_BRS) == 0) {
+        throw std::runtime_error("invalid protected-policy CAN-FD feedback frame");
+      }
+      const int frame_id = static_cast<int>(frame.can_id & CAN_SFF_MASK);
+      const auto found = feedback_map.find({can_socket.interface, frame_id});
+      if (found == feedback_map.end()) continue;
+      auto& motor = motors[found->second];
+      const int controller_id = frame.data[0] & 0x0F;
+      const int status_code = (frame.data[0] >> 4) & 0x0F;
+      const bool status_valid = expected_status >= 0
+          ? status_code == expected_status
+          : status_code == 0 || status_code == 1;
+      if (controller_id != motor.can_id || !status_valid) {
+        throw std::runtime_error("protected-policy identity/status failed for " + motor.name);
+      }
+      const auto raw_position =
+          (static_cast<unsigned>(frame.data[1]) << 8) | frame.data[2];
+      const auto raw_velocity =
+          (static_cast<unsigned>(frame.data[3]) << 4) | (frame.data[4] >> 4);
+      const auto raw_torque =
+          (static_cast<unsigned>(frame.data[4] & 0x0F) << 8) | frame.data[5];
+      motor.last_position =
+          decode_uint(raw_position, motor.position_min, motor.position_max, 16);
+      motor.last_velocity =
+          decode_uint(raw_velocity, motor.velocity_min, motor.velocity_max, 12);
+      const double feedback_torque =
+          decode_uint(raw_torque, motor.torque_min, motor.torque_max, 12);
+      motor.last_status_code = status_code;
+      motor.maximum_abs_speed =
+          std::max(motor.maximum_abs_speed, std::abs(motor.last_velocity));
+      motor.maximum_abs_feedback_torque = std::max(
+          motor.maximum_abs_feedback_torque, std::abs(feedback_torque));
+      motor.maximum_mos_temperature =
+          std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
+      motor.maximum_rotor_temperature =
+          std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
+      if (frame.data[6] >= motor.mos_temperature_limit ||
+          frame.data[7] >= motor.rotor_temperature_limit) {
+        throw std::runtime_error("protected-policy temperature failed for " + motor.name);
+      }
+      if (enforce_dynamic_guards &&
+          (motor.last_position < motor.hard_position_min ||
+           motor.last_position > motor.hard_position_max ||
+           std::abs(motor.last_velocity) > motor.deployment_velocity_max ||
+           std::abs(feedback_torque) > motor.commissioning_torque_cap)) {
+        throw std::runtime_error("protected-policy dynamic guard failed for " + motor.name);
+      }
+      ++motor.rx_count;
+      motor.seen = true;
+      if (expected_status == 0) {
+        motor.final_disabled = true;
+      } else if (expected_status < 0) {
         motor.final_disabled = status_code == 0;
       }
     }
@@ -1176,6 +1320,230 @@ int run_native_measured_pose_hold(
   return passed ? 0 : 2;
 }
 
+int run_native_protected_policy(
+    const Options& options, std::vector<Socket>& sockets, std::vector<Motor>& motors,
+    const std::map<std::string, std::size_t>& socket_index,
+    const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
+    const NativeKinematics& kinematics, const std::vector<JointSafety>& joint_safety,
+    IpcSocket& ipc, std::uint64_t motor_hash, bool memory_locked) {
+  std::string failure;
+  std::size_t deadline_misses = 0;
+  double maximum_lateness_ms = 0.0;
+  std::vector<std::size_t> active_tx(kJointCount, 0);
+  std::vector<std::size_t> active_rx(kJointCount, 0);
+  auto due = [](const Motor& motor, std::size_t slot) {
+    return motor.poll_rate_hz == 500
+        ? static_cast<int>(slot % 4) == motor.poll_phase
+        : static_cast<int>(slot % 40) == motor.poll_phase;
+  };
+  auto sleep_until = [](std::int64_t deadline_ns) {
+    const timespec deadline = from_ns(deadline_ns);
+    int status = 0;
+    do status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, nullptr);
+    while (status == EINTR);
+    if (status != 0) throw std::runtime_error("clock_nanosleep failed");
+  };
+  auto all_seen = [&]() {
+    return std::all_of(motors.begin(), motors.end(), [](const Motor& motor) {
+      return motor.seen;
+    });
+  };
+
+  try {
+    // Keep every drive disabled while obtaining complete state, live IMU policy
+    // output, and the first zero-gain measured-pose startup target.
+    constexpr std::size_t preparation_slots = 4000;
+    const std::int64_t preparation_start = monotonic_ns() + 50'000'000LL;
+    bool prepared = false;
+    for (std::size_t slot = 0; slot < preparation_slots; ++slot) {
+      if (g_shutdown_requested) {
+        throw std::runtime_error("protected-policy shutdown signal received during preparation");
+      }
+      sleep_until(preparation_start + static_cast<std::int64_t>(slot) * kTransportPeriodNs);
+      for (auto& motor : motors) {
+        if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
+      }
+      drain_policy_feedback(sockets, motors, feedback_map, 0, false);
+      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
+      if (slot % 40 == 39 && all_seen()) {
+        send_state_packet(ipc, motors, motor_hash, monotonic_ns());
+      }
+      if (!ipc.has_target || !all_seen()) continue;
+
+      std::array<double, kJointCount> measured_joint{};
+      for (std::size_t joint = 0; joint < kJointCount; ++joint) {
+        for (std::size_t motor = 0; motor < kJointCount; ++motor) {
+          measured_joint[joint] += kinematics.motor_to_joint[joint][motor] *
+              (motors[motor].last_position - kinematics.motor_offset[motor]);
+        }
+        if (std::abs(ipc.latest_target.position_rad[joint] - measured_joint[joint]) > 0.03 ||
+            std::abs(ipc.latest_target.velocity_rad_s[joint]) > 1.0e-9 ||
+            std::abs(ipc.latest_target.kp[joint]) > 1.0e-9 ||
+            std::abs(ipc.latest_target.kd[joint]) > 1.0e-9 ||
+            std::abs(ipc.latest_target.feedforward_torque_nm[joint]) > 1.0e-9) {
+          throw std::runtime_error(
+              "first protected-policy target is not measured-pose zero-gain startup");
+        }
+      }
+      prepared = true;
+      break;
+    }
+    if (!prepared) {
+      throw std::runtime_error("protected-policy startup target was not ready within 2 seconds");
+    }
+    for (auto& motor : motors) {
+      motor.captured_position = motor.last_position;
+      motor.tx_count = 0;
+      motor.rx_count = 0;
+      motor.seen = false;
+      motor.preview_initialized = false;
+      motor.maximum_abs_speed = 0.0;
+      motor.maximum_abs_commanded_torque = 0.0;
+      motor.maximum_abs_feedback_torque = 0.0;
+      motor.final_disabled = false;
+      motor.last_status_code = 0;
+    }
+    ipc.motor_preview_count = 0;
+
+    for (auto& motor : motors) {
+      send_special(sockets[socket_index.at(motor.interface)], motor, 0xFC);
+    }
+    for (auto& motor : motors) motor.tx_count = 0;
+
+    const std::size_t transport_slots =
+        static_cast<std::size_t>(std::llround(options.duration_s * kTransportRateHz));
+    const std::int64_t start_ns = monotonic_ns() + 20'000'000LL;
+    for (std::size_t slot = 0; slot < transport_slots; ++slot) {
+      if (g_shutdown_requested) {
+        throw std::runtime_error("protected-policy shutdown signal received");
+      }
+      const std::int64_t deadline_ns =
+          start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
+      sleep_until(deadline_ns);
+      const std::int64_t woke_ns = monotonic_ns();
+      if (slot % 4 == 0) {
+        const double lateness_ms =
+            std::max(0.0, static_cast<double>(woke_ns - deadline_ns) / 1.0e6);
+        maximum_lateness_ms = std::max(maximum_lateness_ms, lateness_ms);
+        deadline_misses += static_cast<std::size_t>(lateness_ms >= 2.0);
+      }
+
+      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, woke_ns);
+      if (!ipc.has_target || woke_ns - ipc.last_target_ns > kTargetTimeoutNs) {
+        throw std::runtime_error("protected-policy target watchdog expired");
+      }
+      if (slot % 4 == 0) {
+        preview_final_motor_commands(motors, ipc, kinematics);
+      }
+      for (auto& motor : motors) {
+        if (!due(motor, slot)) continue;
+        const auto payload = protected_policy_payload(motor);
+        send_payload(sockets[socket_index.at(motor.interface)], motor, payload);
+      }
+      // Permit only the short enable transition; require all endpoints enabled
+      // after 100 ms and throughout the remaining active interval.
+      drain_policy_feedback(
+          sockets, motors, feedback_map, slot < 200 ? -1 : 1, true);
+      if (slot == 200) {
+        for (const auto& motor : motors) {
+          if (motor.last_status_code != 1) {
+            throw std::runtime_error("protected-policy enable verification failed for " +
+                                     motor.name);
+          }
+        }
+      }
+      if (slot % 40 == 39 && all_seen()) {
+        send_state_packet(ipc, motors, motor_hash, monotonic_ns());
+      }
+    }
+    usleep(2000);
+    drain_policy_feedback(sockets, motors, feedback_map, 1, true);
+    for (std::size_t index = 0; index < motors.size(); ++index) {
+      active_tx[index] = motors[index].tx_count;
+      active_rx[index] = motors[index].rx_count;
+      const double coverage = active_tx[index] > 0
+          ? static_cast<double>(active_rx[index]) / active_tx[index] : 0.0;
+      if (coverage < 0.95) {
+        throw std::runtime_error("protected-policy coverage failed for " + motors[index].name);
+      }
+    }
+    if (deadline_misses != 0 || maximum_lateness_ms >= 2.0) {
+      throw std::runtime_error("protected-policy realtime deadline gate failed");
+    }
+  } catch (const std::exception& error) {
+    failure = error.what();
+  }
+
+  for (std::size_t index = 0; index < motors.size(); ++index) {
+    active_tx[index] = motors[index].tx_count;
+    active_rx[index] = motors[index].rx_count;
+  }
+
+  try {
+    for (int attempt = 0; attempt < 3; ++attempt) {
+      for (auto& motor : motors) {
+        send_special(sockets[socket_index.at(motor.interface)], motor, 0xFD);
+      }
+      usleep(10000);
+    }
+    for (auto& motor : motors) {
+      motor.seen = false;
+      motor.final_disabled = false;
+    }
+    const std::int64_t verify_start = monotonic_ns() + 10'000'000LL;
+    for (std::size_t slot = 0; slot < 400; ++slot) {
+      sleep_until(verify_start + static_cast<std::int64_t>(slot) * kTransportPeriodNs);
+      for (auto& motor : motors) {
+        if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
+      }
+      drain_policy_feedback(sockets, motors, feedback_map, -1, false);
+    }
+    usleep(2000);
+    drain_policy_feedback(sockets, motors, feedback_map, -1, false);
+    for (const auto& motor : motors) {
+      if (!motor.final_disabled) {
+        throw std::runtime_error("final disabled verification failed for " + motor.name);
+      }
+    }
+  } catch (const std::exception& error) {
+    if (!failure.empty()) failure += "; ";
+    failure += error.what();
+  }
+
+  std::ostringstream report;
+  report << std::fixed << std::setprecision(6)
+      << "{\n  \"mode\": \"native_suspended_protected_policy_actuation\",\n"
+      << "  \"duration_s\": " << options.duration_s << ",\n"
+      << "  \"memory_locked\": " << (memory_locked ? "true" : "false") << ",\n"
+      << "  \"deadline_misses\": " << deadline_misses << ",\n"
+      << "  \"maximum_lateness_ms\": " << maximum_lateness_ms << ",\n"
+      << "  \"policy_state_count\": " << ipc.state_sequence << ",\n"
+      << "  \"policy_target_count\": " << ipc.target_count << ",\n"
+      << "  \"automatic_mode_switch_attempts\": 0,\n"
+      << "  \"automatic_zero_reset_attempts\": 0,\n"
+      << "  \"motors\": {\n";
+  for (std::size_t index = 0; index < motors.size(); ++index) {
+    const auto& motor = motors[index];
+    report << "    \"" << motor.name << "\": {"
+        << "\"tx\": " << active_tx[index] << ", \"rx\": " << active_rx[index]
+        << ", \"commissioning_torque_cap_nm\": " << motor.commissioning_torque_cap
+        << ", \"max_command_torque_nm\": " << motor.maximum_abs_commanded_torque
+        << ", \"max_feedback_torque_nm\": " << motor.maximum_abs_feedback_torque
+        << ", \"max_speed_rad_s\": " << motor.maximum_abs_speed
+        << ", \"final_disabled\": " << (motor.final_disabled ? "true" : "false")
+        << "}" << (index + 1 == motors.size() ? "\n" : ",\n");
+  }
+  const bool passed = failure.empty();
+  report << "  },\n  \"errors\": [";
+  if (!failure.empty()) report << "\"" << failure << "\"";
+  report << "],\n  \"passed\": " << (passed ? "true" : "false") << "\n}\n";
+  std::cout << report.str();
+  std::ofstream output(options.output);
+  if (!output) throw std::runtime_error("cannot open protected-policy report output");
+  output << report.str();
+  return passed ? 0 : 2;
+}
+
 void apply_affinity(int cpu) {
   cpu_set_t set;
   CPU_ZERO(&set);
@@ -1377,6 +1745,16 @@ int main(int argc, char** argv) {
       const int result = run_native_measured_pose_hold(
           options, sockets, motors, socket_index, feedback_map, kinematics,
           memory_locked);
+      for (auto& can_socket : sockets) close(can_socket.fd);
+      close_ipc(ipc);
+      return result;
+    }
+    if (options.policy_actuation) {
+      std::signal(SIGINT, request_shutdown);
+      std::signal(SIGTERM, request_shutdown);
+      const int result = run_native_protected_policy(
+          options, sockets, motors, socket_index, feedback_map, kinematics,
+          joint_safety, ipc, motor_hash, memory_locked);
       for (auto& can_socket : sockets) close(can_socket.fd);
       close_ipc(ipc);
       return result;

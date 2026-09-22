@@ -28,9 +28,14 @@ def audit(
     *,
     gain_scale: float = 1.0,
     joint_limits: dict | None = None,
+    commissioning_torque_fraction: float | None = None,
 ) -> dict:
     if not 0.0 < gain_scale <= 1.0:
         raise ValueError("gain_scale must be in (0, 1]")
+    if commissioning_torque_fraction is not None and not (
+        0.0 < commissioning_torque_fraction <= 1.0
+    ):
+        raise ValueError("commissioning_torque_fraction must be in (0, 1]")
     data = np.load(trace_path, allow_pickle=False)
     joint_names = tuple(map(str, data["joint_names"]))
     motor_names = tuple(map(str, data["motor_names"]))
@@ -123,6 +128,8 @@ def audit(
             "maximum_embedded_kd": 0.0,
             "maximum_abs_feedforward_torque_nm": 0.0,
             "maximum_abs_estimated_output_torque_nm": 0.0,
+            "commissioning_torque_cap_nm": None,
+            "maximum_commissioning_torque_ratio": 0.0,
             "maximum_mechanical_peak_torque_ratio": 0.0,
             "maximum_mit_torque_ratio": 0.0,
             "violating_tick_count": 0,
@@ -136,6 +143,7 @@ def audit(
                 "embedded_kd": 0,
                 "feedforward_torque": 0,
                 "estimated_mit_torque": 0,
+                "estimated_commissioning_torque": 0,
                 "estimated_mechanical_peak_torque": 0,
             },
         }
@@ -235,6 +243,11 @@ def audit(
                 ),
             )
             protocol_torque = _minimum_symmetric_range(record["mit_ranges"]["torque_nm"])
+            commissioning_torque_cap = (
+                commissioning_torque_fraction * float(record["rated_torque_nm"])
+                if commissioning_torque_fraction is not None
+                else None
+            )
             peak_torque = float(record["peak_torque_nm"])
             soft_margin = min(command.position_rad - soft_low, soft_high - command.position_rad)
             hard_margin = min(command.position_rad - hard_low, hard_high - command.position_rad)
@@ -267,6 +280,12 @@ def audit(
             row["maximum_embedded_kd"] = max(row["maximum_embedded_kd"], command.kd)
             row["maximum_abs_feedforward_torque_nm"] = max(row["maximum_abs_feedforward_torque_nm"], abs(command.feedforward_torque_nm))
             row["maximum_abs_estimated_output_torque_nm"] = max(row["maximum_abs_estimated_output_torque_nm"], abs(estimated_torque))
+            row["commissioning_torque_cap_nm"] = commissioning_torque_cap
+            if commissioning_torque_cap is not None:
+                row["maximum_commissioning_torque_ratio"] = max(
+                    row["maximum_commissioning_torque_ratio"],
+                    abs(estimated_torque) / commissioning_torque_cap,
+                )
             row["maximum_mechanical_peak_torque_ratio"] = max(row["maximum_mechanical_peak_torque_ratio"], abs(estimated_torque) / peak_torque)
             row["maximum_mit_torque_ratio"] = max(row["maximum_mit_torque_ratio"], abs(estimated_torque) / protocol_torque)
             checks = {
@@ -278,6 +297,10 @@ def audit(
                 "embedded_kd": command.kd > kd_limit,
                 "feedforward_torque": abs(command.feedforward_torque_nm) > protocol_torque,
                 "estimated_mit_torque": abs(estimated_torque) > protocol_torque,
+                "estimated_commissioning_torque": (
+                    commissioning_torque_cap is not None
+                    and abs(estimated_torque) > commissioning_torque_cap
+                ),
                 "estimated_mechanical_peak_torque": abs(estimated_torque) > peak_torque,
             }
             for category, failed in checks.items():
@@ -308,6 +331,7 @@ def audit(
         "joint_target_clamp_count": joint_target_clamp_count,
         "maximum_joint_reconstruction_error_rad": maximum_joint_reconstruction_error,
         "damiao_embedded_kd_limit": kd_limit,
+        "commissioning_torque_fraction_of_rated": commissioning_torque_fraction,
         "ankle_joint_saturation_count": ankle_joint_saturation_count,
         "ankle_joint_maximum_raw_torque_nm": ankle_joint_maximum_raw_torque,
         "motors": accumulators,
@@ -330,6 +354,14 @@ def main() -> None:
     parser.add_argument("--output", required=True)
     parser.add_argument("--gain-scale", type=float, default=1.0)
     parser.add_argument(
+        "--commissioning-torque-fraction",
+        type=float,
+        help=(
+            "Fail if estimated motor torque exceeds this fraction of each "
+            "motor's rated torque"
+        ),
+    )
+    parser.add_argument(
         "--joint-limit-candidates",
         help="URDF-derived limit report used to project targets into joint soft limits",
     )
@@ -346,6 +378,7 @@ def main() -> None:
         Path(args.trace),
         gain_scale=args.gain_scale,
         joint_limits=joint_limits,
+        commissioning_torque_fraction=args.commissioning_torque_fraction,
     )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

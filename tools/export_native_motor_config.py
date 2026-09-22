@@ -26,6 +26,7 @@ FIELDS = (
     "hard_position_max_rad",
     "deployment_velocity_max_rad_s",
     "mechanical_peak_torque_nm",
+    "commissioning_torque_cap_nm",
     "mos_temperature_limit_c",
     "rotor_temperature_limit_c",
     "poll_rate_hz",
@@ -71,6 +72,10 @@ def main() -> None:
                 "hard_position_max_rad": float(motor["hard_limit_rad"][1]),
                 "deployment_velocity_max_rad_s": deployment_speed,
                 "mechanical_peak_torque_nm": float(motor["peak_torque_nm"]),
+                # First policy-admission tier: deliberately independent from
+                # protocol TMAX and the much larger mechanical peak rating.
+                "commissioning_torque_cap_nm": 0.1
+                * float(motor["rated_torque_nm"]),
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]
                 ),

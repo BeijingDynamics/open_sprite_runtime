@@ -210,9 +210,14 @@ required.
   misses, 0.060251 ms maximum lateness, 0.000383 rad maximum drift, and final
   disabled confirmation for all 31 motors. Evidence:
   `reports/native_full_body_measured_pose_hold_20260922_140134.json`.
-- [ ] Connect protected policy targets only after the 2.0 second measured-pose
-  hold passes. Preserve the measured-pose startup hold/ramp, 50 Hz policy,
-  500 Hz ankle controller, watchdogs, and independent power cut-off.
+- [x] Prepare and offline-qualify the native protected-policy target path after
+  the 2.0 second measured-pose hold passed. It preserves the measured-pose
+  startup hold/ramp, 50 Hz policy, 500 Hz ankle controller, watchdogs, and
+  independent power cut-off. Physical nonzero policy actuation remains a
+  separate, explicitly authorized gate.
+- [ ] Execute the first 2.0 second suspended protected-policy admission only
+  after operator review and exact authorization. This is not implied by shadow
+  qualification.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.
@@ -220,6 +225,48 @@ required.
   lifting frame.
 - Low Kp/Kd and strict current limits first.
 - Stand, weight shift, one step, 0.15 m/s walk, stop, and restart.
+
+## Protected-policy admission preparation
+
+The native runtime now has a separate protected-policy writer. It is not a
+general CAN command path: it requires the exact acknowledgement token, live
+policy IPC, matching joint-order hash, exported kinematics and joint safety,
+and `CAP_SYS_NICE` for the reviewed SCHED_FIFO loop. A native rebuild removes
+that file capability, so it must be restored explicitly with:
+
+```bash
+./install_sprite0825_native_realtime_capability_on_253.sh
+```
+
+The first physical tier is fixed at 2.0 seconds, policy gain scale `0.02`, a
+1.0 second measured-pose hold, and a 4.0 second smooth ramp. Each motor is
+limited to 10% of its hardware rated torque, independently of both protocol
+`TMAX` and mechanical peak torque. The runtime checks the torque again after
+MIT quantization, watches policy age, hard position, speed, feedback torque,
+temperature, CAN status, coverage, and real-time deadlines, and performs a
+three-pass whole-body disable plus disabled-feedback verification on every exit
+path. Signals request the same orderly fail-closed shutdown. The path contains
+no mode-switch or zero-position-reset operation.
+
+The exact first-tier parameters were exercised for 2.0 seconds in disabled,
+zero-gain shadow on 2026-09-22. All 31 motors had complete scheduled coverage,
+the native 2 kHz loop had zero deadline misses (maximum lateness 0.026370 ms),
+and CAN transmitted no nonzero gain or torque. Deterministic replay of all 100
+policy ticks had zero action error. The physical-command audit used the exact
+final startup fields and found no position, velocity, Kd, protocol torque,
+mechanical peak, or 10%-of-rated commissioning torque violations. The largest
+commissioning-cap ratio was head yaw at 0.13955; the largest estimated motor
+torque was 0.03315 Nm. Evidence:
+
+- `reports/native_policy_ipc_transport_20260922_142831.json`
+- `reports/native_policy_ipc_actor_20260922_142831.json`
+- `reports/native_policy_ipc_trace_20260922_142831.npz`
+- `reports/native_policy_ipc_replay_20260922_142831.json`
+- `reports/native_policy_ipc_command_margin_20260922_142831.json`
+
+The active launcher intentionally refuses to run without the exact token
+`ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION`. Its physical execution is still
+pending separate operator approval.
 
 ## First milestone
 
