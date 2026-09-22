@@ -3,6 +3,7 @@ set -euo pipefail
 
 ACK="${1:-}"
 TIER="${2:-first_admission}"
+COMMAND_VX=0.0
 
 case "$TIER" in
   first_admission)
@@ -32,6 +33,14 @@ case "$TIER" in
     GAIN_SCALE=0.015
     DM3507_GAIN_MULTIPLIER=0.1
     MAXIMUM_COMMAND_TORQUE_NM=0.5
+    ;;
+  suspended_walk_10nm_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
+    DURATION=8.0
+    GAIN_SCALE=0.018
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    COMMAND_VX=0.15
     ;;
   *)
     echo "Unknown protected-policy tier: $TIER" >&2
@@ -72,7 +81,7 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
 echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
 echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
-  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -146,7 +155,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
@@ -200,7 +209,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --contract "$CANDIDATE/deploy/contract.json" \
   --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
-  --vx 0 --vy 0 --yaw-rate 0 \
+  --vx "$COMMAND_VX" --vy 0 --yaw-rate 0 \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
   "${JOINT_GAIN_ARGS[@]}" \

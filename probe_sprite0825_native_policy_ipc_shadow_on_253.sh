@@ -8,6 +8,7 @@ GAIN_SCALE="${2:-}"
 STARTUP_HOLD_SECONDS="${3:-0}"
 STARTUP_RAMP_SECONDS="${4:-0}"
 DM3507_GAIN_MULTIPLIER="${5:-1.0}"
+COMMAND_VX="${6:-0.0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -79,6 +80,7 @@ echo "REPLAYABLE_TRACE $POLICY_TRACE"
 echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
 echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
+echo "COMMAND_VX $COMMAND_VX"
 
 "$ROOT/build/native/sprite_can_shadow" \
   --config "$ROOT/build/native/motors.tsv" \
@@ -125,7 +127,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --contract "$CANDIDATE/deploy/contract.json" \
   --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
-  --vx 0 --vy 0 --yaw-rate 0 \
+  --vx "$COMMAND_VX" --vy 0 --yaw-rate 0 \
   "${POLICY_SAFETY_ARGS[@]}" \
   --output "$POLICY_REPORT" \
   --trace-output "$POLICY_TRACE"
