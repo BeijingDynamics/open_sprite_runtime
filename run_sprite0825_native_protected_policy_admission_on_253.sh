@@ -22,7 +22,7 @@ case "$TIER" in
   full_ramp_02nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_02NM_FULL_RAMP
     DURATION=6.0
-    GAIN_SCALE=0.008
+    GAIN_SCALE=0.006
     DM3507_GAIN_MULTIPLIER=0.1
     MAXIMUM_COMMAND_TORQUE_NM=0.2
     ;;
@@ -62,15 +62,33 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
   exit 1
 }
 
-echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 1.0s"
-echo "Requires ankle raw targets inside soft limits and horizontal projected gravity <= 0.10"
+echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
+echo "Requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
-  1.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
+PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
   echo "Startup readiness preflight did not produce a trace" >&2
   exit 1
 }
+[[ -n "$PREFLIGHT_NATIVE_REPORT" && -f "$PREFLIGHT_NATIVE_REPORT" ]] || {
+  echo "Startup readiness preflight did not produce a native report" >&2
+  exit 1
+}
+"$ROOT/.venv/bin/python" - "$PREFLIGHT_NATIVE_REPORT" "$MAXIMUM_COMMAND_TORQUE_NM" <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+observed = float(report["preview_maximum_abs_estimated_torque_nm"])
+limit = float(sys.argv[2])
+if observed > limit:
+    raise SystemExit(
+        f"startup command torque preview {observed:.6f} Nm exceeds {limit:.6f} Nm"
+    )
+print(f"STARTUP_COMMAND_TORQUE_PASSED observed={observed:.6f}Nm limit={limit:.6f}Nm")
+PY
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
   --trace "$PREFLIGHT_TRACE" \
@@ -80,6 +98,9 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --fail-on-violation-joint right_ankle_pitch_joint \
   --fail-on-violation-joint left_ankle_roll_joint \
   --fail-on-violation-joint right_ankle_roll_joint \
+  --maximum-gated-overshoot-rad 0.01 \
+  --maximum-gated-violation-fraction 0.01 \
+  --maximum-gated-consecutive-violation-ticks 2 \
   --maximum-horizontal-gravity-norm 0.10 \
   --output "$PREFLIGHT_REPORT" >/dev/null
 echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"

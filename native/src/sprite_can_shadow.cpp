@@ -93,6 +93,7 @@ struct Motor {
   double deployment_velocity_max = 0.0;
   double mechanical_peak_torque = 0.0;
   double commissioning_torque_cap = 0.0;
+  double feedback_torque_cap = 0.0;
   double mos_temperature_limit = 0.0;
   double rotor_temperature_limit = 0.0;
   int poll_rate_hz = 0;
@@ -274,7 +275,8 @@ std::vector<Motor> load_motors(const std::string& path) {
       "torque_min_nm", "torque_max_nm", "soft_position_min_rad",
       "soft_position_max_rad", "hard_position_min_rad", "hard_position_max_rad",
       "deployment_velocity_max_rad_s", "mechanical_peak_torque_nm",
-      "commissioning_torque_cap_nm", "mos_temperature_limit_c",
+      "commissioning_torque_cap_nm", "feedback_torque_cap_nm",
+      "mos_temperature_limit_c",
       "rotor_temperature_limit_c", "poll_rate_hz"};
   if (split(line, '\t') != expected_header) {
     throw std::runtime_error("native motor config header mismatch");
@@ -307,9 +309,10 @@ std::vector<Motor> load_motors(const std::string& path) {
     motor.deployment_velocity_max = number(fields[14]);
     motor.mechanical_peak_torque = number(fields[15]);
     motor.commissioning_torque_cap = number(fields[16]);
-    motor.mos_temperature_limit = number(fields[17]);
-    motor.rotor_temperature_limit = number(fields[18]);
-    motor.poll_rate_hz = static_cast<int>(number(fields[19]));
+    motor.feedback_torque_cap = number(fields[17]);
+    motor.mos_temperature_limit = number(fields[18]);
+    motor.rotor_temperature_limit = number(fields[19]);
+    motor.poll_rate_hz = static_cast<int>(number(fields[20]));
     if (motor.can_id < 1 || motor.can_id > 8 || motor.master_id != motor.can_id + 0x10 ||
         motor.position_min >= motor.soft_position_min ||
         motor.soft_position_min >= motor.soft_position_max ||
@@ -321,6 +324,8 @@ std::vector<Motor> load_motors(const std::string& path) {
         motor.mechanical_peak_torque <= 0.0 ||
         motor.commissioning_torque_cap <= 0.0 ||
         motor.commissioning_torque_cap > motor.mechanical_peak_torque ||
+        motor.feedback_torque_cap <= 0.0 ||
+        motor.feedback_torque_cap > motor.mechanical_peak_torque ||
         motor.mos_temperature_limit <= 0.0 || motor.rotor_temperature_limit <= 0.0 ||
         (motor.poll_rate_hz != 50 && motor.poll_rate_hz != 500)) {
       throw std::runtime_error("native motor config endpoint/rate invariant failed");
@@ -1075,7 +1080,7 @@ void drain_policy_feedback(
           (motor.last_position < motor.hard_position_min ||
            motor.last_position > motor.hard_position_max ||
            std::abs(motor.last_velocity) > motor.deployment_velocity_max ||
-           std::abs(feedback_torque) > motor.commissioning_torque_cap)) {
+           std::abs(feedback_torque) > motor.feedback_torque_cap)) {
         throw std::runtime_error("protected-policy dynamic guard failed for " + motor.name);
       }
       ++motor.rx_count;
@@ -1545,6 +1550,7 @@ int run_native_protected_policy(
     report << "    \"" << motor.name << "\": {"
         << "\"tx\": " << active_tx[index] << ", \"rx\": " << active_rx[index]
         << ", \"commissioning_torque_cap_nm\": " << motor.commissioning_torque_cap
+        << ", \"feedback_torque_cap_nm\": " << motor.feedback_torque_cap
         << ", \"max_command_torque_nm\": " << motor.maximum_abs_commanded_torque
         << ", \"max_feedback_torque_nm\": " << motor.maximum_abs_feedback_torque
         << ", \"max_speed_rad_s\": " << motor.maximum_abs_speed

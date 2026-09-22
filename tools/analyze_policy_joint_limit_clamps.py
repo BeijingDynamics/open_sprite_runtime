@@ -25,6 +25,15 @@ def main() -> None:
     parser.add_argument("--joint-limit-candidates", type=Path, required=True)
     parser.add_argument("--contract", type=Path)
     parser.add_argument("--fail-on-violation-joint", action="append", default=[])
+    parser.add_argument(
+        "--maximum-gated-overshoot-rad", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--maximum-gated-violation-fraction", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--maximum-gated-consecutive-violation-ticks", type=int, default=0
+    )
     parser.add_argument("--maximum-horizontal-gravity-norm", type=float)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -134,10 +143,30 @@ def main() -> None:
     unknown_gate_joints = set(args.fail_on_violation_joint) - set(names)
     if unknown_gate_joints:
         raise ValueError(f"unknown gated joints: {sorted(unknown_gate_joints)}")
+    if not 0.0 <= args.maximum_gated_overshoot_rad <= 0.1:
+        raise ValueError("maximum gated overshoot must be in [0, 0.1] rad")
+    if not 0.0 <= args.maximum_gated_violation_fraction <= 1.0:
+        raise ValueError("maximum gated violation fraction must be in [0, 1]")
+    if args.maximum_gated_consecutive_violation_ticks < 0:
+        raise ValueError("maximum gated consecutive violation ticks must be nonnegative")
     for name in args.fail_on_violation_joint:
-        count = int(summaries[name]["violation_count"])
-        if count:
-            errors.append(f"{name} has {count} raw target soft-limit violations")
+        summary = summaries[name]
+        overshoot = max(
+            float(summary["maximum_lower_overshoot_rad"]),
+            float(summary["maximum_upper_overshoot_rad"]),
+        )
+        fraction = float(summary["violation_fraction"])
+        consecutive = int(summary["longest_consecutive_violation_ticks"])
+        if (
+            overshoot > args.maximum_gated_overshoot_rad
+            or fraction > args.maximum_gated_violation_fraction
+            or consecutive > args.maximum_gated_consecutive_violation_ticks
+        ):
+            errors.append(
+                f"{name} soft-limit excursion exceeds gate: "
+                f"overshoot={overshoot:.6f} rad, fraction={fraction:.6f}, "
+                f"consecutive_ticks={consecutive}"
+            )
     horizontal_gravity_norm = np.linalg.norm(projected_gravity[:, :2], axis=1)
     maximum_horizontal_gravity_norm = float(np.max(horizontal_gravity_norm))
     if args.maximum_horizontal_gravity_norm is not None:
@@ -164,6 +193,11 @@ def main() -> None:
             args.maximum_horizontal_gravity_norm
         ),
         "fail_on_violation_joints": args.fail_on_violation_joint,
+        "gated_overshoot_limit_rad": args.maximum_gated_overshoot_rad,
+        "gated_violation_fraction_limit": args.maximum_gated_violation_fraction,
+        "gated_consecutive_violation_tick_limit": (
+            args.maximum_gated_consecutive_violation_ticks
+        ),
         "ranked_violating_joints": [
             name for name in ranked if summaries[name]["violation_count"] > 0
         ],

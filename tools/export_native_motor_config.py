@@ -27,6 +27,7 @@ FIELDS = (
     "deployment_velocity_max_rad_s",
     "mechanical_peak_torque_nm",
     "commissioning_torque_cap_nm",
+    "feedback_torque_cap_nm",
     "mos_temperature_limit_c",
     "rotor_temperature_limit_c",
     "poll_rate_hz",
@@ -93,6 +94,10 @@ def main() -> None:
                     if args.maximum_commissioning_torque_nm is not None
                     else float("inf"),
                 ),
+                # Feedback includes suspended static load and sensor offset. Keep
+                # its independent, previously qualified anomaly threshold.
+                "feedback_torque_cap_nm": 0.1
+                * float(motor["rated_torque_nm"]),
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]
                 ),
