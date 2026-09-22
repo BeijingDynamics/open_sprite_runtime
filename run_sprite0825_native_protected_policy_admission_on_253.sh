@@ -6,6 +6,8 @@ TIER="${2:-first_admission}"
 COMMAND_VX=0.0
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
+HIP_PITCH_ROLL_COMMAND_CAP_NM=""
+HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 EXTENDED_NATIVE_ACK_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
 SUPPORT_INSTRUCTION="Robot must remain suspended"
@@ -110,6 +112,27 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  stand_hip_pr_45nm_partial_contact_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_HIP_PR_45NM_PARTIAL_CONTACT
+    DURATION=8.0
+    GAIN_SCALE=0.06
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
+    SUPPORT_INSTRUCTION="Lifting frame must retain the previously qualified support height; both soles remain on a flat floor; no disturbance"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
     DURATION=8.0
@@ -171,13 +194,15 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
 "$ROOT/.venv/bin/python" - \
   "$PREFLIGHT_NATIVE_REPORT" \
   "$MAXIMUM_COMMAND_TORQUE_NM" \
-  "$LEG_COMMAND_CAP_NM" <<'PY'
+  "$LEG_COMMAND_CAP_NM" \
+  "$HIP_PITCH_ROLL_COMMAND_CAP_NM" <<'PY'
 import json
 import sys
 
 report = json.load(open(sys.argv[1], encoding="utf-8"))
 default_limit = float(sys.argv[2])
 leg_limit = float(sys.argv[3]) if sys.argv[3] else None
+hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
 leg_motors = {
     f"{side}_{joint}_motor"
     for side in ("left", "right")
@@ -193,7 +218,15 @@ for name, raw_observed in report[
     "preview_maximum_abs_estimated_torque_nm_by_motor"
 ].items():
     observed = float(raw_observed)
-    limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
+    if hip_pitch_roll_limit is not None and name in {
+        "left_hip_pitch_motor",
+        "left_hip_roll_motor",
+        "right_hip_pitch_motor",
+        "right_hip_roll_motor",
+    }:
+        limit = hip_pitch_roll_limit
+    else:
+        limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
     if observed > limit:
         violations.append(f"{name}={observed:.6f}>{limit:.6f}Nm")
 if violations:
@@ -204,7 +237,8 @@ if violations:
 print(
     "STARTUP_COMMAND_TORQUE_PASSED "
     f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
-    f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit}"
+    f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
+    f"hip_pitch_roll_limit={hip_pitch_roll_limit}"
 )
 PY
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
@@ -240,8 +274,18 @@ if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
     left_ankle_motor_a left_ankle_motor_b \
     right_hip_pitch_motor right_hip_roll_motor right_hip_yaw_motor right_knee_motor \
     right_ankle_motor_a right_ankle_motor_b; do
-    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$LEG_COMMAND_CAP_NM")
-    MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$LEG_FEEDBACK_CAP_NM")
+    command_cap="$LEG_COMMAND_CAP_NM"
+    feedback_cap="$LEG_FEEDBACK_CAP_NM"
+    case "$motor" in
+      left_hip_pitch_motor|left_hip_roll_motor|right_hip_pitch_motor|right_hip_roll_motor)
+        if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
+          command_cap="$HIP_PITCH_ROLL_COMMAND_CAP_NM"
+          feedback_cap="$HIP_PITCH_ROLL_FEEDBACK_CAP_NM"
+        fi
+        ;;
+    esac
+    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$command_cap")
+    MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$feedback_cap")
   done
 fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
@@ -271,7 +315,11 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
-  echo "Per-motor command cap: legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+  if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
+    echo "Per-motor command cap: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+  else
+    echo "Per-motor command cap: legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+  fi
 else
   echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
 fi

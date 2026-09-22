@@ -421,6 +421,14 @@ reviewed. Evidence:
 `reports/native_protected_policy_admission_20260922_183124.json` and
 `reports/native_protected_policy_trace_20260922_183124.npz`.
 
+The next static contact tier separates proximal support authority from distal
+safety. Its policy gain scale is 0.06; only the left/right hip pitch and roll
+motors receive 4.5 Nm command and 5.0 Nm feedback caps. Hip yaw, knees, and
+ankles remain at the qualified 2.0 Nm command and 2.2 Nm feedback caps, and all
+non-leg limits remain unchanged. The harness stays at the previously qualified
+height and no disturbance is allowed. A zero-gain shadow preview must pass
+before this tier may be actively authorized.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
