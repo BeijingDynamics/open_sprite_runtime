@@ -150,6 +150,7 @@ struct Options {
   double duration_s = 10.0;
   int cpu = 5;
   std::string acknowledgement;
+  std::string extended_policy_actuation_acknowledgement;
   bool all_disabled = false;
   std::string ipc_socket;
   std::string joint_safety_config;
@@ -484,6 +485,9 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--duration") result.duration_s = number(value());
     else if (argument == "--cpu") result.cpu = static_cast<int>(number(value()));
     else if (argument == "--acknowledge-hardware-tx") result.acknowledgement = value();
+    else if (argument == "--extended-policy-actuation-acknowledgement") {
+      result.extended_policy_actuation_acknowledgement = value();
+    }
     else if (argument == "--all-motors-disabled-confirmed") result.all_disabled = true;
     else if (argument == "--ipc-socket") result.ipc_socket = value();
     else if (argument == "--joint-safety-config") result.joint_safety_config = value();
@@ -536,8 +540,14 @@ Options parse_options(int argc, char** argv) {
       throw std::runtime_error(
           "policy actuation requires IPC, kinematics, joint safety, and joint hash");
     }
-    if (result.duration_s > 10.0) {
-      throw std::runtime_error("first protected policy actuation must not exceed 10 seconds");
+    if (result.duration_s > 10.0 &&
+        result.extended_policy_actuation_acknowledgement !=
+            "ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST") {
+      throw std::runtime_error(
+          "protected policy actuation over 10 seconds requires the exact extended-test acknowledgement");
+    }
+    if (result.duration_s > 20.0) {
+      throw std::runtime_error("extended protected policy actuation must not exceed 20 seconds");
     }
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {

@@ -6,6 +6,7 @@ TIER="${2:-first_admission}"
 COMMAND_VX=0.0
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
+EXTENDED_NATIVE_ACK_ARGS=()
 
 case "$TIER" in
   first_admission)
@@ -60,6 +61,10 @@ case "$TIER" in
     MAXIMUM_COMMAND_TORQUE_NM=1.0
     LEG_COMMAND_CAP_NM=2.0
     LEG_FEEDBACK_CAP_NM=2.2
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
     ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
@@ -244,6 +249,7 @@ echo "POLICY_REPORT $POLICY_REPORT"
   --kinematics-config "$ROOT/build/native/kinematics.tsv" \
   --joint-safety-config "$ROOT/build/native/joint_safety.tsv" \
   --policy-actuation \
+  "${EXTENDED_NATIVE_ACK_ARGS[@]}" \
   --acknowledge-hardware-tx ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION \
   --all-motors-disabled-confirmed >"$NATIVE_LOG" 2>&1 &
 NATIVE_PID=$!
