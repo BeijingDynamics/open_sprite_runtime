@@ -19,7 +19,10 @@ from .motor_mapping import motor_map_from_hardware_config
 from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
 from .physical_startup import PhysicalStartupRamp
 from .policy_shadow import LivePolicyShadow
-from .target_projection import ProtectedTargetProjector
+from .target_projection import (
+    ProtectedTargetProjector,
+    parse_joint_gain_multiplier_overrides,
+)
 from .yahboom_imu import YahboomQuaternion, YahboomRawImu, YahboomStreamDecoder
 
 
@@ -53,12 +56,16 @@ def run(args: argparse.Namespace) -> dict:
     shadow = LivePolicyShadow(contract, hardware, mapping, (args.vx, args.vy, args.yaw_rate))
     projector = None
     if args.joint_limit_candidates:
+        joint_names = tuple(contract.data["joint_names"])
         projector = ProtectedTargetProjector.from_limit_report(
-            tuple(contract.data["joint_names"]),
+            joint_names,
             args.joint_limit_candidates,
             gain_scale=args.gain_scale,
             maximum_embedded_kd=float(
                 hardware["controller"]["damiao_embedded_kd_max"]
+            ),
+            joint_gain_multipliers=parse_joint_gain_multiplier_overrides(
+                joint_names, args.joint_gain_multiplier
             ),
         )
     elif args.gain_scale != 1.0:
@@ -317,6 +324,12 @@ def main() -> None:
     parser.add_argument("--trace-output")
     parser.add_argument("--joint-limit-candidates")
     parser.add_argument("--gain-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--joint-gain-multiplier",
+        action="append",
+        default=[],
+        metavar="JOINT=FACTOR",
+    )
     parser.add_argument("--physical-startup-hold-seconds", type=float, default=0.0)
     parser.add_argument("--physical-startup-ramp-seconds", type=float, default=0.0)
     args = parser.parse_args()

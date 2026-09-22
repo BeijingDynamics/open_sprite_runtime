@@ -305,3 +305,37 @@ The software now reports measured-pose soft-limit violations by joint and value
 instead of silently clamping the startup pose. The safety limits were not
 widened. Before another authorized attempt, both disabled ankles must be moved
 inside the reviewed soft range and a fresh zero-gain shadow must pass.
+
+The owner repositioned both ankles and authorized a second 2.0 second attempt.
+It passed with zero deadline misses, 0.026848 ms maximum lateness, and final
+disabled confirmation for all 31 motors. The maximum feedback torque was
+1.025641 Nm on waist roll, below its 3.0 Nm cap. Evidence:
+`reports/native_protected_policy_admission_20260922_145834.json`.
+
+## Complete-ramp suspended policy tier
+
+A separate 6.0 second tier was qualified in disabled shadow before actuation.
+It uses global `gain_scale=0.015`, a `0.1` multiplier on the seven DM-J3507
+head/wrist joints, a 1.0 second measured-pose hold, and a 4.0 second ramp. Two
+separately authorized physical runs reached `alpha=1.0`, had zero deadline
+misses, stayed within every 10%-of-rated-torque commissioning cap, attempted no
+mode switch or zero reset, and verified all 31 endpoints disabled. Evidence:
+
+- `reports/native_protected_policy_admission_20260922_145947.json`
+- `reports/native_protected_policy_admission_20260922_150121.json`
+
+These passes qualify protected suspended transport through a complete ramp;
+they do not qualify the observed startup pose or ground contact. Both traces
+showed repeated ankle soft-limit projection. Exact actor replay and observation
+counterfactuals established that the behavior existed before actuation and was
+caused mainly by the live joint pose plus a roughly 15-degree pelvis pitch tilt.
+The frozen G74 training configuration starts with zero root roll/pitch and joint
+positions scaled only `0.8–1.2` around their defaults.
+
+The active launcher therefore performs a new 1.0 second disabled zero-gain
+readiness shadow before starting its requested tier. The gate requires all four
+ankle raw targets to remain inside reviewed soft limits and horizontal projected
+gravity norm to remain at or below `0.10`. A regression using the 15:01 trace
+failed for exactly the expected reasons while all motors remained disabled. The
+next physical task is to align the suspended robot with the G74 reset pose and
+obtain a clean readiness report; loaded standing is still blocked.

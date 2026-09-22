@@ -7,6 +7,7 @@ DURATION="${1:-10}"
 GAIN_SCALE="${2:-}"
 STARTUP_HOLD_SECONDS="${3:-0}"
 STARTUP_RAMP_SECONDS="${4:-0}"
+DM3507_GAIN_MULTIPLIER="${5:-1.0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -33,6 +34,15 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
 
 NATIVE_SAFETY_ARGS=()
 POLICY_SAFETY_ARGS=()
+JOINT_GAIN_ARGS=()
+if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    head_pitch_joint head_roll_joint head_yaw_joint \
+    left_wrist_pitch_joint left_wrist_roll_joint \
+    right_wrist_pitch_joint right_wrist_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
+  done
+fi
 if [[ -n "$GAIN_SCALE" ]]; then
   [[ -f "$JOINT_LIMITS" ]] || {
     echo "Joint limit report not found: $JOINT_LIMITS" >&2
@@ -44,9 +54,14 @@ if [[ -n "$GAIN_SCALE" ]]; then
     --joint-limit-candidates "$JOINT_LIMITS" \
     --gain-scale "$GAIN_SCALE" \
     --maximum-embedded-kd 3.0 \
+    "${JOINT_GAIN_ARGS[@]}" \
     --output "$ROOT/build/native/joint_safety.tsv"
   NATIVE_SAFETY_ARGS=(--joint-safety-config "$ROOT/build/native/joint_safety.tsv")
-  POLICY_SAFETY_ARGS=(--joint-limit-candidates "$JOINT_LIMITS" --gain-scale "$GAIN_SCALE")
+  POLICY_SAFETY_ARGS=(
+    --joint-limit-candidates "$JOINT_LIMITS"
+    --gain-scale "$GAIN_SCALE"
+    "${JOINT_GAIN_ARGS[@]}"
+  )
   if [[ "$STARTUP_HOLD_SECONDS" != "0" || "$STARTUP_RAMP_SECONDS" != "0" ]]; then
     POLICY_SAFETY_ARGS+=(
       --physical-startup-hold-seconds "$STARTUP_HOLD_SECONDS"
@@ -63,6 +78,7 @@ echo "DURATION ${DURATION}s; NATIVE_REPORT $NATIVE_REPORT; POLICY_REPORT $POLICY
 echo "REPLAYABLE_TRACE $POLICY_TRACE"
 echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
 echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
 
 "$ROOT/build/native/sprite_can_shadow" \
   --config "$ROOT/build/native/motors.tsv" \

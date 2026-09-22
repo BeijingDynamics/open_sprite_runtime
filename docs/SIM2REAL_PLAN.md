@@ -215,9 +215,16 @@ required.
   startup hold/ramp, 50 Hz policy, 500 Hz ankle controller, watchdogs, and
   independent power cut-off. Physical nonzero policy actuation remains a
   separate, explicitly authorized gate.
-- [ ] Execute the first 2.0 second suspended protected-policy admission only
-  after operator review and exact authorization. This is not implied by shadow
-  qualification.
+- [x] Execute the first 2.0 second suspended protected-policy admission after
+  operator review and exact authorization. After correcting the ankle startup
+  pose, two authorized runs passed with zero deadline misses and all 31 motors
+  verified disabled at exit.
+- [x] Execute the separately authorized 6.0 second complete-ramp suspended
+  policy tier twice. Both runs reached `alpha=1.0`, stayed inside the fixed
+  10%-of-rated-torque commissioning caps, and verified every endpoint disabled.
+- [ ] Requalify the startup pose with the new zero-gain readiness preflight.
+  The robot must be brought upright and near the G74 training reset pose before
+  any further active policy test. Ground contact remains unauthorized.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.
@@ -272,6 +279,41 @@ both suspended ankle-pitch measurements were outside the reviewed soft range.
 All 31 motors were verified disabled, with zero mode-switch and zero-reset
 attempts. The limits were not widened; both ankles must first be moved inside
 the reviewed range and requalified in zero-gain shadow.
+
+The owner corrected that pose and authorized a rerun. The 2.0 second admission
+passed at 14:58:34 with zero deadline misses, 0.026848 ms maximum lateness, and
+all 31 endpoints disabled at exit. The largest feedback torque was 1.025641 Nm
+on waist roll, below its 3.0 Nm commissioning cap. Evidence:
+`reports/native_protected_policy_admission_20260922_145834.json`.
+
+The next fixed tier used 6.0 seconds, `gain_scale=0.015`, the same 1.0 second
+hold and 4.0 second ramp, and a separate `0.1` gain multiplier for the seven
+DM-J3507 head/wrist joints. It was first qualified in zero-gain shadow with
+deterministic replay and exact command-margin audit, then executed twice with
+separate owner authorization. Both active runs completed the full ramp with
+zero deadline misses and final-disabled confirmation for all motors. Evidence:
+
+- `reports/native_protected_policy_admission_20260922_145947.json`
+- `reports/native_protected_policy_admission_20260922_150121.json`
+
+Post-run trace analysis found that the safety layer was repeatedly clamping
+left/right ankle pitch and right ankle roll. This was not a reason to widen the
+limits. Counterfactual ONNX replay reproduced the first actor tick exactly and
+showed that the abnormal actions were already present during the measured-pose
+hold. They were driven primarily by the live joint pose and projected gravity,
+not by velocity, action history, angular velocity, or actuation feedback. The
+live projected gravity `[0.2558, 0.0301, -0.9663]` represents roughly 15 degrees
+of pitch tilt. The frozen G74 source snapshot resets roll/pitch to zero and only
+scales joint positions by `0.8–1.2` around the default pose, so the suspended
+startup was outside the trained reset distribution.
+
+The active launcher now runs a 1.0 second disabled zero-gain readiness shadow
+before any nonzero policy tier. It fails closed if any ankle raw target leaves
+its reviewed soft range or if horizontal projected gravity exceeds `0.10`.
+Offline regression against the 15:01 trace correctly rejected 157 left ankle
+pitch, 85 right ankle pitch, and 149 right ankle roll violations plus a `0.2621`
+horizontal-gravity norm. No further active or ground-contact test is permitted
+until a fresh live preflight passes.
 
 ## First milestone
 

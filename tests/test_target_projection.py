@@ -3,7 +3,10 @@ import unittest
 import numpy as np
 
 from open_sprite_runtime.multirate_control import JointImpedanceTarget
-from open_sprite_runtime.target_projection import ProtectedTargetProjector
+from open_sprite_runtime.target_projection import (
+    ProtectedTargetProjector,
+    parse_joint_gain_multiplier_overrides,
+)
 
 
 NAMES = tuple(f"joint_{index}" for index in range(31))
@@ -85,6 +88,31 @@ class ProtectedTargetProjectorTests(unittest.TestCase):
         np.testing.assert_allclose(
             projector.require_position_within_limits(np.zeros(31)), 0.0
         )
+
+    def test_applies_explicit_per_joint_gain_multipliers(self) -> None:
+        multipliers = parse_joint_gain_multiplier_overrides(
+            NAMES, ["joint_3=0.1", "joint_8=0.25"]
+        )
+        projector = ProtectedTargetProjector.from_limit_report(
+            NAMES,
+            limit_report(),
+            gain_scale=0.2,
+            joint_gain_multipliers=multipliers,
+        )
+
+        result = projector.project(target(np.zeros(31)))
+
+        self.assertAlmostEqual(result.kp[0], 20.0)
+        self.assertAlmostEqual(result.kp[3], 2.0)
+        self.assertAlmostEqual(result.kp[8], 5.0)
+        self.assertEqual(
+            projector.report()["joint_gain_multiplier_overrides"],
+            {"joint_3": 0.1, "joint_8": 0.25},
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_joint_gain_multiplier_overrides(
+                NAMES, ["joint_3=0.1", "joint_3=0.2"]
+            )
 
 
 if __name__ == "__main__":

@@ -13,6 +13,27 @@ import numpy as np
 from .multirate_control import JointImpedanceTarget
 
 
+def parse_joint_gain_multiplier_overrides(
+    joint_names: tuple[str, ...], specifications: list[str] | tuple[str, ...]
+) -> np.ndarray:
+    """Parse unique ``joint=value`` commissioning gain multipliers."""
+    result = np.ones(len(joint_names), dtype=np.float64)
+    indices = {name: index for index, name in enumerate(joint_names)}
+    seen: set[str] = set()
+    for specification in specifications:
+        name, separator, raw_value = specification.partition("=")
+        if not separator or name not in indices:
+            raise ValueError(f"invalid joint gain multiplier: {specification}")
+        if name in seen:
+            raise ValueError(f"duplicate joint gain multiplier: {name}")
+        value = float(raw_value)
+        if not math.isfinite(value) or not 0.0 < value <= 1.0:
+            raise ValueError(f"joint gain multiplier for {name} must be in (0, 1]")
+        result[indices[name]] = value
+        seen.add(name)
+    return result
+
+
 @dataclass
 class ProtectedTargetProjector:
     """Project policy targets into reviewed joint limits and a startup gain tier."""
@@ -22,6 +43,7 @@ class ProtectedTargetProjector:
     upper_rad: np.ndarray
     gain_scale: float
     maximum_embedded_kd: float = 3.0
+    joint_gain_multipliers: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if len(self.joint_names) != 31 or len(set(self.joint_names)) != 31:
@@ -40,6 +62,19 @@ class ProtectedTargetProjector:
             raise ValueError("gain_scale must be finite and in (0, 1]")
         if not math.isfinite(self.maximum_embedded_kd) or self.maximum_embedded_kd <= 0.0:
             raise ValueError("maximum_embedded_kd must be finite and positive")
+        if self.joint_gain_multipliers is None:
+            self.joint_gain_multipliers = np.ones(31, dtype=np.float64)
+        else:
+            self.joint_gain_multipliers = np.asarray(
+                self.joint_gain_multipliers, dtype=np.float64
+            )
+        if (
+            self.joint_gain_multipliers.shape != (31,)
+            or not np.isfinite(self.joint_gain_multipliers).all()
+            or np.any(self.joint_gain_multipliers <= 0.0)
+            or np.any(self.joint_gain_multipliers > 1.0)
+        ):
+            raise ValueError("joint_gain_multipliers must be a finite (0, 1] 31-vector")
         self.clamp_count_by_joint = {name: 0 for name in self.joint_names}
         self.maximum_raw_position_overshoot_rad = 0.0
 
@@ -51,6 +86,7 @@ class ProtectedTargetProjector:
         *,
         gain_scale: float,
         maximum_embedded_kd: float = 3.0,
+        joint_gain_multipliers: np.ndarray | None = None,
     ) -> "ProtectedTargetProjector":
         if isinstance(report, (str, Path)):
             data = json.loads(Path(report).read_text(encoding="utf-8"))
@@ -73,6 +109,7 @@ class ProtectedTargetProjector:
             np.asarray(upper),
             gain_scale,
             maximum_embedded_kd,
+            joint_gain_multipliers,
         )
 
     def project(self, target: JointImpedanceTarget) -> JointImpedanceTarget:
@@ -96,9 +133,10 @@ class ProtectedTargetProjector:
         for index in np.flatnonzero(bounded != position):
             self.clamp_count_by_joint[self.joint_names[int(index)]] += 1
 
-        projected_kp = self.gain_scale * kp
-        projected_kd = self.gain_scale * kd
-        projected_feedforward = self.gain_scale * feedforward
+        scale = self.gain_scale * self.joint_gain_multipliers
+        projected_kp = scale * kp
+        projected_kd = scale * kd
+        projected_feedforward = scale * feedforward
         if np.any(projected_kd > self.maximum_embedded_kd):
             raise ValueError("projected Kd exceeds the qualified Damiao limit")
         return JointImpedanceTarget(
@@ -140,6 +178,11 @@ class ProtectedTargetProjector:
             "enabled": True,
             "gain_scale": self.gain_scale,
             "maximum_embedded_kd": self.maximum_embedded_kd,
+            "joint_gain_multiplier_overrides": {
+                name: float(self.joint_gain_multipliers[index])
+                for index, name in enumerate(self.joint_names)
+                if self.joint_gain_multipliers[index] != 1.0
+            },
             "maximum_raw_position_overshoot_rad": self.maximum_raw_position_overshoot_rad,
             "clamp_count_by_joint": self.clamp_count_by_joint,
         }

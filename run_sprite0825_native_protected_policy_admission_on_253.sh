@@ -2,15 +2,33 @@
 set -euo pipefail
 
 ACK="${1:-}"
-[[ "$ACK" == "ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION" ]] || {
-  echo "Exact acknowledgement required: ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION" >&2
+TIER="${2:-first_admission}"
+
+case "$TIER" in
+  first_admission)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION
+    DURATION=2.0
+    GAIN_SCALE=0.02
+    DM3507_GAIN_MULTIPLIER=1.0
+    ;;
+  full_ramp_dm3507_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_RAMP
+    DURATION=6.0
+    GAIN_SCALE=0.015
+    DM3507_GAIN_MULTIPLIER=0.1
+    ;;
+  *)
+    echo "Unknown protected-policy tier: $TIER" >&2
+    exit 2
+    ;;
+esac
+[[ "$ACK" == "$EXPECTED_ACK" ]] || {
+  echo "Exact acknowledgement required: $EXPECTED_ACK" >&2
   exit 2
 }
 
 ROOT=/home/tony/open_sprite_runtime
 CANDIDATE=/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate
-DURATION=2.0
-GAIN_SCALE=0.02
 STARTUP_HOLD_SECONDS=1.0
 STARTUP_RAMP_SECONDS=4.0
 STAMP="$(date +%Y%m%d_%H%M%S)"
@@ -21,6 +39,8 @@ POLICY_TRACE="$ROOT/reports/native_protected_policy_trace_${STAMP}.npz"
 NATIVE_LOG="$ROOT/reports/native_protected_policy_admission_${STAMP}.log"
 JOINT_LIMITS="$ROOT/artifacts/g60_model3450/reports/sprite0825_urdf_limit_candidates.json"
 [[ -f "$JOINT_LIMITS" ]] || JOINT_LIMITS="$ROOT/reports/sprite0825_urdf_limit_candidates.json"
+PREFLIGHT_LOG="$ROOT/reports/native_protected_policy_preflight_${STAMP}.log"
+PREFLIGHT_REPORT="$ROOT/reports/native_protected_policy_preflight_${STAMP}.json"
 
 mkdir -p "$ROOT/build/native" "$ROOT/reports"
 getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
@@ -32,6 +52,38 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
   echo "Joint limit report not found: $JOINT_LIMITS" >&2
   exit 1
 }
+
+echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 1.0s"
+echo "Requires ankle raw targets inside soft limits and horizontal projected gravity <= 0.10"
+"$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
+  1.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
+[[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
+  echo "Startup readiness preflight did not produce a trace" >&2
+  exit 1
+}
+PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
+  "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
+  --trace "$PREFLIGHT_TRACE" \
+  --joint-limit-candidates "$JOINT_LIMITS" \
+  --contract "$CANDIDATE/deploy/contract.json" \
+  --fail-on-violation-joint left_ankle_pitch_joint \
+  --fail-on-violation-joint right_ankle_pitch_joint \
+  --fail-on-violation-joint left_ankle_roll_joint \
+  --fail-on-violation-joint right_ankle_roll_joint \
+  --maximum-horizontal-gravity-norm 0.10 \
+  --output "$PREFLIGHT_REPORT" >/dev/null
+echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
+
+JOINT_GAIN_ARGS=()
+if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    head_pitch_joint head_roll_joint head_yaw_joint \
+    left_wrist_pitch_joint left_wrist_roll_joint \
+    right_wrist_pitch_joint right_wrist_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
+  done
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
@@ -47,14 +99,15 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
   --maximum-embedded-kd 3.0 \
+  "${JOINT_GAIN_ARGS[@]}" \
   --output "$ROOT/build/native/joint_safety.tsv"
 
 JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   'import json,sys; from open_sprite_runtime.native_ipc import ordered_name_hash; d=json.load(open(sys.argv[1])); print(hex(ordered_name_hash(d["joint_names"])))' \
   "$CANDIDATE/deploy/contract.json")"
 
-echo "ACTIVE HARDWARE CONTROL: first suspended protected-policy admission"
-echo "Fixed tier: duration=${DURATION}s gain_scale=${GAIN_SCALE} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "Per-motor command cap: 10% of rated torque, checked after MIT quantization"
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
@@ -111,6 +164,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --vx 0 --vy 0 --yaw-rate 0 \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
+  "${JOINT_GAIN_ARGS[@]}" \
   --physical-startup-hold-seconds "$STARTUP_HOLD_SECONDS" \
   --physical-startup-ramp-seconds "$STARTUP_RAMP_SECONDS" \
   --output "$POLICY_REPORT" \

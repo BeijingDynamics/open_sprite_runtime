@@ -11,6 +11,10 @@ from pathlib import Path
 
 import numpy as np
 
+from open_sprite_runtime.target_projection import (
+    parse_joint_gain_multiplier_overrides,
+)
+
 
 FIELDS = (
     "joint_name",
@@ -28,6 +32,12 @@ def main() -> None:
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--joint-limit-candidates", type=Path, required=True)
     parser.add_argument("--gain-scale", type=float, required=True)
+    parser.add_argument(
+        "--joint-gain-multiplier",
+        action="append",
+        default=[],
+        metavar="JOINT=FACTOR",
+    )
     parser.add_argument("--maximum-embedded-kd", type=float, default=3.0)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -60,6 +70,9 @@ def main() -> None:
         raise SystemExit("contract joint_names must contain 31 unique joints")
     if set(limits) != set(names):
         raise SystemExit("joint limit report does not exactly cover contract joints")
+    joint_gain_multipliers = parse_joint_gain_multiplier_overrides(
+        names, args.joint_gain_multiplier
+    )
 
     rows = []
     for index, name in enumerate(names):
@@ -72,10 +85,14 @@ def main() -> None:
                 "position_min_rad": low,
                 "position_max_rad": high,
                 "velocity_max_rad_s": abs(float(arrays["velocity_limit"][index])),
-                "kp_max": args.gain_scale * float(arrays["stiffness"][index]),
+                "kp_max": args.gain_scale
+                * joint_gain_multipliers[index]
+                * float(arrays["stiffness"][index]),
                 "kd_max": args.gain_scale
+                * joint_gain_multipliers[index]
                 * min(float(arrays["damping"][index]), args.maximum_embedded_kd),
                 "feedforward_torque_max_nm": args.gain_scale
+                * joint_gain_multipliers[index]
                 * float(arrays["effort_limit"][index]),
             }
         )
@@ -88,6 +105,7 @@ def main() -> None:
         writer.writerows(rows)
     print(
         f"EXPORTED joints={len(rows)} gain_scale={args.gain_scale} "
+        f"joint_gain_overrides={len(args.joint_gain_multiplier)} "
         f"output={args.output}"
     )
 
