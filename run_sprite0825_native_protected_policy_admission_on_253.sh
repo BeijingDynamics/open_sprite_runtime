@@ -26,6 +26,13 @@ case "$TIER" in
     DM3507_GAIN_MULTIPLIER=0.1
     MAXIMUM_COMMAND_TORQUE_NM=0.2
     ;;
+  full_ramp_05nm_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_05NM_FULL_RAMP
+    DURATION=6.0
+    GAIN_SCALE=0.015
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=0.5
+    ;;
   *)
     echo "Unknown protected-policy tier: $TIER" >&2
     exit 2
