@@ -3,9 +3,12 @@ import unittest
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
 from open_sprite_runtime.motor_group_hold import (
     LEFT_ARM_GROUP,
+    LEFT_PROXIMAL_LEG_GROUP,
     RIGHT_ARM_GROUP,
+    RIGHT_PROXIMAL_LEG_GROUP,
     run_left_arm_group_low_gain_hold,
     run_right_arm_group_low_gain_hold,
+    run_proximal_leg_group_low_gain_hold,
     run_right_wrist_group_low_gain_hold,
 )
 from open_sprite_runtime.socketcan import ReceivedCanFrame
@@ -51,6 +54,16 @@ def left_arm_endpoints():
     return tuple(
         DamiaoFeedbackEndpoint(name, interface, can_id, master_id, ranges)
         for name, interface, can_id, master_id in LEFT_ARM_GROUP
+    )
+
+
+def group_endpoints(group):
+    ranges = DamiaoMitRanges(
+        (-12.566, 12.566), (-50.0, 50.0), (-28.0, 28.0), "motor_register_readback"
+    )
+    return tuple(
+        DamiaoFeedbackEndpoint(name, interface, can_id, master_id, ranges)
+        for name, interface, can_id, master_id in group
     )
 
 
@@ -187,6 +200,29 @@ class MotorGroupHoldTests(unittest.TestCase):
         self.assertEqual(report.interface, "kcan3")
         self.assertNotIn("head_yaw_motor", report.motor_names)
         self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_proximal_leg_groups_exclude_ankles_and_other_bus_endpoints(self):
+        for side, group, interface in (
+            ("left", LEFT_PROXIMAL_LEG_GROUP, "kcan1"),
+            ("right", RIGHT_PROXIMAL_LEG_GROUP, "kcan2"),
+        ):
+            with self.subTest(side=side):
+                selected = group_endpoints(group)
+                writer = FakeGroupWriter(selected)
+                clock = Clock()
+                report = run_proximal_leg_group_low_gain_hold(
+                    writer,
+                    selected,
+                    side=side,
+                    soft_position_rad={item.motor_name: (-1.0, 1.0) for item in selected},
+                    monotonic=clock,
+                    sleep=clock.sleep,
+                )
+                self.assertTrue(report.passed, report.errors)
+                self.assertEqual(report.interface, interface)
+                self.assertEqual(len(report.motor_names), 4)
+                self.assertFalse(any("ankle" in name for name in report.motor_names))
+                self.assertFalse(any("waist" in name or "head" in name for name in report.motor_names))
 
 
 if __name__ == "__main__":

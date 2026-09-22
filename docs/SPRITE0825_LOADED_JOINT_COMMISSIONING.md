@@ -106,6 +106,26 @@ These arm results do not authorize directly applying the same group hold to a
 leg. Ankle commands require differential kinematics and the dedicated 500 Hz
 ankle layer.
 
+## Proximal-leg preparation
+
+Two higher-risk fixed groups are prepared but not yet physically executed. Each
+contains only one side's DM-J4340 hip pitch/roll/yaw and knee motors at command
+IDs `0x01..0x04`. The left writer uses `kcan1`; the right writer uses `kcan2`.
+Both exclude the ankle differential motors and all waist/head motors by exact
+allowlist. Their measured-pose hold remains two seconds at 50 Hz with `Kp=0.2`,
+`Kd=0.05`, zero feedforward, and a 0.5 Nm estimated-torque guard per motor.
+
+Do not run either script until the lifting frame is reconfirmed, the selected
+leg and cables have free motion, and the safety operator is at the independent
+power cut-off:
+
+```bash
+./hold_sprite0825_left_proximal_leg_low_gain_on_253.sh \
+  ENABLE_LEFT_PROXIMAL_LEG_LOW_GAIN_HOLD
+./hold_sprite0825_right_proximal_leg_low_gain_on_253.sh \
+  ENABLE_RIGHT_PROXIMAL_LEG_LOW_GAIN_HOLD
+```
+
 ## Zero-position writes
 
 Motor zero-position reset/write commands are forbidden unless the robot owner

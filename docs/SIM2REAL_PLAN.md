@@ -164,6 +164,10 @@ required.
 - [ ] Build the next leg/waist gate around the calibrated differential ankle
   mapping and dedicated 500 Hz ankle layer. Do not reuse the direct arm-group
   hold for either ankle motor pair.
+- [x] Prepare and offline-test fixed four-motor proximal-leg groups for each
+  side. Their allowlists contain only hip pitch/roll/yaw and knee; ankle,
+  waist, and head endpoints are excluded. Hardware execution remains pending
+  renewed confirmation of the lifting frame, leg clearance, and safety operator.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.

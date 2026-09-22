@@ -42,6 +42,20 @@ LEFT_ARM_GROUP = (
     ("left_wrist_roll_motor", "kcan3", 7, 0x17),
 )
 
+LEFT_PROXIMAL_LEG_GROUP = (
+    ("left_hip_pitch_motor", "kcan1", 1, 0x11),
+    ("left_hip_roll_motor", "kcan1", 2, 0x12),
+    ("left_hip_yaw_motor", "kcan1", 3, 0x13),
+    ("left_knee_motor", "kcan1", 4, 0x14),
+)
+
+RIGHT_PROXIMAL_LEG_GROUP = (
+    ("right_hip_pitch_motor", "kcan2", 1, 0x11),
+    ("right_hip_roll_motor", "kcan2", 2, 0x12),
+    ("right_hip_yaw_motor", "kcan2", 3, 0x13),
+    ("right_knee_motor", "kcan2", 4, 0x14),
+)
+
 
 @dataclass(frozen=True)
 class MotorGroupHoldReport:
@@ -365,6 +379,35 @@ def run_left_arm_group_low_gain_hold(
         },
         expected_identity=LEFT_ARM_GROUP,
         expected_interface="kcan3",
+        monotonic=monotonic,
+        sleep=sleep,
+    )
+
+
+def run_proximal_leg_group_low_gain_hold(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    *,
+    side: str,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> MotorGroupHoldReport:
+    """Hold one exact hip/knee group; ankle and torso/head endpoints are excluded."""
+    groups = {
+        "left": (LEFT_PROXIMAL_LEG_GROUP, "kcan1"),
+        "right": (RIGHT_PROXIMAL_LEG_GROUP, "kcan2"),
+    }
+    if side not in groups:
+        raise ValueError("proximal leg side must be left or right")
+    expected_identity, expected_interface = groups[side]
+    return _run_fixed_group_low_gain_hold(
+        writer,
+        endpoints,
+        soft_position_rad=soft_position_rad,
+        maximum_torque_nm={item.motor_name: 0.5 for item in endpoints},
+        expected_identity=expected_identity,
+        expected_interface=expected_interface,
         monotonic=monotonic,
         sleep=sleep,
     )
