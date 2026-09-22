@@ -8,6 +8,7 @@ LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
 HIP_PITCH_ROLL_COMMAND_CAP_NM=""
 HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
+HIP_PITCH_ROLL_GAIN_MULTIPLIER=1.0
 EXTENDED_NATIVE_ACK_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
 SUPPORT_INSTRUCTION="Robot must remain suspended"
@@ -136,8 +137,9 @@ case "$TIER" in
   stand_hip_pr_45nm_gain08_partial_contact_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_HIP_PR_45NM_GAIN08_PARTIAL_CONTACT
     DURATION=8.0
-    GAIN_SCALE=0.08
+    GAIN_SCALE=0.06
     DM3507_GAIN_MULTIPLIER=0.1
+    HIP_PITCH_ROLL_GAIN_MULTIPLIER=1.3333333333333333
     MAXIMUM_COMMAND_TORQUE_NM=1.0
     LEG_COMMAND_CAP_NM=2.0
     LEG_FEEDBACK_CAP_NM=2.2
@@ -201,7 +203,8 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
 echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
 echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
-  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" | tee "$PREFLIGHT_LOG"
+  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
+  "$HIP_PITCH_ROLL_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -288,6 +291,13 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
   done
 fi
+if [[ "$HIP_PITCH_ROLL_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint left_hip_roll_joint \
+    right_hip_pitch_joint right_hip_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_PITCH_ROLL_GAIN_MULTIPLIER")
+  done
+fi
 MOTOR_CAP_ARGS=()
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   for motor in \
@@ -334,7 +344,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} hip_pitch_roll_multiplier=${HIP_PITCH_ROLL_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
     echo "Per-motor command cap: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"

@@ -437,9 +437,12 @@ proximal-hip feedback was 0.732 Nm. Right ankle pitch reached a -0.3604 rad raw
 target during the ramp and stayed between -0.3572 and -0.3391 rad after the
 ramp, while measured ankle position stayed near +0.297 rad. An exact actor
 counterfactual showed the target changes sign with measured ankle position and
-therefore does not indicate another feedback-sign error. The next candidate
-keeps every torque and position guard unchanged and raises only gain scale to
-0.08; it requires a new zero-gain preview and explicit active-test approval.
+therefore does not indicate another feedback-sign error. A global 0.08 preview
+was rejected before actuation because predicted right-shoulder-pitch torque was
+1.125 Nm, above its unchanged 1.0 Nm command guard. The revised candidate keeps
+global gain scale at 0.06 and applies a 1.3333 multiplier only to the four hip
+pitch/roll joints. Every torque and position guard remains unchanged. It
+requires a matching zero-gain preview and explicit active-test approval.
 Evidence: `reports/native_protected_policy_admission_20260922_184812.json` and
 `reports/native_protected_policy_trace_20260922_184812.npz`.
 

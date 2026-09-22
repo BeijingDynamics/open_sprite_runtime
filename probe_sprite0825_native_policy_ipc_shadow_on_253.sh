@@ -9,6 +9,7 @@ STARTUP_HOLD_SECONDS="${3:-0}"
 STARTUP_RAMP_SECONDS="${4:-0}"
 DM3507_GAIN_MULTIPLIER="${5:-1.0}"
 COMMAND_VX="${6:-0.0}"
+HIP_PITCH_ROLL_GAIN_MULTIPLIER="${7:-1.0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -42,6 +43,13 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
     left_wrist_pitch_joint left_wrist_roll_joint \
     right_wrist_pitch_joint right_wrist_roll_joint; do
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
+  done
+fi
+if [[ "$HIP_PITCH_ROLL_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint left_hip_roll_joint \
+    right_hip_pitch_joint right_hip_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_PITCH_ROLL_GAIN_MULTIPLIER")
   done
 fi
 if [[ -n "$GAIN_SCALE" ]]; then
@@ -80,6 +88,7 @@ echo "REPLAYABLE_TRACE $POLICY_TRACE"
 echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
 echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
+echo "HIP_PITCH_ROLL_GAIN_MULTIPLIER $HIP_PITCH_ROLL_GAIN_MULTIPLIER"
 echo "COMMAND_VX $COMMAND_VX"
 
 "$ROOT/build/native/sprite_can_shadow" \
