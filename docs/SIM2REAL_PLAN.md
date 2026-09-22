@@ -391,6 +391,19 @@ pitch direction, roll recovery, or unsupported standing. Evidence:
 `reports/native_protected_policy_trace_20260922_182203.npz`, and
 `reports/partial_contact_pitch_only_analysis_20260922_182203.json`.
 
+The opposite rear-to-front pitch test at 18:25 also completed all 20 seconds.
+It produced the expected opposite pitch-rate sign (-0.123 rad/s versus +0.108
+rad/s in the first direction), reached 3.07 degrees maximum tilt, and returned
+to the final pitch baseline for at least one continuous second 1.36 seconds
+after the rate peak. The more demanding right ankle-pitch raw target reached
+-0.304 rad, retaining about 0.082 rad margin to the -0.386 rad soft limit; no
+ankle target was projected or clamped. All motors were verified disabled at
+exit. Bidirectional light pitch recovery is therefore qualified only under the
+current mostly unloaded two-shoulder-strap fixture. Evidence:
+`reports/native_protected_policy_admission_20260922_182549.json`,
+`reports/native_protected_policy_trace_20260922_182549.npz`, and
+`reports/partial_contact_reverse_pitch_analysis_20260922_182549.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
