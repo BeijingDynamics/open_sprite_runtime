@@ -462,6 +462,20 @@ clamp accumulation. Evidence:
 `reports/native_protected_policy_admission_20260922_185914.json` and
 `reports/native_protected_policy_trace_20260922_185914.npz`.
 
+The exact hip-only 0.08-gain configuration then completed a 20-second static
+contact run at the same harness height with zero deadline misses, no target
+projection or ankle clamp, and all 31 motors verified disabled at exit. Total
+tilt started at 1.69 degrees, ended at 1.66 degrees, peaked at 1.80 degrees,
+and averaged 1.68 degrees during the final five seconds; no delayed attitude
+drift was observed. The largest measured hip feedback was 1.032 Nm at right
+hip pitch, and right-knee feedback peaked at 1.238 Nm. Right ankle-pitch target
+stayed between -0.3622 and -0.3530 rad during the final five seconds, retaining
+at least about 0.024 rad to the reviewed -0.386 rad soft limit. This qualifies
+the sustained static tier only. It does not qualify a disturbance, unsupported
+standing, or a simultaneous reduction in harness support. Evidence:
+`reports/native_protected_policy_admission_20260922_190230.json` and
+`reports/native_protected_policy_trace_20260922_190230.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
