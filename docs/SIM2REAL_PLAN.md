@@ -449,6 +449,19 @@ preview and explicit active-test approval.
 Evidence: `reports/native_protected_policy_admission_20260922_184812.json` and
 `reports/native_protected_policy_trace_20260922_184812.npz`.
 
+The corrected hip-only 0.08-gain tier also completed all eight seconds with
+zero deadline misses, no target projection or ankle clamp, and all 31 motors
+verified disabled. Total tilt ended at 1.68 degrees and averaged 1.67 degrees
+after the startup ramp. Right-knee movement after the ramp fell from 0.0134 rad
+in the 0.06 tier to 0.0053 rad, consistent with stronger proximal support. The
+largest hip feedback was 0.937 Nm and right-knee feedback was 1.032 Nm. Right
+ankle pitch reached -0.3642 rad, retaining about 0.0218 rad to its reviewed
+soft limit. Before changing support height or applying a disturbance, repeat
+this exact tier for 20 seconds with no disturbance to detect delayed drift or
+clamp accumulation. Evidence:
+`reports/native_protected_policy_admission_20260922_185914.json` and
+`reports/native_protected_policy_trace_20260922_185914.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
