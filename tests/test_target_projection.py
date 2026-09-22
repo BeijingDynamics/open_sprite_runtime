@@ -4,6 +4,7 @@ import numpy as np
 
 from open_sprite_runtime.multirate_control import JointImpedanceTarget
 from open_sprite_runtime.target_projection import (
+    ConsecutiveClampWatchdog,
     ProtectedTargetProjector,
     parse_joint_gain_multiplier_overrides,
 )
@@ -113,6 +114,33 @@ class ProtectedTargetProjectorTests(unittest.TestCase):
             parse_joint_gain_multiplier_overrides(
                 NAMES, ["joint_3=0.1", "joint_3=0.2"]
             )
+
+    def test_consecutive_clamp_watchdog_resets_and_trips(self) -> None:
+        watchdog = ConsecutiveClampWatchdog(
+            NAMES, ("joint_2", "joint_7"), 0.05, 3
+        )
+        raw = np.zeros(31)
+        projected = np.zeros(31)
+        raw[2] = 0.08
+
+        watchdog.update(raw, projected)
+        watchdog.update(raw, projected)
+        raw[2] = 0.04
+        watchdog.update(raw, projected)
+        self.assertEqual(
+            watchdog.report()["maximum_observed_consecutive_ticks_by_joint"]["joint_2"],
+            2,
+        )
+
+        raw[7] = -0.08
+        for _ in range(2):
+            watchdog.update(raw, projected)
+        with self.assertRaisesRegex(RuntimeError, "joint_7.*3 consecutive"):
+            watchdog.update(raw, projected)
+
+    def test_consecutive_clamp_watchdog_rejects_unknown_joint(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            ConsecutiveClampWatchdog(NAMES, ("missing",), 0.05, 5)
 
 
 if __name__ == "__main__":

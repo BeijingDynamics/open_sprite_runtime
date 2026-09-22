@@ -7,6 +7,8 @@ COMMAND_VX=0.0
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
 EXTENDED_NATIVE_ACK_ARGS=()
+CLAMP_WATCHDOG_ARGS=()
+SUPPORT_INSTRUCTION="Robot must remain suspended"
 
 case "$TIER" in
   first_admission)
@@ -64,6 +66,25 @@ case "$TIER" in
     EXTENDED_NATIVE_ACK_ARGS=(
       --extended-policy-actuation-acknowledgement
       ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    ;;
+  stand_leg_20nm_partial_contact_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_20NM_PARTIAL_CONTACT
+    DURATION=8.0
+    GAIN_SCALE=0.04
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
+    SUPPORT_INSTRUCTION="Lifting frame must carry most weight; both soles may only touch a flat floor"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
   suspended_walk_10nm_tier)
@@ -234,7 +255,7 @@ fi
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
 echo "No mode switch and no zero-position reset are implemented in this path"
-echo "Robot must remain suspended; independent power safety operator must be ready"
+echo "$SUPPORT_INSTRUCTION; independent power safety operator must be ready"
 echo "NATIVE_REPORT $NATIVE_REPORT"
 echo "POLICY_REPORT $POLICY_REPORT"
 
@@ -288,6 +309,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
   "${JOINT_GAIN_ARGS[@]}" \
+  "${CLAMP_WATCHDOG_ARGS[@]}" \
   --physical-startup-hold-seconds "$STARTUP_HOLD_SECONDS" \
   --physical-startup-ramp-seconds "$STARTUP_RAMP_SECONDS" \
   --output "$POLICY_REPORT" \

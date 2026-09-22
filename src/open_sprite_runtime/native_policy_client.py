@@ -20,6 +20,7 @@ from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
 from .physical_startup import PhysicalStartupRamp
 from .policy_shadow import LivePolicyShadow
 from .target_projection import (
+    ConsecutiveClampWatchdog,
     ProtectedTargetProjector,
     parse_joint_gain_multiplier_overrides,
 )
@@ -70,6 +71,16 @@ def run(args: argparse.Namespace) -> dict:
         )
     elif args.gain_scale != 1.0:
         raise ValueError("--gain-scale requires --joint-limit-candidates")
+    clamp_watchdog = None
+    if args.fail_on_consecutive_clamp_joint:
+        if projector is None:
+            raise ValueError("clamp watchdog requires --joint-limit-candidates")
+        clamp_watchdog = ConsecutiveClampWatchdog(
+            tuple(contract.data["joint_names"]),
+            tuple(args.fail_on_consecutive_clamp_joint),
+            args.clamp_watchdog_minimum_overshoot_rad,
+            args.clamp_watchdog_maximum_consecutive_ticks,
+        )
     startup = None
     if args.physical_startup_hold_seconds or args.physical_startup_ramp_seconds:
         if projector is None:
@@ -186,9 +197,14 @@ def run(args: argparse.Namespace) -> dict:
                     policy_trace = shadow.last_policy_trace
                     if policy_trace is None:
                         raise RuntimeError("policy trace was not captured")
+                    raw_target = target
                     if projector is not None:
-                        target = projector.project(target)
+                        target = projector.project(raw_target)
                     projected_target = target
+                    if clamp_watchdog is not None:
+                        clamp_watchdog.update(
+                            raw_target.position_rad, projected_target.position_rad
+                        )
                     if startup is not None:
                         target = startup.apply(
                             projected_target,
@@ -288,6 +304,11 @@ def run(args: argparse.Namespace) -> dict:
         "protected_target_projection": (
             projector.report() if projector is not None else {"enabled": False}
         ),
+        "consecutive_clamp_watchdog": (
+            clamp_watchdog.report()
+            if clamp_watchdog is not None
+            else {"enabled": False}
+        ),
         "physical_startup_ramp": (
             startup.report() if startup is not None else {"enabled": False}
         ),
@@ -329,6 +350,18 @@ def main() -> None:
         action="append",
         default=[],
         metavar="JOINT=FACTOR",
+    )
+    parser.add_argument(
+        "--fail-on-consecutive-clamp-joint",
+        action="append",
+        default=[],
+        metavar="JOINT",
+    )
+    parser.add_argument(
+        "--clamp-watchdog-minimum-overshoot-rad", type=float, default=0.05
+    )
+    parser.add_argument(
+        "--clamp-watchdog-maximum-consecutive-ticks", type=int, default=5
     )
     parser.add_argument("--physical-startup-hold-seconds", type=float, default=0.0)
     parser.add_argument("--physical-startup-ramp-seconds", type=float, default=0.0)

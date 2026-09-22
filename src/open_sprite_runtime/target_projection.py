@@ -35,6 +35,74 @@ def parse_joint_gain_multiplier_overrides(
 
 
 @dataclass
+class ConsecutiveClampWatchdog:
+    """Abort when selected raw targets remain materially beyond soft limits."""
+
+    joint_names: tuple[str, ...]
+    watched_joint_names: tuple[str, ...]
+    minimum_overshoot_rad: float
+    maximum_consecutive_ticks: int
+
+    def __post_init__(self) -> None:
+        indices = {name: index for index, name in enumerate(self.joint_names)}
+        if not self.watched_joint_names or len(set(self.watched_joint_names)) != len(
+            self.watched_joint_names
+        ):
+            raise ValueError("clamp watchdog joints must be nonempty and unique")
+        unknown = sorted(set(self.watched_joint_names) - set(indices))
+        if unknown:
+            raise ValueError(f"unknown clamp watchdog joints: {', '.join(unknown)}")
+        if not math.isfinite(self.minimum_overshoot_rad) or not (
+            0.0 < self.minimum_overshoot_rad <= 0.2
+        ):
+            raise ValueError("clamp watchdog overshoot must be in (0, 0.2] rad")
+        if not 1 <= self.maximum_consecutive_ticks <= 100:
+            raise ValueError("clamp watchdog consecutive ticks must be in [1, 100]")
+        self._indices = {name: indices[name] for name in self.watched_joint_names}
+        self._consecutive = {name: 0 for name in self.watched_joint_names}
+        self.maximum_observed_consecutive_ticks = {
+            name: 0 for name in self.watched_joint_names
+        }
+
+    def update(self, raw_position_rad: Any, projected_position_rad: Any) -> None:
+        raw = np.asarray(raw_position_rad, dtype=np.float64)
+        projected = np.asarray(projected_position_rad, dtype=np.float64)
+        if (
+            raw.shape != (len(self.joint_names),)
+            or projected.shape != raw.shape
+            or not np.isfinite(raw).all()
+            or not np.isfinite(projected).all()
+        ):
+            raise ValueError("clamp watchdog positions must be finite joint vectors")
+        for name, index in self._indices.items():
+            overshoot = abs(float(raw[index] - projected[index]))
+            self._consecutive[name] = (
+                self._consecutive[name] + 1
+                if overshoot > self.minimum_overshoot_rad
+                else 0
+            )
+            self.maximum_observed_consecutive_ticks[name] = max(
+                self.maximum_observed_consecutive_ticks[name], self._consecutive[name]
+            )
+            if self._consecutive[name] >= self.maximum_consecutive_ticks:
+                raise RuntimeError(
+                    f"clamp watchdog tripped for {name}: overshoot={overshoot:.6f} rad "
+                    f"for {self._consecutive[name]} consecutive ticks"
+                )
+
+    def report(self) -> dict[str, Any]:
+        return {
+            "enabled": True,
+            "watched_joint_names": list(self.watched_joint_names),
+            "minimum_overshoot_rad": self.minimum_overshoot_rad,
+            "maximum_consecutive_ticks": self.maximum_consecutive_ticks,
+            "maximum_observed_consecutive_ticks_by_joint": dict(
+                self.maximum_observed_consecutive_ticks
+            ),
+        }
+
+
+@dataclass
 class ProtectedTargetProjector:
     """Project policy targets into reviewed joint limits and a startup gain tier."""
 

@@ -222,9 +222,14 @@ required.
 - [x] Execute the separately authorized 6.0 second complete-ramp suspended
   policy tier twice. Both runs reached `alpha=1.0`, stayed inside the fixed
   10%-of-rated-torque commissioning caps, and verified every endpoint disabled.
-- [ ] Requalify the startup pose with the new zero-gain readiness preflight.
-  The robot must be brought upright and near the G74 training reset pose before
-  any further active policy test. Ground contact remains unauthorized.
+- [x] Requalify the upright startup pose with the zero-gain readiness preflight,
+  then complete suspended 1.0 Nm and per-leg-motor 2.0 Nm policy tiers. The
+  20-second disturbance run confirmed live IMU-to-policy reaction, zero native
+  deadline misses, and final-disabled feedback from all 31 motors.
+- [ ] Execute the first partial-contact standing gate. The lifting frame must
+  continue carrying most of the robot weight, both soles may only touch a flat
+  floor, leg motor command caps remain 2.0 Nm, and free standing remains
+  unauthorized until this gate and its trace review pass.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.
@@ -314,6 +319,35 @@ Offline regression against the 15:01 trace correctly rejected 157 left ankle
 pitch, 85 right ankle pitch, and 149 right ankle roll violations plus a `0.2621`
 horizontal-gravity norm. No further active or ground-contact test is permitted
 until a fresh live preflight passes.
+
+The startup pose was subsequently corrected and repeatedly passed that live
+preflight. Suspended policy admission progressed through 1.0 Nm global caps and
+then 2.0 Nm per-leg-motor caps. The 20-second disturbance run at 17:34 completed
+with zero real-time deadline misses, no mode switch, no zero reset, and all 31
+motors verified disabled. The largest command/feedback values were 1.527/1.361
+Nm on the right knee; the externally loaded waist-roll feedback reached 2.667
+Nm under its separate 3.0 Nm feedback guard. Evidence:
+`reports/native_protected_policy_admission_20260922_173434.json` and
+`reports/native_protected_policy_trace_20260922_173434.npz`.
+
+The disturbance trace and exact ONNX counterfactual replay establish that the
+principal attitude response has the sign of negative feedback. Removing only
+the live IMU history while preserving joint state and action history changed
+the ankle, knee, hip, and waist targets; mirroring the IMU disturbance mirrored
+the target response with cosine similarity 0.9826. With both ankle pitch axes
+equal to `-Y` and both ankle roll axes equal to `-X`, the summed ankle response
+opposed positive pitch/roll rate and positive pitch/roll tilt. Measured angular
+speed peaked at 0.470 rad/s and fell to approximately 0.033 rad/s by shutdown.
+This validates reaction direction while suspended, not ground-contact balance.
+
+The same disturbance produced 43 left and 135 right ankle-pitch target clamps.
+This is not a zero or differential-mapping error: measured ankle pitch remained
+inside the hard range, while the raw right target reached -0.540 rad, beyond
+the -0.436 rad URDF hard limit. The runtime correctly projected it to the
+-0.386 rad reviewed soft limit. Do not widen either limit to hide this result.
+The next partial-contact gate must determine whether foot contact keeps the
+policy inside its trained regime and reduces this saturation before torque caps
+or supported weight are increased.
 
 ## First milestone
 
