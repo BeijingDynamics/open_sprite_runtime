@@ -37,7 +37,20 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hardware", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--maximum-commissioning-torque-nm",
+        type=float,
+        help=(
+            "Optional absolute per-motor command cap. The exported cap is the "
+            "minimum of this value and 10%% of each motor's rated torque."
+        ),
+    )
     args = parser.parse_args()
+    if (
+        args.maximum_commissioning_torque_nm is not None
+        and args.maximum_commissioning_torque_nm <= 0.0
+    ):
+        raise SystemExit("--maximum-commissioning-torque-nm must be positive")
     hardware = json.loads(args.hardware.read_text(encoding="utf-8"))
     interfaces = hardware["can_adapter"]["interfaces"]
     model_specs = hardware["motor_model_specs"]
@@ -74,8 +87,12 @@ def main() -> None:
                 "mechanical_peak_torque_nm": float(motor["peak_torque_nm"]),
                 # First policy-admission tier: deliberately independent from
                 # protocol TMAX and the much larger mechanical peak rating.
-                "commissioning_torque_cap_nm": 0.1
-                * float(motor["rated_torque_nm"]),
+                "commissioning_torque_cap_nm": min(
+                    0.1 * float(motor["rated_torque_nm"]),
+                    args.maximum_commissioning_torque_nm
+                    if args.maximum_commissioning_torque_nm is not None
+                    else float("inf"),
+                ),
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]
                 ),

@@ -10,12 +10,21 @@ case "$TIER" in
     DURATION=2.0
     GAIN_SCALE=0.02
     DM3507_GAIN_MULTIPLIER=1.0
+    MAXIMUM_COMMAND_TORQUE_NM=1.4
     ;;
   full_ramp_dm3507_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_RAMP
     DURATION=6.0
     GAIN_SCALE=0.015
     DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.4
+    ;;
+  full_ramp_02nm_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_02NM_FULL_RAMP
+    DURATION=6.0
+    GAIN_SCALE=0.008
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=0.2
     ;;
   *)
     echo "Unknown protected-policy tier: $TIER" >&2
@@ -87,6 +96,7 @@ fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
+  --maximum-commissioning-torque-nm "$MAXIMUM_COMMAND_TORQUE_NM" \
   --output "$ROOT/build/native/motors.tsv"
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_kinematics_config.py" \
@@ -108,7 +118,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
-echo "Per-motor command cap: 10% of rated torque, checked after MIT quantization"
+echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
 echo "No mode switch and no zero-position reset are implemented in this path"
