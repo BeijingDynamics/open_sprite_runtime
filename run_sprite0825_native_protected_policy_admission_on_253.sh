@@ -52,6 +52,15 @@ case "$TIER" in
     LEG_COMMAND_CAP_NM=2.0
     LEG_FEEDBACK_CAP_NM=2.2
     ;;
+  stand_leg_20nm_balance_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_20NM_BALANCE_20S
+    DURATION=20.0
+    GAIN_SCALE=0.04
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
+    ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
     DURATION=8.0
@@ -212,7 +221,11 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
-echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
+if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
+  echo "Per-motor command cap: legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+else
+  echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
+fi
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
 echo "No mode switch and no zero-position reset are implemented in this path"
