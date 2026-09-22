@@ -126,8 +126,32 @@ power cut-off:
   ENABLE_RIGHT_PROXIMAL_LEG_LOW_GAIN_HOLD
 ```
 
+Both groups were then executed with renewed physical confirmation. The left
+group completed 100/100 cycles per motor with peak estimated torque 0.2257 Nm;
+the right group completed 100/100 cycles per motor with peak estimated torque
+0.1847 Nm. Position error remained zero at feedback resolution, peak speed was
+0.00489 rad/s, and all eight tested motors were verified disabled at exit.
+Neither ankle pair nor any waist/head motor was enabled. Reports:
+
+- `reports/left_proximal_leg_low_gain_hold_20260922_113414.json`
+- `reports/right_proximal_leg_low_gain_hold_20260922_113548.json`
+
 ## Zero-position writes
 
 Motor zero-position reset/write commands are forbidden unless the robot owner
 gives explicit approval for that exact operation. Commissioning scripts in this
 document neither reset zero positions nor switch motor modes.
+
+## Differential-ankle transport gate
+
+The first powered ankle gate is prepared and offline-tested but not yet
+physically executed. It is intentionally not a position hold: one calibrated
+pair is enabled for two seconds and receives 500 Hz MIT frames per motor with
+embedded `Kp=0`, `Kd=0`, and feedforward torque `0`. Before enable, the tool
+uses the measured differential map to reconstruct joint pitch/roll and requires
+both motor positions to retain 0.05 rad of soft-limit margin. It then guards
+motor drift, velocity, and estimated torque and verifies both motors disabled
+on every exit path.
+
+This gate validates only differential feedback, paired enable/disable, and the
+500 Hz transport. It does not qualify ankle joint-space PD torque.

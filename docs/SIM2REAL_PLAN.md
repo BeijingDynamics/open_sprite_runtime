@@ -164,10 +164,15 @@ required.
 - [ ] Build the next leg/waist gate around the calibrated differential ankle
   mapping and dedicated 500 Hz ankle layer. Do not reuse the direct arm-group
   hold for either ankle motor pair.
-- [x] Prepare and offline-test fixed four-motor proximal-leg groups for each
-  side. Their allowlists contain only hip pitch/roll/yaw and knee; ankle,
-  waist, and head endpoints are excluded. Hardware execution remains pending
-  renewed confirmation of the lifting frame, leg clearance, and safety operator.
+- [x] Prepare and offline-test the first powered differential-ankle transport
+  gate. It reconstructs pitch/roll through the measured matrix, then enables
+  only one ankle pair for two seconds at 500 Hz per motor with embedded gains
+  and feedforward torque all exactly zero. Physical execution is pending renewed
+  ankle/linkage clearance confirmation.
+- [x] Prepare, offline-test, and physically commission fixed four-motor
+  proximal-leg groups for each side. Their allowlists contain only hip
+  pitch/roll/yaw and knee; ankle, waist, and head endpoints are excluded. Both
+  sides completed 100/100 cycles per motor and verified disabled on exit.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
   maintenance operation. Never emit one without explicit owner approval for
   that exact operation.
