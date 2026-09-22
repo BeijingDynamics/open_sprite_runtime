@@ -476,6 +476,19 @@ standing, or a simultaneous reduction in harness support. Evidence:
 `reports/native_protected_policy_admission_20260922_190230.json` and
 `reports/native_protected_policy_trace_20260922_190230.npz`.
 
+After the harness was lowered slightly, the next zero-gain readiness preview
+was rejected before motor enable. The static configuration changed materially:
+right ankle-pitch feedback moved from about +0.307 rad to +0.460 rad, left
+ankle-pitch moved from about +0.274 rad to +0.360 rad, and total body tilt rose
+from about 1.68 degrees to 2.33 degrees. The actor requested right ankle-pitch
+below its -0.386 rad reviewed soft limit on 258 of 300 policy ticks, with a
+maximum raw overshoot of 0.0061 rad and a 201-tick consecutive run. Do not
+relax the soft limit or actuate from this configuration. Raise the harness
+partway toward the qualified height, leave both feet naturally flat, and repeat
+the same zero-gain readiness gate. Evidence:
+`reports/native_policy_ipc_actor_20260922_191024.json` and
+`reports/native_policy_ipc_trace_20260922_191024.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
