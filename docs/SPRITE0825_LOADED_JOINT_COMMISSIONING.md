@@ -181,10 +181,10 @@ Reports:
 Because the target was the measured suspended pose, these runs qualify the
 500 Hz feedback/torque/disable path, not ankle load capacity or walking gains.
 
-## Remaining subsystem gates before whole-body hold
+## Qualified subsystem gates before whole-body hold
 
-One isolated subsystem gate remains. Both gates are implemented and covered by
-unit tests; the waist gate has now been physically qualified:
+Both isolated subsystem gates are implemented, covered by unit tests, and now
+physically qualified while the robot is suspended:
 
 - Waist yaw/roll measured-pose hold on `kcan1` IDs `0x07/0x08`: 2 seconds at
   50 Hz, embedded `Kp=0.2`, `Kd=0.05`, and zero feedforward. Its first physical
@@ -201,11 +201,14 @@ unit tests; the waist gate has now been physically qualified:
   `reports/waist_group_low_gain_hold_20260922_124056.json`.
 - Head pitch/roll differential measured-pose hold on `kcan2` IDs `0x07/0x08`:
   2 seconds at 500 Hz, host `Kp=0.2`, `Kd=0.03`, 0.05 Nm joint torque cap,
-  0.10 Nm motor cap, and embedded motor gains zero.
+  0.10 Nm motor cap, and embedded motor gains zero. The authorized run completed
+  1000/1000 command and feedback cycles per motor. Maximum position errors were
+  0.000191 rad pitch and 0.000312 rad roll; maximum joint torque commands were
+  0.001132 Nm pitch and 0.003637 Nm roll; maximum motor command magnitude was
+  0.003121 Nm. Both motors were verified disabled at exit. Report:
+  `reports/head_pair_low_joint_pd_500hz_20260922_130434.json`.
 
-The remaining head gate requires separate explicit physical authorization.
-Both launchers refuse
-to run without exact acknowledgement tokens:
+Both launchers refuse to run without exact acknowledgement tokens:
 
 ```bash
 ./hold_sprite0825_waist_group_low_gain_on_253.sh \
@@ -214,6 +217,7 @@ to run without exact acknowledgement tokens:
   ENABLE_HEAD_PAIR_LOW_JOINT_PD_500HZ
 ```
 
-Only after the head gate also passes may the project prepare a separately
-reviewed 31-motor measured-pose hold. Neither script resets motor zero positions
-or switches mode.
+These runs qualify the suspended measured-pose transport, feedback, torque-map,
+and final-disable paths. They do not qualify loaded head motion or walking gains.
+The project may now prepare a separately reviewed 31-motor measured-pose hold.
+Neither script resets motor zero positions or switches mode.

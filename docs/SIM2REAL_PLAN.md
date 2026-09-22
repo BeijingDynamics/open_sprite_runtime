@@ -192,8 +192,10 @@ required.
   The authorized rerun completed 100/100 cycles per motor with zero position
   error, command estimates below 0.000733 Nm, and verified both motors disabled.
   Evidence: `reports/waist_group_low_gain_hold_20260922_124056.json`.
-- [ ] Physically commission the lower-torque head differential gate with
-  separate approval.
+- [x] Physically commission the lower-torque head differential gate with
+  separate approval. It completed 1000/1000 cycles per motor at 500 Hz, stayed
+  below 0.00313 Nm commanded motor torque, and verified both motors disabled.
+  Evidence: `reports/head_pair_low_joint_pd_500hz_20260922_130434.json`.
 - [ ] After every subsystem passes, implement and review one capability-limited
   native 31-motor measured-pose hold before connecting policy targets.
 - [ ] Treat every motor zero-position reset/write as a separately authorized
