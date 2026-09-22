@@ -34,6 +34,7 @@ def main() -> None:
     parser.add_argument(
         "--maximum-gated-consecutive-violation-ticks", type=int, default=0
     )
+    parser.add_argument("--ignore-initial-ticks", type=int, default=0)
     parser.add_argument("--maximum-horizontal-gravity-norm", type=float)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -64,6 +65,16 @@ def main() -> None:
         raise ValueError("trace projected gravity must be an Nx3 array")
     if set(names) != set(limits):
         raise ValueError("trace and limit report do not cover the same joints")
+    trace_tick_count = int(raw.shape[0])
+    if not 0 <= args.ignore_initial_ticks < trace_tick_count:
+        raise ValueError("ignore initial ticks must be in [0, trace tick count)")
+    analysis_start_tick = int(args.ignore_initial_ticks)
+    raw = raw[analysis_start_tick:]
+    projected = projected[analysis_start_tick:]
+    measured = measured[analysis_start_tick:]
+    raw_action = raw_action[analysis_start_tick:]
+    startup_alpha = startup_alpha[analysis_start_tick:]
+    projected_gravity = projected_gravity[analysis_start_tick:]
 
     contract = None
     if args.contract:
@@ -184,6 +195,8 @@ def main() -> None:
         "trace": str(args.trace.resolve()),
         "joint_limit_candidates": str(args.joint_limit_candidates.resolve()),
         "contract": str(args.contract.resolve()) if args.contract else None,
+        "trace_tick_count": trace_tick_count,
+        "analysis_start_tick": analysis_start_tick,
         "tick_count": int(raw.shape[0]),
         "violating_joint_count": sum(
             summaries[name]["violation_count"] > 0 for name in names

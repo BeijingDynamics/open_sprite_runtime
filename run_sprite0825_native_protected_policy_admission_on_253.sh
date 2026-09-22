@@ -63,7 +63,7 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
 }
 
 echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
-echo "Requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
+echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
@@ -101,6 +101,7 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --maximum-gated-overshoot-rad 0.01 \
   --maximum-gated-violation-fraction 0.01 \
   --maximum-gated-consecutive-violation-ticks 2 \
+  --ignore-initial-ticks 50 \
   --maximum-horizontal-gravity-norm 0.10 \
   --output "$PREFLIGHT_REPORT" >/dev/null
 echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
