@@ -411,8 +411,9 @@ deadline misses, no joint target was projected or clamped, and all 31 motors
 were verified disabled at exit. Attitude stayed nearly constant: total tilt
 started at 1.76 degrees, ended at 1.70 degrees, and peaked at 1.81 degrees.
 The highest measured leg feedback torque was 0.786 Nm at the right knee; waist
-roll reached 1.026 Nm. The right ankle-pitch raw target reached -0.355 rad,
-leaving only about 0.031 rad to the reviewed -0.386 rad soft limit. This
+roll reached 1.026 Nm. During the startup ramp, the right ankle-pitch raw
+target reached -0.3518 rad, leaving about 0.0342 rad to the reviewed -0.386 rad
+soft limit. Its full-ramp target then remained between -0.349 and -0.339 rad. This
 qualifies one additional static supported-load tier, not push recovery,
 unsupported standing, or another reduction in harness support. Do not increase
 load or add a disturbance until the right ankle-pitch target margin has been
