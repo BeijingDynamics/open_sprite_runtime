@@ -404,6 +404,22 @@ current mostly unloaded two-shoulder-strap fixture. Evidence:
 `reports/native_protected_policy_trace_20260922_182549.npz`, and
 `reports/partial_contact_reverse_pitch_analysis_20260922_182549.json`.
 
+After the shoulder straps were lowered slightly, a six-second zero-gain
+preflight and an eight-second increased-load static contact run both passed.
+No disturbance was applied during the active run. The native loop had zero
+deadline misses, no joint target was projected or clamped, and all 31 motors
+were verified disabled at exit. Attitude stayed nearly constant: total tilt
+started at 1.76 degrees, ended at 1.70 degrees, and peaked at 1.81 degrees.
+The highest measured leg feedback torque was 0.786 Nm at the right knee; waist
+roll reached 1.026 Nm. The right ankle-pitch raw target reached -0.355 rad,
+leaving only about 0.031 rad to the reviewed -0.386 rad soft limit. This
+qualifies one additional static supported-load tier, not push recovery,
+unsupported standing, or another reduction in harness support. Do not increase
+load or add a disturbance until the right ankle-pitch target margin has been
+reviewed. Evidence:
+`reports/native_protected_policy_admission_20260922_183124.json` and
+`reports/native_protected_policy_trace_20260922_183124.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
