@@ -155,3 +155,20 @@ on every exit path.
 
 This gate validates only differential feedback, paired enable/disable, and the
 500 Hz transport. It does not qualify ankle joint-space PD torque.
+
+Both zero-torque gates passed physically while the feet were suspended. Each
+motor completed 1000/1000 command/feedback cycles and both pairs were verified
+disabled at exit. The left reconstruction was pitch `0.54425 rad`, roll
+`0.01767 rad`; its peak drift, speed, and estimated motor torque were
+0.000382 rad, 0.03664 rad/s, and 0.05129 Nm. The right reconstruction was pitch
+`0.49735 rad`, roll `-0.03604 rad`; no position drift was observed and its peak
+speed and estimated motor torque were 0.01222 rad/s and 0.03175 Nm. Reports:
+
+- `reports/left_ankle_zero_torque_500hz_20260922_114646.json`
+- `reports/right_ankle_zero_torque_500hz_20260922_114712.json`
+
+The next gate is implemented and offline-tested but requires separate explicit
+approval because it applies nonzero host-computed torque. It holds the measured
+joint pose with joint-space `Kp=0.5 Nm/rad`, `Kd=0.05 Nm s/rad`, caps each joint
+torque at 0.15 Nm, maps through `A^-T`, and leaves embedded motor gains at zero.
+Do not execute it based only on approval of the zero-torque transport gate.

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from open_sprite_runtime.ankle_pair_commissioning import (
     ANKLE_GROUPS,
+    run_ankle_pair_joint_pd_gate,
     run_ankle_pair_zero_torque_gate,
 )
 from open_sprite_runtime.contracts import PolicyContract
@@ -23,6 +24,9 @@ from open_sprite_runtime.socketcan import (
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--side", choices=("left", "right"), required=True)
+    parser.add_argument(
+        "--mode", choices=("zero-torque", "joint-pd"), default="zero-torque"
+    )
     parser.add_argument("--hardware", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--socketcan-snapshot", type=Path, required=True)
@@ -32,7 +36,11 @@ def main() -> None:
     parser.add_argument("--ankle-clear", action="store_true")
     parser.add_argument("--confirm-hardware-tx", required=True)
     args = parser.parse_args()
-    acknowledgement = f"ENABLE_{args.side.upper()}_ANKLE_ZERO_TORQUE_500HZ"
+    acknowledgement = (
+        f"ENABLE_{args.side.upper()}_ANKLE_ZERO_TORQUE_500HZ"
+        if args.mode == "zero-torque"
+        else f"ENABLE_{args.side.upper()}_ANKLE_LOW_JOINT_PD_500HZ"
+    )
     if not (
         args.robot_supported
         and args.safety_operator_ready
@@ -82,21 +90,25 @@ def main() -> None:
     with SocketCanMotorGroupMitWriter.open(
         interface, preflight, tuple((item.motor_name, item.can_id) for item in endpoints)
     ) as writer:
-        gate = run_ankle_pair_zero_torque_gate(
-            writer,
-            endpoints,
-            pair,
-            side=args.side,
-            soft_position_rad=soft_limits,
+        gate = (
+            run_ankle_pair_zero_torque_gate(
+                writer,
+                endpoints,
+                pair,
+                side=args.side,
+                soft_position_rad=soft_limits,
+            )
+            if args.mode == "zero-torque"
+            else run_ankle_pair_joint_pd_gate(
+                writer,
+                endpoints,
+                pair,
+                side=args.side,
+                soft_position_rad=soft_limits,
+            )
         )
-    report = {
-        "mode": "first_powered_ankle_pair_zero_torque_500hz_gate",
-        "side": args.side,
-        "preflight": preflight.to_dict(),
-        "calibration_source": pair_record.get("source"),
-        "joint_to_motor_matrix": pair_record["joint_to_motor_matrix"],
-        "motor_zero_rad": pair_record["motor_zero_rad"],
-        "fixed_safety_envelope": {
+    safety_envelope = (
+        {
             "duration_s": 2.0,
             "rate_hz_per_motor": 500.0,
             "embedded_kp": 0.0,
@@ -105,7 +117,33 @@ def main() -> None:
             "maximum_motor_position_drift_rad": 0.05,
             "maximum_motor_velocity_rad_s": 0.2,
             "maximum_estimated_torque_nm": 0.1,
-        },
+        }
+        if args.mode == "zero-torque"
+        else {
+            "duration_s": 2.0,
+            "rate_hz_per_motor": 500.0,
+            "embedded_kp": 0.0,
+            "embedded_kd": 0.0,
+            "joint_kp_nm_rad": 0.5,
+            "joint_kd_nm_s_rad": 0.05,
+            "maximum_joint_torque_nm": 0.15,
+            "maximum_motor_torque_nm": 0.25,
+            "maximum_motor_position_drift_rad": 0.08,
+            "maximum_motor_velocity_rad_s": 0.3,
+        }
+    )
+    report = {
+        "mode": (
+            "first_powered_ankle_pair_zero_torque_500hz_gate"
+            if args.mode == "zero-torque"
+            else "first_powered_ankle_pair_low_joint_pd_500hz_gate"
+        ),
+        "side": args.side,
+        "preflight": preflight.to_dict(),
+        "calibration_source": pair_record.get("source"),
+        "joint_to_motor_matrix": pair_record["joint_to_motor_matrix"],
+        "motor_zero_rad": pair_record["motor_zero_rad"],
+        "fixed_safety_envelope": safety_envelope,
         "gate": gate.to_dict(),
         "automatic_mode_switch_attempts": 0,
         "automatic_zero_reset_attempts": 0,
@@ -115,7 +153,7 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     if not report["passed"]:
-        raise SystemExit(f"{args.side} ankle zero-torque gate failed closed")
+        raise SystemExit(f"{args.side} ankle {args.mode} gate failed closed")
 
 
 if __name__ == "__main__":

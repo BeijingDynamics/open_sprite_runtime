@@ -167,8 +167,15 @@ required.
 - [x] Prepare and offline-test the first powered differential-ankle transport
   gate. It reconstructs pitch/roll through the measured matrix, then enables
   only one ankle pair for two seconds at 500 Hz per motor with embedded gains
-  and feedforward torque all exactly zero. Physical execution is pending renewed
-  ankle/linkage clearance confirmation.
+  and feedforward torque all exactly zero.
+- [x] Physically qualify both zero-torque ankle transport gates while suspended:
+  1000/1000 cycles per motor at 500 Hz, calibrated pitch/roll reconstruction,
+  negligible drift, and verified disabled feedback on both pairs.
+- [x] Implement and offline-test the next low joint-space ankle-PD gate with
+  `Kp=0.5`, `Kd=0.05`, 0.15 Nm joint torque caps, `A^-T` motor mapping, zero
+  embedded motor gains, and fail-closed pair disable.
+- [ ] Execute the low ankle-PD gate only after separate explicit owner approval
+  for this nonzero-torque experiment; zero-torque approval is not sufficient.
 - [x] Prepare, offline-test, and physically commission fixed four-motor
   proximal-leg groups for each side. Their allowlists contain only hip
   pitch/roll/yaw and knee; ankle, waist, and head endpoints are excluded. Both

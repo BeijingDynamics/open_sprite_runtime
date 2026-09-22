@@ -4,6 +4,7 @@ import numpy as np
 
 from open_sprite_runtime.ankle_pair_commissioning import (
     ANKLE_GROUPS,
+    run_ankle_pair_joint_pd_gate,
     run_ankle_pair_zero_torque_gate,
 )
 from open_sprite_runtime.damiao import DamiaoFeedbackEndpoint, DamiaoMitRanges
@@ -112,6 +113,21 @@ class AnklePairCommissioningTests(unittest.TestCase):
                 Writer(tuple(reversed(endpoints))), tuple(reversed(endpoints)), pair,
                 side="left", soft_position_rad=limits,
             )
+
+    def test_joint_pd_gate_runs_with_host_torque_mapping_and_disables(self):
+        endpoints, pair = fixture()
+        writer = Writer(endpoints)
+        clock = Clock()
+        report = run_ankle_pair_joint_pd_gate(
+            writer, endpoints, pair, side="left",
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertTrue(all(value >= 950 for value in report.command_count.values()))
+        self.assertEqual(report.joint_kp_nm_rad, 0.5)
+        self.assertEqual(report.maximum_joint_torque_nm, 0.15)
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
 
 
 if __name__ == "__main__":
