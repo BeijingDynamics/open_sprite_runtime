@@ -776,6 +776,7 @@ def damiao_zero_gain_group_probe(args: argparse.Namespace) -> None:
                     "RX "
                     f"motor={feedback.motor_name} "
                     f"position_rad={feedback.position_rad:+.6f} "
+                    f"estimated_torque_nm={feedback.estimated_output_torque_nm:+.6f} "
                     f"status={feedback.status_name}",
                     flush=True,
                 )

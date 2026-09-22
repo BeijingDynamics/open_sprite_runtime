@@ -186,7 +186,10 @@ required.
 - [x] Prepare and unit-test isolated waist yaw/roll and head pitch/roll
   differential measured-pose gates. No physical command has been sent by these
   new gates yet.
-- [ ] Physically commission the waist yaw/roll gate with separate approval.
+- [ ] Physically commission the waist yaw/roll gate with separate approval. Its
+  first run failed closed on the J6248 feedback guard; disabled zero-gain data
+  proved a -1.495 to +1.670 Nm feedback-noise span at fixed position. The revised
+  gate separates a 0.5 Nm command estimate from a 2.5 Nm J6248 feedback guard.
 - [ ] Physically commission the lower-torque head differential gate with
   separate approval.
 - [ ] After every subsystem passes, implement and review one capability-limited

@@ -173,6 +173,17 @@ class DamiaoFeedbackTests(unittest.TestCase):
         self.assertTrue(report.passed, report.errors)
         self.assertEqual(report.discarded_timestamp_frames, 1)
         self.assertEqual(report.rx_count_by_motor[selected.motor_name], 1)
+        self.assertIsNotNone(
+            report.minimum_estimated_torque_nm_by_motor[selected.motor_name]
+        )
+        self.assertEqual(
+            report.minimum_estimated_torque_nm_by_motor[selected.motor_name],
+            report.maximum_estimated_torque_nm_by_motor[selected.motor_name],
+        )
+        self.assertEqual(
+            report.mean_estimated_torque_nm_by_motor[selected.motor_name],
+            report.maximum_estimated_torque_nm_by_motor[selected.motor_name],
+        )
 
     def test_zero_gain_group_staggers_eight_motor_transmit_slots(self) -> None:
         selected = tuple(

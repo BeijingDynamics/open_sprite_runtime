@@ -519,6 +519,9 @@ class DamiaoZeroGainGroupProbeReport:
     sample_coverage_by_motor: dict[str, float]
     first_position_rad_by_motor: dict[str, float | None]
     last_position_rad_by_motor: dict[str, float | None]
+    minimum_estimated_torque_nm_by_motor: dict[str, float | None]
+    maximum_estimated_torque_nm_by_motor: dict[str, float | None]
+    mean_estimated_torque_nm_by_motor: dict[str, float | None]
     status_codes_by_motor: dict[str, tuple[int, ...]]
     discarded_timestamp_frames: int
     errors: tuple[str, ...]
@@ -815,6 +818,21 @@ def collect_zero_gain_group_position_echo(
         },
         last_position_rad_by_motor={
             name: values[-1].position_rad if values else None
+            for name, values in feedback_values.items()
+        },
+        minimum_estimated_torque_nm_by_motor={
+            name: min(item.estimated_output_torque_nm for item in values)
+            if values else None
+            for name, values in feedback_values.items()
+        },
+        maximum_estimated_torque_nm_by_motor={
+            name: max(item.estimated_output_torque_nm for item in values)
+            if values else None
+            for name, values in feedback_values.items()
+        },
+        mean_estimated_torque_nm_by_motor={
+            name: sum(item.estimated_output_torque_nm for item in values) / len(values)
+            if values else None
             for name, values in feedback_values.items()
         },
         status_codes_by_motor={

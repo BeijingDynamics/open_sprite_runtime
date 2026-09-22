@@ -187,7 +187,13 @@ Two isolated subsystem gates remain. They are implemented and covered by unit
 tests, but have not been physically executed:
 
 - Waist yaw/roll measured-pose hold on `kcan1` IDs `0x07/0x08`: 2 seconds at
-  50 Hz, embedded `Kp=0.2`, `Kd=0.05`, zero feedforward, 0.5 Nm guard.
+  50 Hz, embedded `Kp=0.2`, `Kd=0.05`, and zero feedforward. Its first physical
+  run failed closed after eight cycles because the DM-J6248 feedback reached
+  0.967 Nm against the initial 0.5 Nm guard. A subsequent 500-sample disabled,
+  zero-gain baseline held exactly constant position while torque feedback ranged
+  from -1.495 to +1.670 Nm. The revised gate keeps the command-torque estimate
+  capped at 0.5 Nm and independently caps J6248 feedback at 2.5 Nm (8.3% of its
+  30 Nm rated torque); it has not yet been physically rerun.
 - Head pitch/roll differential measured-pose hold on `kcan2` IDs `0x07/0x08`:
   2 seconds at 500 Hz, host `Kp=0.2`, `Kd=0.03`, 0.05 Nm joint torque cap,
   0.10 Nm motor cap, and embedded motor gains zero.

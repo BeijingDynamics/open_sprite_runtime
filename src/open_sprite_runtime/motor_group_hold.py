@@ -76,6 +76,7 @@ class MotorGroupHoldReport:
     disable_attempts: dict[str, int]
     maximum_abs_position_error_rad: dict[str, float]
     maximum_abs_velocity_rad_s: dict[str, float]
+    maximum_abs_commanded_torque_nm: dict[str, float]
     maximum_abs_estimated_torque_nm: dict[str, float]
     maximum_mos_temperature_c: dict[str, int]
     maximum_rotor_temperature_c: dict[str, int]
@@ -123,6 +124,7 @@ def _run_fixed_group_low_gain_hold(
     *,
     soft_position_rad: Mapping[str, tuple[float, float]],
     maximum_torque_nm: Mapping[str, float],
+    maximum_feedback_torque_nm: Mapping[str, float] | None = None,
     expected_identity: tuple[tuple[str, str, int, int], ...],
     expected_interface: str,
     monotonic: Callable[[], float] = time.monotonic,
@@ -142,6 +144,17 @@ def _run_fixed_group_low_gain_hold(
         not 0.0 < value <= 0.5 for value in maximum_torque_nm.values()
     ):
         raise ValueError("torque guards must exactly cover the group and be in (0, 0.5] Nm")
+    feedback_torque_guard = (
+        dict(maximum_torque_nm)
+        if maximum_feedback_torque_nm is None
+        else dict(maximum_feedback_torque_nm)
+    )
+    if set(feedback_torque_guard) != set(names) or any(
+        not 0.0 < value <= 3.0 for value in feedback_torque_guard.values()
+    ):
+        raise ValueError(
+            "feedback torque guards must exactly cover the group and be in (0, 3.0] Nm"
+        )
     if writer.interface != expected_interface:
         raise ValueError(f"motor-group writer must use {expected_interface}")
 
@@ -164,6 +177,7 @@ def _run_fixed_group_low_gain_hold(
     feedback_count = {name: 0 for name in names}
     max_error = {name: 0.0 for name in names}
     max_velocity = {name: 0.0 for name in names}
+    max_commanded_torque = {name: 0.0 for name in names}
     max_torque = {name: 0.0 for name in names}
     max_mos = {name: 0 for name in names}
     max_rotor = {name: 0 for name in names}
@@ -184,7 +198,7 @@ def _run_fixed_group_low_gain_hold(
             raise RuntimeError(f"{name} position-error guard tripped")
         if abs(feedback.velocity_rad_s) > maximum_velocity_rad_s:
             raise RuntimeError(f"{name} velocity guard tripped")
-        if abs(feedback.estimated_output_torque_nm) > maximum_torque_nm[name]:
+        if abs(feedback.estimated_output_torque_nm) > feedback_torque_guard[name]:
             raise RuntimeError(f"{name} torque guard tripped")
         if feedback.mos_temperature_c >= mos_temperature_limit_c:
             raise RuntimeError(f"{name} MOS-temperature guard tripped")
@@ -239,11 +253,18 @@ def _run_fixed_group_low_gain_hold(
                 measured = DamiaoMitState(
                     latest[name].position_rad, latest[name].velocity_rad_s
                 )
+                mit_command = DamiaoMitCommand(targets[name], 0.0, kp, kd, 0.0)
                 command = encode_damiao_mit_command(
-                    endpoint,
-                    DamiaoMitCommand(targets[name], 0.0, kp, kd, 0.0),
-                    measured,
-                    envelope,
+                    endpoint, mit_command, measured, envelope
+                )
+                commanded_torque = (
+                    mit_command.kp * (mit_command.position_rad - measured.position_rad)
+                    + mit_command.kd
+                    * (mit_command.velocity_rad_s - measured.velocity_rad_s)
+                    + mit_command.feedforward_torque_nm
+                )
+                max_commanded_torque[name] = max(
+                    max_commanded_torque[name], abs(commanded_torque)
                 )
                 writer.send_command(command)
                 command_count[name] += 1
@@ -302,6 +323,7 @@ def _run_fixed_group_low_gain_hold(
         disable_attempts=dict(writer.disable_attempts),
         maximum_abs_position_error_rad=max_error,
         maximum_abs_velocity_rad_s=max_velocity,
+        maximum_abs_commanded_torque_nm=max_commanded_torque,
         maximum_abs_estimated_torque_nm=max_torque,
         maximum_mos_temperature_c=max_mos,
         maximum_rotor_temperature_c=max_rotor,
@@ -432,6 +454,10 @@ def run_waist_group_low_gain_hold(
         endpoints,
         soft_position_rad=soft_position_rad,
         maximum_torque_nm={item.motor_name: 0.5 for item in endpoints},
+        maximum_feedback_torque_nm={
+            "waist_yaw_motor": 0.5,
+            "waist_roll_motor": 2.5,
+        },
         expected_identity=WAIST_GROUP,
         expected_interface="kcan1",
         monotonic=monotonic,

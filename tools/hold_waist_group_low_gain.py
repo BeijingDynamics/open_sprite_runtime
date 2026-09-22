@@ -82,7 +82,16 @@ def main() -> None:
             "feedforward_torque_nm": 0.0,
             "maximum_position_error_rad": 0.05,
             "maximum_velocity_rad_s": 0.2,
-            "maximum_estimated_torque_nm_per_motor": 0.5,
+            "maximum_commanded_torque_nm_per_motor": 0.5,
+            "maximum_feedback_torque_nm_by_motor": {
+                "waist_yaw_motor": 0.5,
+                "waist_roll_motor": 2.5,
+            },
+            "waist_roll_feedback_guard_basis": (
+                "disabled zero-gain 500-sample baseline on 2026-09-22: "
+                "-1.495 to +1.670 Nm at fixed position; 2.5 Nm is 8.3% "
+                "of the 30 Nm rated torque"
+            ),
         },
         "hold": hold.to_dict(),
         "automatic_mode_switch_attempts": 0,

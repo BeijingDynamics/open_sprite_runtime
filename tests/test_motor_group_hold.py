@@ -125,6 +125,9 @@ class MotorGroupHoldTests(unittest.TestCase):
         self.assertTrue(all(value == 1 for value in report.enable_attempts.values()))
         self.assertTrue(all(value >= 3 for value in report.disable_attempts.values()))
         self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+        self.assertTrue(
+            all(value <= 0.5 for value in report.maximum_abs_commanded_torque_nm.values())
+        )
 
     def test_one_motor_fault_disables_whole_group(self):
         selected = endpoints()
@@ -241,6 +244,22 @@ class MotorGroupHoldTests(unittest.TestCase):
         self.assertEqual(report.interface, "kcan1")
         self.assertEqual(report.motor_names, ("waist_yaw_motor", "waist_roll_motor"))
         self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_waist_roll_feedback_noise_has_separate_bounded_guard(self):
+        selected = group_endpoints(WAIST_GROUP)
+        writer = FakeGroupWriter(selected, bad_torque_motor="waist_roll_motor")
+        clock = Clock()
+        report = run_waist_group_low_gain_hold(
+            writer,
+            selected,
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in selected},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertLessEqual(
+            report.maximum_abs_commanded_torque_nm["waist_roll_motor"], 0.5
+        )
 
 
 if __name__ == "__main__":
