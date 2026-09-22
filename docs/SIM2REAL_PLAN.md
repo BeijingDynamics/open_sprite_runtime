@@ -378,6 +378,19 @@ Do not use this fixture to qualify roll balance, and do not widen the ankle
 limit. Repeat with a pitch-only disturbance and preserved partial-fault trace
 before changing gains, torque caps, or supported weight.
 
+The forward-to-rear pitch-only repeat at 18:22 completed the full 20 seconds.
+The disturbance peaked at 5.93 seconds with 0.108 rad/s pitch rate and 1.84
+degrees total tilt. Pitch rate and attitude returned to the final baseline for
+at least one continuous second by 8.03 seconds, 2.10 seconds after the peak.
+No ankle target was projected or clamped. The right ankle-pitch raw target
+reached -0.210 rad, retaining about 0.176 rad margin to its -0.386 rad reviewed
+soft limit. All 31 motors were verified disabled at exit. This qualifies light
+pitch recovery in one direction under the current harness, but not the opposite
+pitch direction, roll recovery, or unsupported standing. Evidence:
+`reports/native_protected_policy_admission_20260922_182203.json`,
+`reports/native_protected_policy_trace_20260922_182203.npz`, and
+`reports/partial_contact_pitch_only_analysis_20260922_182203.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
