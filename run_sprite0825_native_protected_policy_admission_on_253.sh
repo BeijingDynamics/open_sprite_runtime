@@ -87,6 +87,29 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  stand_leg_20nm_partial_contact_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_20NM_PARTIAL_CONTACT_20S
+    DURATION=20.0
+    GAIN_SCALE=0.04
+    DM3507_GAIN_MULTIPLIER=0.1
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.0
+    LEG_FEEDBACK_CAP_NM=2.2
+    SUPPORT_INSTRUCTION="Lifting frame must carry most weight; both soles may only touch a flat floor"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
     DURATION=8.0

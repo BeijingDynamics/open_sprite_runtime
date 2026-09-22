@@ -349,6 +349,24 @@ The next partial-contact gate must determine whether foot contact keeps the
 policy inside its trained regime and reduces this saturation before torque caps
 or supported weight are increased.
 
+The first 8-second partial-contact run at 18:00 passed all startup and active
+guards. The lifting frame carried most weight while both soles touched the
+floor. All four ankle clamp counters remained zero, the native loop had zero
+deadline misses, and all 31 motors were verified disabled at exit. The operator
+applied front/back and left/right disturbances near the end of the run. The
+maximum horizontal projected-gravity norm was 0.0616 (about 3.53 degrees), and
+maximum pitch angular speed was 0.153 rad/s. Because the trace ended while the
+robot was still recovering, this run validates safe contact response but not
+return to steady state. Evidence:
+`reports/native_protected_policy_admission_20260922_180051.json` and
+`reports/native_protected_policy_trace_20260922_180051.npz`.
+
+A separate 20-second partial-contact tier preserves the same gains, 2.0 Nm leg
+command caps, 2.2 Nm leg feedback guards, lower non-leg limits, and the four
+ankle 100 ms consecutive-clamp watchdog. It exists only to capture separated
+front/back and left/right disturbances plus complete recovery; it requires a
+fresh exact operator acknowledgement and the native extended-duration token.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
