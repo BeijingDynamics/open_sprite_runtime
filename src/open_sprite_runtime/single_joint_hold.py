@@ -111,7 +111,7 @@ def _receive_selected(
             continue
         if frame.interface == endpoint.interface and frame.can_id == endpoint.master_id:
             return decode_damiao_feedback(frame, endpoint)
-    raise RuntimeError("head-yaw feedback watchdog expired")
+    raise RuntimeError(f"{endpoint.motor_name} feedback watchdog expired")
 
 
 def run_head_yaw_low_gain_hold(
@@ -131,14 +131,15 @@ def run_head_yaw_low_gain_hold(
     feedback_timeout_s: float = 0.1,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    _expected_endpoint: tuple[str, str, int] = ("head_yaw_motor", "kcan3", 8),
 ) -> SingleJointHoldReport:
-    """Hold measured head yaw; always disable three times before returning."""
-    if (
-        endpoint.motor_name != "head_yaw_motor"
-        or endpoint.interface != "kcan3"
-        or endpoint.can_id != 8
-    ):
-        raise ValueError("first powered hold is restricted to kcan3 ID 0x08 head_yaw_motor")
+    """Hold one explicitly allowlisted measured position and verify disable."""
+    actual_endpoint = (endpoint.motor_name, endpoint.interface, endpoint.can_id)
+    if actual_endpoint != _expected_endpoint:
+        name, interface, can_id = _expected_endpoint
+        raise ValueError(
+            f"powered hold is restricted to {interface} ID {can_id:#04x} {name}"
+        )
     if (duration_s, rate_hz, kp, kd) != (2.0, 50.0, 0.2, 0.05):
         raise ValueError("first powered hold duration/rate/gains are frozen")
     if maximum_torque_nm > 0.1 or maximum_velocity_rad_s > 0.2:
@@ -164,7 +165,8 @@ def run_head_yaw_low_gain_hold(
         feedback_count += 1
         if feedback.status_name != require_status:
             raise RuntimeError(
-                f"head-yaw status must be {require_status}, observed {feedback.status_name}"
+                f"{endpoint.motor_name} status must be {require_status}, "
+                f"observed {feedback.status_name}"
             )
         error = 0.0 if target_position is None else target_position - feedback.position_rad
         max_error = max(max_error, abs(error))
@@ -173,15 +175,15 @@ def run_head_yaw_low_gain_hold(
         max_mos = max(max_mos, feedback.mos_temperature_c)
         max_rotor = max(max_rotor, feedback.rotor_temperature_c)
         if abs(error) > maximum_position_error_rad:
-            raise RuntimeError("head-yaw position-error guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} position-error guard tripped")
         if abs(feedback.velocity_rad_s) > maximum_velocity_rad_s:
-            raise RuntimeError("head-yaw velocity guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} velocity guard tripped")
         if abs(feedback.estimated_output_torque_nm) > maximum_torque_nm:
-            raise RuntimeError("head-yaw torque guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} torque guard tripped")
         if feedback.mos_temperature_c >= mos_temperature_limit_c:
-            raise RuntimeError("head-yaw MOS-temperature guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} MOS-temperature guard tripped")
         if feedback.rotor_temperature_c >= rotor_temperature_limit_c:
-            raise RuntimeError("head-yaw rotor-temperature guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} rotor-temperature guard tripped")
 
     try:
         writer.send_command(encode_zero_gain_position_echo(endpoint, 0.0))
@@ -189,16 +191,20 @@ def run_head_yaw_low_gain_hold(
             writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
         )
         if initial.status_name != "disabled":
-            raise RuntimeError("head-yaw must be disabled before first powered hold")
+            raise RuntimeError(f"{endpoint.motor_name} must be disabled before powered hold")
         target_position = initial.position_rad
         if not soft_low + 0.05 <= target_position <= soft_high - 0.05:
-            raise RuntimeError("head-yaw measured position lacks 0.05 rad soft-limit margin")
+            raise RuntimeError(
+                f"{endpoint.motor_name} measured position lacks 0.05 rad soft-limit margin"
+            )
         writer.send_command(encode_zero_gain_position_echo(endpoint, target_position))
         prepared = _receive_selected(
             writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
         )
         if prepared.status_name != "disabled":
-            raise RuntimeError("head-yaw changed status during zero-gain preparation")
+            raise RuntimeError(
+                f"{endpoint.motor_name} changed status during zero-gain preparation"
+            )
 
         envelope = DamiaoMitCommandEnvelope(
             position_rad=(soft_low, soft_high),
@@ -287,6 +293,25 @@ def run_head_yaw_low_gain_hold(
     )
 
 
+def run_right_wrist_roll_low_gain_hold(
+    writer: Any,
+    endpoint: DamiaoFeedbackEndpoint,
+    *,
+    soft_position_rad: tuple[float, float],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> SingleJointHoldReport:
+    """Frozen first loaded-joint hold for the low-inertia right wrist roll."""
+    return run_head_yaw_low_gain_hold(
+        writer,
+        endpoint,
+        soft_position_rad=soft_position_rad,
+        monotonic=monotonic,
+        sleep=sleep,
+        _expected_endpoint=("right_wrist_roll_motor", "kcan4", 7),
+    )
+
+
 def _quintic_smoothstep(fraction: float) -> tuple[float, float]:
     """Return position fraction and derivative for a unit-duration move."""
     x = min(max(float(fraction), 0.0), 1.0)
@@ -312,14 +337,18 @@ def run_head_yaw_low_gain_motion(
     feedback_timeout_s: float = 0.1,
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
+    _expected_endpoint: tuple[str, str, int] = ("head_yaw_motor", "kcan3", 8),
+    _joint_to_motor_sign: int = 1,
 ) -> SingleJointMotionReport:
     """Run one of the two frozen unloaded head-yaw trajectories, then disable."""
-    if (
-        endpoint.motor_name != "head_yaw_motor"
-        or endpoint.interface != "kcan3"
-        or endpoint.can_id != 8
-    ):
-        raise ValueError("powered motion is restricted to kcan3 ID 0x08 head_yaw_motor")
+    actual_endpoint = (endpoint.motor_name, endpoint.interface, endpoint.can_id)
+    if actual_endpoint != _expected_endpoint:
+        name, interface, can_id = _expected_endpoint
+        raise ValueError(
+            f"powered motion is restricted to {interface} ID {can_id:#04x} {name}"
+        )
+    if _joint_to_motor_sign not in (-1, 1):
+        raise ValueError("joint-to-motor sign must be -1 or +1")
     requested_profile = (
         excursion_rad,
         transition_s,
@@ -347,11 +376,24 @@ def run_head_yaw_low_gain_motion(
         100,
         80,
     )
-    if requested_profile not in (micro_profile, visible_profile):
-        raise ValueError("head-yaw powered-motion trajectory, gains, and guards are frozen")
+    wrist_profile = (
+        math.radians(5.0),
+        4.0,
+        1.0,
+        50.0,
+        2.0,
+        0.2,
+        0.08,
+        0.6,
+        0.2,
+        100,
+        80,
+    )
+    if requested_profile not in (micro_profile, visible_profile, wrist_profile):
+        raise ValueError("single-joint powered-motion trajectory, gains, and guards are frozen")
     soft_low, soft_high = map(float, soft_position_rad)
     if soft_low >= soft_high:
-        raise ValueError("head-yaw soft position range is invalid")
+        raise ValueError(f"{endpoint.motor_name} soft position range is invalid")
 
     duration_s = 3.0 * transition_s + 3.0 * dwell_s
     errors: list[str] = []
@@ -373,12 +415,25 @@ def run_head_yaw_low_gain_motion(
 
     def target_at(elapsed: float) -> tuple[float, float]:
         assert initial_position is not None
+        signed_excursion = _joint_to_motor_sign * excursion_rad
         phases = (
-            (transition_s, initial_position, initial_position + excursion_rad),
-            (dwell_s, initial_position + excursion_rad, initial_position + excursion_rad),
-            (transition_s, initial_position + excursion_rad, initial_position - excursion_rad),
-            (dwell_s, initial_position - excursion_rad, initial_position - excursion_rad),
-            (transition_s, initial_position - excursion_rad, initial_position),
+            (transition_s, initial_position, initial_position + signed_excursion),
+            (
+                dwell_s,
+                initial_position + signed_excursion,
+                initial_position + signed_excursion,
+            ),
+            (
+                transition_s,
+                initial_position + signed_excursion,
+                initial_position - signed_excursion,
+            ),
+            (
+                dwell_s,
+                initial_position - signed_excursion,
+                initial_position - signed_excursion,
+            ),
+            (transition_s, initial_position - signed_excursion, initial_position),
             (dwell_s, initial_position, initial_position),
         )
         remaining = min(max(elapsed, 0.0), duration_s)
@@ -397,7 +452,9 @@ def run_head_yaw_low_gain_motion(
         nonlocal measured_minimum, measured_maximum, final_measured
         feedback_count += 1
         if feedback.status_name != "enabled":
-            raise RuntimeError(f"head-yaw status must be enabled, observed {feedback.status_name}")
+            raise RuntimeError(
+                f"{endpoint.motor_name} status must be enabled, observed {feedback.status_name}"
+            )
         error = target_position - feedback.position_rad
         max_error = max(max_error, abs(error))
         max_velocity = max(max_velocity, abs(feedback.velocity_rad_s))
@@ -416,15 +473,15 @@ def run_head_yaw_low_gain_motion(
         )
         final_measured = feedback.position_rad
         if abs(error) > maximum_position_error_rad:
-            raise RuntimeError("head-yaw position-error guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} position-error guard tripped")
         if abs(feedback.velocity_rad_s) > maximum_velocity_rad_s:
-            raise RuntimeError("head-yaw velocity guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} velocity guard tripped")
         if abs(feedback.estimated_output_torque_nm) > maximum_torque_nm:
-            raise RuntimeError("head-yaw torque guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} torque guard tripped")
         if feedback.mos_temperature_c >= mos_temperature_limit_c:
-            raise RuntimeError("head-yaw MOS-temperature guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} MOS-temperature guard tripped")
         if feedback.rotor_temperature_c >= rotor_temperature_limit_c:
-            raise RuntimeError("head-yaw rotor-temperature guard tripped")
+            raise RuntimeError(f"{endpoint.motor_name} rotor-temperature guard tripped")
 
     try:
         writer.send_command(encode_zero_gain_position_echo(endpoint, 0.0))
@@ -432,20 +489,26 @@ def run_head_yaw_low_gain_motion(
             writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
         )
         if prepared.status_name != "disabled":
-            raise RuntimeError("head-yaw must be disabled before powered motion")
+            raise RuntimeError(f"{endpoint.motor_name} must be disabled before powered motion")
         initial_position = prepared.position_rad
-        requested_minimum = initial_position - excursion_rad
-        requested_maximum = initial_position + excursion_rad
+        requested_minimum = initial_position - abs(excursion_rad)
+        requested_maximum = initial_position + abs(excursion_rad)
         if not soft_low + maximum_position_error_rad <= requested_minimum:
-            raise RuntimeError("head-yaw initial position lacks lower soft-limit margin")
+            raise RuntimeError(
+                f"{endpoint.motor_name} initial position lacks lower soft-limit margin"
+            )
         if not requested_maximum <= soft_high - maximum_position_error_rad:
-            raise RuntimeError("head-yaw initial position lacks upper soft-limit margin")
+            raise RuntimeError(
+                f"{endpoint.motor_name} initial position lacks upper soft-limit margin"
+            )
         writer.send_command(encode_zero_gain_position_echo(endpoint, initial_position))
         prepared = _receive_selected(
             writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
         )
         if prepared.status_name != "disabled":
-            raise RuntimeError("head-yaw changed status during zero-gain preparation")
+            raise RuntimeError(
+                f"{endpoint.motor_name} changed status during zero-gain preparation"
+            )
 
         envelope = DamiaoMitCommandEnvelope(
             position_rad=(soft_low, soft_high),
@@ -527,4 +590,32 @@ def run_head_yaw_low_gain_motion(
         maximum_rotor_temperature_c=max_rotor,
         final_status=final_status,
         errors=tuple(errors),
+    )
+
+
+def run_right_wrist_roll_low_gain_motion(
+    writer: Any,
+    endpoint: DamiaoFeedbackEndpoint,
+    *,
+    soft_position_rad: tuple[float, float],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> SingleJointMotionReport:
+    """Frozen joint-space +/-5 degree motion for right wrist roll."""
+    return run_head_yaw_low_gain_motion(
+        writer,
+        endpoint,
+        soft_position_rad=soft_position_rad,
+        excursion_rad=math.radians(5.0),
+        transition_s=4.0,
+        dwell_s=1.0,
+        kp=2.0,
+        kd=0.2,
+        maximum_position_error_rad=0.08,
+        maximum_velocity_rad_s=0.6,
+        maximum_torque_nm=0.2,
+        monotonic=monotonic,
+        sleep=sleep,
+        _expected_endpoint=("right_wrist_roll_motor", "kcan4", 7),
+        _joint_to_motor_sign=-1,
     )

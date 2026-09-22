@@ -6,6 +6,8 @@ from open_sprite_runtime.single_joint_hold import (
     _quintic_smoothstep,
     run_head_yaw_low_gain_hold,
     run_head_yaw_low_gain_motion,
+    run_right_wrist_roll_low_gain_hold,
+    run_right_wrist_roll_low_gain_motion,
 )
 from open_sprite_runtime.socketcan import ReceivedCanFrame
 
@@ -23,13 +25,12 @@ class Clock:
 
 
 class FakeWriter:
-    interface = "kcan3"
-
     def __init__(
         self, endpoint, *, torque_raw=2048, stale_enabled_after_disable=0,
         track_command=False,
     ):
         self.endpoint = endpoint
+        self.interface = endpoint.interface
         self.status = 0
         self.torque_raw = torque_raw
         self.command_tx_attempts = 0
@@ -72,7 +73,7 @@ class FakeWriter:
             29,
         ))
         return ReceivedCanFrame(
-            interface="kcan3", can_id=0x18, data=data,
+            interface=self.endpoint.interface, can_id=self.endpoint.master_id, data=data,
             is_extended=False, is_remote=False, is_error=False,
             is_fd=True, bit_rate_switch=True, error_state_indicator=False,
             software_timestamp_ns=1, hardware_timestamp_ns=1,
@@ -131,6 +132,28 @@ class SingleJointHoldTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "restricted"):
             run_head_yaw_low_gain_hold(
                 FakeWriter(wrong), wrong, soft_position_rad=(-1.0, 1.0)
+            )
+
+    def test_right_wrist_roll_loaded_hold_is_separately_allowlisted(self):
+        wrist = DamiaoFeedbackEndpoint(
+            "right_wrist_roll_motor", "kcan4", 7, 0x17, endpoint().ranges
+        )
+        clock = Clock()
+        report = run_right_wrist_roll_low_gain_hold(
+            FakeWriter(wrist), wrist, soft_position_rad=(-0.7, 0.7),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertEqual(report.motor_name, "right_wrist_roll_motor")
+        self.assertEqual(report.final_status, "disabled")
+
+    def test_right_wrist_roll_wrapper_rejects_neighbor_motor(self):
+        wrist_pitch = DamiaoFeedbackEndpoint(
+            "right_wrist_pitch_motor", "kcan4", 6, 0x16, endpoint().ranges
+        )
+        with self.assertRaisesRegex(ValueError, "right_wrist_roll_motor"):
+            run_right_wrist_roll_low_gain_hold(
+                FakeWriter(wrist_pitch), wrist_pitch, soft_position_rad=(-0.7, 0.7)
             )
 
 
@@ -236,6 +259,30 @@ class SingleJointMotionTests(unittest.TestCase):
         )
         self.assertAlmostEqual(
             report.final_measured_position_rad, report.initial_position_rad, delta=0.001
+        )
+        self.assertEqual(report.final_status, "disabled")
+
+    def test_right_wrist_roll_motion_applies_negative_motor_sign(self):
+        wrist = DamiaoFeedbackEndpoint(
+            "right_wrist_roll_motor", "kcan4", 7, 0x17, endpoint().ranges
+        )
+        clock = Clock()
+        writer = FakeWriter(wrist, track_command=True)
+        report = run_right_wrist_roll_low_gain_motion(
+            writer, wrist, soft_position_rad=(-0.7, 0.7),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        enabled_positions = []
+        low, high = wrist.ranges.position_rad
+        for command in writer.commands[2:]:
+            raw = (command.data[0] << 8) | command.data[1]
+            enabled_positions.append(low + raw / 65535.0 * (high - low))
+        first_extreme = min(enabled_positions[:200])
+        self.assertLess(first_extreme - report.initial_position_rad, -math.radians(4.9))
+        self.assertGreater(
+            report.measured_maximum_position_rad - report.initial_position_rad,
+            math.radians(4.9),
         )
         self.assertEqual(report.final_status, "disabled")
 

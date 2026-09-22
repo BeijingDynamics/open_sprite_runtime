@@ -146,7 +146,15 @@ required.
   the position-error and speed guards. The final 15-second run completed
   750/750 cycles, measured approximately `+8.59/-8.79` degrees at low gain,
   stayed below 0.526 rad/s and 0.080 Nm, and verified `disabled` on exit.
-- Single-joint unloaded tests, then whole-body zero pose in a lifting frame.
+- [x] Validate the first joint with a real mechanism on `kcan4`: the right-wrist
+  roll current-position hold completed 100/100 cycles below 0.004 Nm, then the
+  joint-space `+/-5 degree` test applied `policy_to_motor_sign=-1`, completed
+  750/750 cycles below 0.092 Nm, and verified `disabled` on exit.
+- [ ] Extend the fail-closed writer from one endpoint to one fixed CAN-bus motor
+  group. Commission a current-position hold on the supported right arm before
+  any whole-body enable or policy command.
+- Single-joint tests, then fixed arm groups, then whole-body measured pose in a
+  lifting frame.
 - Low Kp/Kd and strict current limits first.
 - Stand, weight shift, one step, 0.15 m/s walk, stop, and restart.
 
