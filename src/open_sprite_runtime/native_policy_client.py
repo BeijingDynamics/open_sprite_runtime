@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import json
 import math
@@ -25,6 +26,15 @@ from .target_projection import (
     parse_joint_gain_multiplier_overrides,
 )
 from .yahboom_imu import YahboomQuaternion, YahboomRawImu, YahboomStreamDecoder
+
+
+@contextmanager
+def _capture_runtime_errors(errors: list[str]):
+    """Preserve partial evidence while still forcing the native side to fail closed."""
+    try:
+        yield
+    except Exception as exc:
+        errors.append(f"{type(exc).__name__}: {exc}")
 
 
 def _native_motor_order(hardware: dict) -> tuple[str, ...]:
@@ -136,7 +146,9 @@ def run(args: argparse.Namespace) -> dict:
     except ImportError as exc:
         raise RuntimeError("pyserial is required for native policy IPC shadow") from exc
 
-    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as connection, serial.Serial(
+    with _capture_runtime_errors(errors), socket.socket(
+        socket.AF_UNIX, socket.SOCK_SEQPACKET
+    ) as connection, serial.Serial(
         port=args.imu_device,
         baudrate=args.imu_baud,
         timeout=0,
@@ -201,10 +213,6 @@ def run(args: argparse.Namespace) -> dict:
                     if projector is not None:
                         target = projector.project(raw_target)
                     projected_target = target
-                    if clamp_watchdog is not None:
-                        clamp_watchdog.update(
-                            raw_target.position_rad, projected_target.position_rad
-                        )
                     if startup is not None:
                         target = startup.apply(
                             projected_target,
@@ -264,6 +272,10 @@ def run(args: argparse.Namespace) -> dict:
                         )
                         trace["startup_alpha"].append(
                             startup.last_alpha if startup is not None else 1.0
+                        )
+                    if clamp_watchdog is not None:
+                        clamp_watchdog.update(
+                            raw_target.position_rad, projected_target.position_rad
                         )
                     try:
                         connection.sendall(packet.pack())
