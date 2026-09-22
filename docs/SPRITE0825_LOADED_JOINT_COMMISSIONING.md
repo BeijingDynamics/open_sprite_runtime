@@ -47,3 +47,25 @@ disabled feedback. Its Jetson report is
 These tests qualify the direct sign mapping and guarded single-motor transport.
 They do not authorize a whole-arm or whole-body command. The next gate is a
 separately reviewed fixed right-arm current-position hold.
+
+## Fixed right-wrist group gate
+
+The first fixed group contains only the right wrist yaw, pitch, and roll motors
+on `kcan4` (command IDs `0x05/0x06/0x07`). The group writer requires all three
+initial positions to retain 0.05 rad of soft-limit margin before it sends any
+enable frame. Any runtime fault disables all three motors, then polls each motor
+individually until disabled feedback is observed.
+
+```bash
+cd /home/tony/open_sprite_runtime
+./hold_sprite0825_right_wrist_group_low_gain_on_253.sh \
+  ENABLE_RIGHT_WRIST_GROUP_LOW_GAIN_HOLD
+```
+
+The first 2026-09-22 gate attempt was safely rejected before enable. A follow-up
+zero-gain read measured right wrist yaw at `-1.736667 rad`, while its configured
+soft and hard lower limits are `-1.695 rad` and `-1.745 rad`. It was therefore
+only `0.00833 rad` (about 0.48 degrees) from the negative hard boundary. Wrist
+pitch and roll were `+0.139782 rad` and `+0.081492 rad`. Do not widen the limit:
+with all motors disabled, return wrist yaw toward its neutral pose and repeat
+the zero-gain read before rerunning this gate.

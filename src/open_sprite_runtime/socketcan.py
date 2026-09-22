@@ -637,3 +637,109 @@ class SocketCanSingleMotorMitWriter:
 
     def __exit__(self, *_exc: object) -> None:
         self.close()
+
+
+class SocketCanMotorGroupMitWriter:
+    """Writer restricted to one fixed 2..8 motor group on one CAN-FD bus."""
+
+    ENABLE_PAYLOAD = SocketCanSingleMotorMitWriter.ENABLE_PAYLOAD
+    DISABLE_PAYLOAD = SocketCanSingleMotorMitWriter.DISABLE_PAYLOAD
+
+    def __init__(
+        self,
+        interface: str,
+        raw_socket: Any,
+        motor_endpoints: Iterable[tuple[str, int]],
+    ):
+        endpoints = tuple(motor_endpoints)
+        if not 2 <= len(endpoints) <= 8:
+            raise ValueError("motor-group writer requires 2..8 endpoints")
+        self._can_id_by_name = dict(endpoints)
+        if len(self._can_id_by_name) != len(endpoints):
+            raise ValueError("motor-group writer endpoint names must be unique")
+        if len(set(self._can_id_by_name.values())) != len(endpoints):
+            raise ValueError("motor-group writer CAN IDs must be unique")
+        if any(
+            not name or not isinstance(can_id, int) or not 0 <= can_id <= 0x7FF
+            for name, can_id in endpoints
+        ):
+            raise ValueError("motor-group writer requires named 11-bit CAN endpoints")
+        self.interface = interface
+        self._socket = raw_socket
+        self._receiver = SocketCanReceiver(interface, raw_socket)
+        self.command_tx_attempts = {name: 0 for name in self._can_id_by_name}
+        self.enable_attempts = {name: 0 for name in self._can_id_by_name}
+        self.disable_attempts = {name: 0 for name in self._can_id_by_name}
+
+    @classmethod
+    def open(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        motor_endpoints: Iterable[tuple[str, int]],
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanMotorGroupMitWriter":
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            timestamp_flags = (
+                SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
+                | SOF_TIMESTAMPING_SOFTWARE
+                | SOF_TIMESTAMPING_RAW_HARDWARE
+            )
+            raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
+            raw_socket.bind((interface,))
+            raw_socket.setblocking(False)
+            return cls(interface, raw_socket, motor_endpoints)
+        except BaseException:
+            raw_socket.close()
+            raise
+
+    def _send_payload(self, motor_name: str, data: bytes) -> None:
+        if motor_name not in self._can_id_by_name:
+            raise ValueError("motor is outside the fixed motor-group allowlist")
+        if len(data) != 8:
+            raise ValueError("motor-group MIT payload must contain exactly eight bytes")
+        can_id = self._can_id_by_name[motor_name]
+        frame = CANFD_FRAME.pack(can_id, 8, 0x01, 0, 0, data.ljust(64, b"\0"))
+        sent = self._socket.send(frame)
+        if sent != len(frame):
+            raise RuntimeError(f"short CAN-FD write: {sent}/{len(frame)} bytes")
+
+    def send_command(self, command: Any) -> None:
+        expected_can_id = self._can_id_by_name.get(command.motor_name)
+        if (
+            expected_can_id is None
+            or command.interface != self.interface
+            or command.can_id != expected_can_id
+        ):
+            raise ValueError("encoded MIT command is outside the motor-group allowlist")
+        self._send_payload(command.motor_name, command.data)
+        self.command_tx_attempts[command.motor_name] += 1
+
+    def send_enable(self, motor_name: str) -> None:
+        self._send_payload(motor_name, self.ENABLE_PAYLOAD)
+        self.enable_attempts[motor_name] += 1
+
+    def send_disable(self, motor_name: str) -> None:
+        self._send_payload(motor_name, self.DISABLE_PAYLOAD)
+        self.disable_attempts[motor_name] += 1
+
+    def receive(self) -> ReceivedCanFrame:
+        return self._receiver.receive()
+
+    def fileno(self) -> int:
+        return self._socket.fileno()
+
+    def close(self) -> None:
+        self._socket.close()
+
+    def __enter__(self) -> "SocketCanMotorGroupMitWriter":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()

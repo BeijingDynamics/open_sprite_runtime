@@ -10,6 +10,7 @@ from open_sprite_runtime.socketcan import (
     SocketCanDamiaoRegisterReader,
     SocketCanReceiver,
     SocketCanSingleMotorMitWriter,
+    SocketCanMotorGroupMitWriter,
     SocketCanZeroGainPoller,
     audit_socketcan_active_fd_snapshot,
     audit_socketcan_rx_snapshot,
@@ -210,6 +211,38 @@ class SocketCanSingleMotorMitWriterTests(unittest.TestCase):
             writer.send_command(SimpleNamespace(
                 motor_name="other", interface="kcan3", can_id=8, data=bytes(8)
             ))
+
+
+class SocketCanMotorGroupMitWriterTests(unittest.TestCase):
+    def test_writer_is_restricted_to_exact_bus_group(self) -> None:
+        raw = FakeSocket()
+        writer = SocketCanMotorGroupMitWriter(
+            "kcan4", raw, (("wrist_yaw", 5), ("wrist_pitch", 6), ("wrist_roll", 7))
+        )
+        writer.send_command(SimpleNamespace(
+            motor_name="wrist_pitch", interface="kcan4", can_id=6, data=bytes(8)
+        ))
+        writer.send_enable("wrist_pitch")
+        writer.send_disable("wrist_pitch")
+        frames = [CANFD_FRAME.unpack(value) for value in raw.sent]
+        self.assertTrue(all((value[0], value[1], value[2]) == (6, 8, 0x01) for value in frames))
+        self.assertEqual(writer.command_tx_attempts["wrist_pitch"], 1)
+        self.assertEqual(writer.enable_attempts["wrist_pitch"], 1)
+        self.assertEqual(writer.disable_attempts["wrist_pitch"], 1)
+        with self.assertRaisesRegex(ValueError, "allowlist"):
+            writer.send_enable("elbow")
+        with self.assertRaisesRegex(ValueError, "allowlist"):
+            writer.send_command(SimpleNamespace(
+                motor_name="wrist_pitch", interface="kcan4", can_id=7, data=bytes(8)
+            ))
+
+    def test_writer_rejects_duplicate_or_oversized_groups(self) -> None:
+        with self.assertRaises(ValueError):
+            SocketCanMotorGroupMitWriter("kcan4", FakeSocket(), (("a", 1), ("a", 2)))
+        with self.assertRaises(ValueError):
+            SocketCanMotorGroupMitWriter("kcan4", FakeSocket(), (("a", 1), ("b", 1)))
+        with self.assertRaisesRegex(ValueError, "2..8"):
+            SocketCanMotorGroupMitWriter("kcan4", FakeSocket(), (("a", 1),))
 
 
 class SocketCanDamiaoRegisterReaderTests(unittest.TestCase):

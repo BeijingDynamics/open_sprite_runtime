@@ -150,9 +150,13 @@ required.
   roll current-position hold completed 100/100 cycles below 0.004 Nm, then the
   joint-space `+/-5 degree` test applied `policy_to_motor_sign=-1`, completed
   750/750 cycles below 0.092 Nm, and verified `disabled` on exit.
-- [ ] Extend the fail-closed writer from one endpoint to one fixed CAN-bus motor
-  group. Commission a current-position hold on the supported right arm before
-  any whole-body enable or policy command.
+- [x] Extend the fail-closed writer from one endpoint to the fixed right-wrist
+  yaw/pitch/roll group on `kcan4`, including all-group disable and per-motor
+  disabled verification on every exit path.
+- [ ] Commission the fixed right-wrist current-position hold before any larger
+  arm or whole-body enable. Its first gate attempt correctly sent zero enable
+  frames because wrist yaw was measured 0.00833 rad from its negative hard
+  boundary; return that disabled joint toward neutral and repeat the gate.
 - Single-joint tests, then fixed arm groups, then whole-body measured pose in a
   lifting frame.
 - Low Kp/Kd and strict current limits first.
