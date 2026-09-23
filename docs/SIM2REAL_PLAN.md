@@ -774,6 +774,17 @@ must be addressed as a gain/load/posture problem rather than a mapping problem.
 Evidence:
 `reports/right_ankle_pitch_negative_slow_500hz_20260923_130804.json`.
 
+The next loaded recovery candidate must change only ankle impedance. It uses a
+global gain scale of 0.16 with multipliers chosen to preserve every previously
+used effective gain: 0.5 for hip pitch/roll, hip yaw, and knee; 0.375 for
+waist and non-3507 arm joints; and 0.0375 for DM-J3507 joints. Only ankle pitch
+and roll retain multiplier 1.0, doubling their effective gain from 0.08 to
+0.16. Motor command and feedback caps, startup hold/ramp, target projection,
+and the final-second ankle clamp watchdog remain unchanged. This is a pending
+tier, not a qualification. It requires the feet to be returned to flat-floor
+contact at the previous lower-support recovery height, a fresh zero-gain
+preflight, and separate explicit approval before any active command.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and

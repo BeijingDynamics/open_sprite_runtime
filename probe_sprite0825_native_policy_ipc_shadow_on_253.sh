@@ -11,6 +11,8 @@ DM3507_GAIN_MULTIPLIER="${5:-1.0}"
 COMMAND_VX="${6:-0.0}"
 NON_HIP_GAIN_MULTIPLIER="${7:-1.0}"
 LEG_GAIN_MULTIPLIER="${8:-$NON_HIP_GAIN_MULTIPLIER}"
+ANKLE_GAIN_MULTIPLIER="${9:-$LEG_GAIN_MULTIPLIER}"
+HIP_GAIN_MULTIPLIER="${10:-1.0}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -60,10 +62,22 @@ fi
 if [[ "$LEG_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
     left_hip_yaw_joint right_hip_yaw_joint \
-    left_knee_joint right_knee_joint \
+    left_knee_joint right_knee_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$LEG_GAIN_MULTIPLIER")
+  done
+fi
+if [[ "$ANKLE_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
     left_ankle_pitch_joint right_ankle_pitch_joint \
     left_ankle_roll_joint right_ankle_roll_joint; do
-    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$LEG_GAIN_MULTIPLIER")
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$ANKLE_GAIN_MULTIPLIER")
+  done
+fi
+if [[ "$HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint right_hip_pitch_joint \
+    left_hip_roll_joint right_hip_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_GAIN_MULTIPLIER")
   done
 fi
 if [[ -n "$GAIN_SCALE" ]]; then
@@ -104,6 +118,8 @@ echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS
 echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
 echo "NON_HIP_GAIN_MULTIPLIER $NON_HIP_GAIN_MULTIPLIER"
 echo "LEG_GAIN_MULTIPLIER $LEG_GAIN_MULTIPLIER"
+echo "ANKLE_GAIN_MULTIPLIER $ANKLE_GAIN_MULTIPLIER"
+echo "HIP_GAIN_MULTIPLIER $HIP_GAIN_MULTIPLIER"
 echo "COMMAND_VX $COMMAND_VX"
 
 "$ROOT/build/native/sprite_can_shadow" \

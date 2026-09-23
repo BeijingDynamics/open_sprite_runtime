@@ -15,6 +15,8 @@ PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
 PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
 NON_HIP_GAIN_MULTIPLIER=1.0
 LEG_GAIN_MULTIPLIER=""
+ANKLE_GAIN_MULTIPLIER=""
+HIP_GAIN_MULTIPLIER=1.0
 EXTENDED_NATIVE_ACK_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
 SUPPORT_INSTRUCTION="Robot must remain suspended"
@@ -312,6 +314,37 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 350
     )
     ;;
+  stand_leg_gain16_ankle_recovery_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_ANKLE_GAIN16_LOWER_SUPPORT_RECOVERY
+    DURATION=8.0
+    GAIN_SCALE=0.16
+    DM3507_GAIN_MULTIPLIER=0.0375
+    NON_HIP_GAIN_MULTIPLIER=0.375
+    LEG_GAIN_MULTIPLIER=0.5
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.5
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=3.0
+    LEG_FEEDBACK_CAP_NM=3.5
+    ANKLE_COMMAND_CAP_NM=2.2
+    ANKLE_FEEDBACK_CAP_NM=2.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
+    PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.15
+    PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=1.0
+    PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=300
+    SUPPORT_INSTRUCTION="Lifting frame is at the lower-support recovery height; both soles remain on a flat floor; no disturbance; only ankle gains are doubled relative to the failed recovery tier"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+      --clamp-watchdog-ignored-initial-ticks 350
+    )
+    ;;
   stand_leg_gain08_lowered_harness_static_20s_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_GAIN08_LOWERED_HARNESS_STATIC_20S
     DURATION=20.0
@@ -353,6 +386,7 @@ case "$TIER" in
     ;;
 esac
 [[ -n "$LEG_GAIN_MULTIPLIER" ]] || LEG_GAIN_MULTIPLIER="$NON_HIP_GAIN_MULTIPLIER"
+[[ -n "$ANKLE_GAIN_MULTIPLIER" ]] || ANKLE_GAIN_MULTIPLIER="$LEG_GAIN_MULTIPLIER"
 [[ "$ACK" == "$EXPECTED_ACK" ]] || {
   echo "Exact acknowledgement required: $EXPECTED_ACK" >&2
   exit 2
@@ -388,7 +422,8 @@ echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
 echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
-  "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
+  "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -498,10 +533,22 @@ fi
 if [[ "$LEG_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
     left_hip_yaw_joint right_hip_yaw_joint \
-    left_knee_joint right_knee_joint \
+    left_knee_joint right_knee_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$LEG_GAIN_MULTIPLIER")
+  done
+fi
+if [[ "$ANKLE_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
     left_ankle_pitch_joint right_ankle_pitch_joint \
     left_ankle_roll_joint right_ankle_roll_joint; do
-    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$LEG_GAIN_MULTIPLIER")
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$ANKLE_GAIN_MULTIPLIER")
+  done
+fi
+if [[ "$HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint right_hip_pitch_joint \
+    left_hip_roll_joint right_hip_roll_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_GAIN_MULTIPLIER")
   done
 fi
 MOTOR_CAP_ARGS=()
@@ -556,7 +603,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
     echo "Per-motor command cap: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
