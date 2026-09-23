@@ -228,6 +228,29 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  stand_leg_gain08_lower_support_leg22_static_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_GAIN08_LOWER_SUPPORT_LEG22_STATIC
+    DURATION=8.0
+    GAIN_SCALE=0.08
+    DM3507_GAIN_MULTIPLIER=0.075
+    NON_HIP_GAIN_MULTIPLIER=0.75
+    LEG_GAIN_MULTIPLIER=1.0
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=2.2
+    LEG_FEEDBACK_CAP_NM=2.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
+    SUPPORT_INSTRUCTION="Lifting frame is at the newly lowered height; both soles remain on a flat floor; no disturbance"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   stand_leg_gain08_lowered_harness_static_20s_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_GAIN08_LOWERED_HARNESS_STATIC_20S
     DURATION=20.0

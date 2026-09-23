@@ -624,6 +624,19 @@ fresh zero-gain readiness gate before any actuation. Evidence:
 `reports/native_protected_policy_admission_20260923_112251.json` and
 `reports/native_protected_policy_trace_20260923_112251.npz`.
 
+After the harness was lowered again, the first zero-gain preview passed with no
+clamp and estimated at most 1.27 Nm. A separately authorized eight-second
+active attempt then repeated its mandatory immediate preflight, which estimated
+2.0067 Nm at the right knee and rejected the run before motor enable because
+the fixed non-hip leg command cap was 2.0 Nm. No active policy command was sent.
+The owner had already confirmed that up to 3.5 Nm is acceptable for the leg
+motors, but the next tier increases only as much as needed: non-hip leg command
+and feedback caps become 2.2 and 2.5 Nm. Hip pitch/roll remain at 4.5/5.0 Nm,
+all gains and all other motor caps remain unchanged, and the ankle clamp
+watchdog remains active. This new tier requires its own explicit approval.
+Evidence: `reports/native_protected_policy_preflight_20260923_112720.json` and
+`reports/native_policy_ipc_trace_20260923_112720.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
