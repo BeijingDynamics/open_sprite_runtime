@@ -608,6 +608,22 @@ support or walking. Evidence:
 `reports/native_protected_policy_admission_20260923_112015.json` and
 `reports/native_protected_policy_trace_20260923_112015.npz`.
 
+The explicitly authorized 20-second repeat at the same support height and
+limits also passed with zero deadline misses, no target clamp, and all 31
+motors verified disabled. Mean tilt over successive five-second windows was
+2.662, 2.595, 2.608, and 2.611 degrees; final-window drift was only -0.001
+degrees. The remaining attitude offset was predominantly a stable roll near
+-2.46 degrees rather than a growing instability. Maximum measured feedback was
+1.210 Nm at left hip pitch, 1.128 Nm at right hip pitch, 0.650 Nm at right hip
+yaw, 0.622 Nm at right knee, and 0.266 Nm among the ankle motors. The 2.0 Nm
+non-hip leg cap remains sufficient; do not raise it to the available 3.5 Nm
+ceiling without evidence. This qualifies sustained static contact at the
+current support height only. The next progression is a small reduction in
+harness support while preserving the settled leg and foot pose, followed by a
+fresh zero-gain readiness gate before any actuation. Evidence:
+`reports/native_protected_policy_admission_20260923_112251.json` and
+`reports/native_protected_policy_trace_20260923_112251.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
