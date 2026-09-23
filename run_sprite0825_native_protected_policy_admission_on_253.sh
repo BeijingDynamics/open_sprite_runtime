@@ -13,6 +13,7 @@ HIP_PITCH_ROLL_COMMAND_CAP_NM=""
 HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 WAIST_ROLL_COMMAND_CAP_NM=""
 WAIST_ROLL_FEEDBACK_CAP_NM=""
+SHOULDER_PITCH_FEEDBACK_CAP_NM=""
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
 PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
@@ -618,12 +619,19 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier)
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
+  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_40S
+      WAIST_ROLL_GAIN_MULTIPLIER=0.5
+      WAIST_ROLL_COMMAND_CAP_NM=10.0
+      WAIST_ROLL_FEEDBACK_CAP_NM=12.0
+      SHOULDER_PITCH_FEEDBACK_CAP_NM=1.6
+    elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE100_RATED_40S
       WAIST_ROLL_GAIN_MULTIPLIER=0.5
       WAIST_ROLL_COMMAND_CAP_NM=10.0
       WAIST_ROLL_FEEDBACK_CAP_NM=12.0
+      SHOULDER_PITCH_FEEDBACK_CAP_NM=1.6
     else
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_ANKLE100_RATED_40S
     fi
@@ -644,10 +652,13 @@ case "$TIER" in
     COMMAND_VX=0.0
     PREFLIGHT_TORQUE_MULTIPLIER=1.5
     PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" ]]; then
+      ANKLE_COMMAND_CAP_NM=5.0
+      ANKLE_FEEDBACK_CAP_NM=6.0
+    elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
       ANKLE_FEEDBACK_CAP_NM=4.0
     fi
-    SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; after 8s stable standing apply one gentle disturbance direction at a time; ankle gains are full contract values while ankle torque remains capped at 3.5Nm; safety operator controls independent power cutoff"
+    SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; after 8s stable standing apply one gentle disturbance direction at a time; ankle gains are full contract values while ankle torque remains capped at ${ANKLE_COMMAND_CAP_NM}Nm; safety operator controls independent power cutoff"
     EXTENDED_NATIVE_ACK_ARGS=(
       --extended-policy-actuation-acknowledgement
       ENABLE_40_SECOND_GROUNDED_BALANCE_TEST
@@ -964,6 +975,10 @@ if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
   MOTOR_CAP_ARGS+=(--motor-command-cap "waist_roll_motor=$WAIST_ROLL_COMMAND_CAP_NM")
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "waist_roll_motor=$WAIST_ROLL_FEEDBACK_CAP_NM")
 fi
+if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
+  MOTOR_CAP_ARGS+=(--motor-feedback-cap "left_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
+  MOTOR_CAP_ARGS+=(--motor-feedback-cap "right_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
@@ -1001,6 +1016,9 @@ else
 fi
 if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
   echo "Waist-roll command/feedback caps: ${WAIST_ROLL_COMMAND_CAP_NM}/${WAIST_ROLL_FEEDBACK_CAP_NM}Nm"
+fi
+if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
+  echo "Shoulder-pitch command/feedback caps: 1.4/${SHOULDER_PITCH_FEEDBACK_CAP_NM}Nm"
 fi
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
