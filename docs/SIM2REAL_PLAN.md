@@ -515,6 +515,23 @@ height, with no disturbance. Evidence:
 `reports/native_protected_policy_admission_20260922_192258.json` and
 `reports/native_protected_policy_trace_20260922_192258.npz`.
 
+The same all-leg 0.08 configuration then completed a 20-second static contact
+run after the Jetson reboot at the same adjusted intermediate harness height.
+It had zero deadline misses, no target projection or ankle clamp, and all 31
+motors were verified disabled at exit. Total tilt started at 1.509 degrees,
+ended at 1.502 degrees, and stayed between 1.485 and 1.531 degrees. Mean tilt
+for the four successive five-second windows was 1.513, 1.509, 1.510, and
+1.511 degrees, so there was no delayed attitude drift. Right ankle-pitch
+feedback stayed nearly fixed at +0.3442 to +0.3434 rad; its final-five-second
+target stayed between -0.2519 and -0.2465 rad, retaining at least about 0.134
+rad to the reviewed -0.386 rad soft limit. Maximum measured feedback was
+0.786 Nm at right hip pitch, 0.663 Nm at right hip roll, 0.581 Nm at right
+knee, and 0.359 Nm among the right ankle motors. This qualifies sustained
+static contact only at this harness height. It does not qualify a disturbance,
+unsupported standing, walking, or a simultaneous support-height change.
+Evidence: `reports/native_protected_policy_admission_20260923_104734.json` and
+`reports/native_protected_policy_trace_20260923_104734.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
