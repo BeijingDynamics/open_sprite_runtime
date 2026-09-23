@@ -3,6 +3,7 @@ set -euo pipefail
 
 ACK="${1:-}"
 TIER="${2:-first_admission}"
+PREFLIGHT_ONLY="${SPRITE_PREFLIGHT_ONLY:-0}"
 COMMAND_VX=0.0
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
@@ -630,6 +631,11 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --maximum-horizontal-gravity-norm 0.10 \
   --output "$PREFLIGHT_REPORT" >/dev/null
 echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
+
+if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  echo "PREFLIGHT_ONLY_PASSED no motor enable or nonzero command was attempted"
+  exit 0
+fi
 
 JOINT_GAIN_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
