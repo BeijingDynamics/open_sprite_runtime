@@ -79,6 +79,19 @@ def main() -> None:
         low, high = map(float, limits[name]["soft_limit_rad_candidate"])
         if not math.isfinite(low) or not math.isfinite(high) or low >= high:
             raise SystemExit(f"invalid soft-limit candidate for {name}")
+        hard_low, hard_high = map(
+            float, limits[name]["hard_limit_rad_candidate"]
+        )
+        if (
+            not math.isfinite(hard_low)
+            or not math.isfinite(hard_high)
+            or hard_low >= hard_high
+            or low < hard_low
+            or high > hard_high
+        ):
+            raise SystemExit(
+                f"soft-limit candidate for {name} must remain inside its hard limits"
+            )
         rows.append(
             {
                 "joint_name": name,

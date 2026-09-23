@@ -560,6 +560,20 @@ ankle-pitch joints below +0.35 rad, then repeat this zero-gain gate. Evidence:
 `reports/native_policy_ipc_transport_20260923_110251.json`, and
 `reports/native_policy_ipc_trace_20260923_110251.npz`.
 
+The owner subsequently confirmed that the adjusted static pose is mechanically
+safe and requested a commissioning-envelope review. The right ankle-pitch
+measured pose was +0.4142 rad: outside the symmetric +0.386 rad soft candidate
+but still inside the +0.436 rad URDF hard candidate. For this commissioning
+stage only, the right ankle-pitch positive soft boundary is raised minimally to
++0.425 rad. Its negative boundary remains -0.386 rad, the left ankle remains
+[-0.386, +0.386] rad, and all torque, speed, clamp-watchdog, and motor hard
+guards remain unchanged. This leaves about 0.011 rad on either side of the
+current pose between the revised soft boundary and the hard candidate. The
+native safety exporter now rejects any soft candidate that lies outside its
+corresponding hard candidate. This change authorizes only a fresh zero-gain
+readiness evaluation; active control still requires all torque gates and an
+explicit approval.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
