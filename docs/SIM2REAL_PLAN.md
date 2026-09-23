@@ -760,6 +760,20 @@ ramp, and separately qualify the negative direction before returning to loaded
 whole-body recovery. Evidence:
 `reports/right_ankle_pitch_direction_observable_500hz_20260923_123627.json`.
 
+The separately approved slow negative-pitch follow-up completed and passed.
+With both feet fully unloaded, the right ankle moved -0.015051 rad in response
+to the -0.03 rad request, qualifying the negative direction in addition to the
+positive direction established above. All 2499 commands and feedback samples
+were received for each motor. Peak pitch joint torque was 0.326 Nm; peak motor
+commands were 0.152/0.146 Nm and peak estimated motor feedback was
+0.178/0.168 Nm. Both motors were verified disabled, no mode switch or zero
+reset occurred, and kcan2 remained ERROR-ACTIVE with zero errors. The physical
+right-ankle pitch direction is now qualified in both directions. Freeze the
+existing differential matrix and signs. The loaded whole-body recovery failure
+must be addressed as a gain/load/posture problem rather than a mapping problem.
+Evidence:
+`reports/right_ankle_pitch_negative_slow_500hz_20260923_130804.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
