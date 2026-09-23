@@ -532,6 +532,19 @@ unsupported standing, walking, or a simultaneous support-height change.
 Evidence: `reports/native_protected_policy_admission_20260923_104734.json` and
 `reports/native_protected_policy_trace_20260923_104734.npz`.
 
+Lowering the harness slightly from that qualified height materially changed
+the static ankle geometry. The next zero-gain readiness preflight rejected the
+pose on its first state, before any nonzero command or motor enable: measured
+left and right ankle pitch were +0.4374 and +0.4803 rad, respectively, beyond
+the reviewed +0.386 rad soft limit. Relative to the preceding qualified pose,
+both ankles moved by about +0.13 rad in the same direction, consistent with a
+support-height/load change rather than a unilateral feedback fault. Do not
+relax the soft limit or run active control from this pose. Raise the harness
+slightly or reposition the feet so both measured ankle-pitch joints are below
++0.35 rad, preserving useful margin, and repeat the identical zero-gain
+readiness gate. Evidence:
+`reports/native_policy_ipc_actor_20260923_105255.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
