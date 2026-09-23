@@ -785,6 +785,20 @@ tier, not a qualification. It requires the feet to be returned to flat-floor
 contact at the previous lower-support recovery height, a fresh zero-gain
 preflight, and separate explicit approval before any active command.
 
+Before returning to loaded contact, a suspended pose-recovery variant may be
+used to isolate policy posture convergence from ground reaction. A zero-gain
+shadow in the current fully suspended pose passed with zero target clamp, zero
+nonzero CAN transmission, and complete 31-motor coverage. Its maximum preview
+was 1.966 Nm at the left knee; right knee was 1.231 Nm and the largest ankle
+motor preview was 0.644 Nm. The pending suspended tier therefore retains the
+ankle-only doubled gain above, uses the standard one-second hold and four-second
+ramp, and applies a fixed 3.5 Nm command and feedback ceiling to every leg and
+ankle motor. Both feet must remain at least 4 cm above the floor for the entire
+test. This tier requires a new explicit approval. Evidence:
+`reports/native_policy_ipc_transport_20260923_132203.json`,
+`reports/native_policy_ipc_actor_20260923_132203.json`, and
+`reports/native_policy_ipc_trace_20260923_132203.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
