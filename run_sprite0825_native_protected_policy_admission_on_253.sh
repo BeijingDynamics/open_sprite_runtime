@@ -11,12 +11,15 @@ ANKLE_COMMAND_CAP_NM=""
 ANKLE_FEEDBACK_CAP_NM=""
 HIP_PITCH_ROLL_COMMAND_CAP_NM=""
 HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
+WAIST_ROLL_COMMAND_CAP_NM=""
+WAIST_ROLL_FEEDBACK_CAP_NM=""
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
 PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
 PREFLIGHT_TORQUE_MULTIPLIER=1.0
 PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=1
 NON_HIP_GAIN_MULTIPLIER=1.0
+WAIST_ROLL_GAIN_MULTIPLIER=""
 LEG_GAIN_MULTIPLIER=""
 ANKLE_GAIN_MULTIPLIER=""
 HIP_GAIN_MULTIPLIER=1.0
@@ -615,8 +618,15 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_ankle100_rated_40s_tier)
-    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_ANKLE100_RATED_40S
+  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE100_RATED_40S
+      WAIST_ROLL_GAIN_MULTIPLIER=0.5
+      WAIST_ROLL_COMMAND_CAP_NM=10.0
+      WAIST_ROLL_FEEDBACK_CAP_NM=12.0
+    else
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_ANKLE100_RATED_40S
+    fi
     DURATION=40.0
     GAIN_SCALE=1.0
     DM3507_GAIN_MULTIPLIER=0.01
@@ -718,6 +728,7 @@ case "$TIER" in
 esac
 [[ -n "$LEG_GAIN_MULTIPLIER" ]] || LEG_GAIN_MULTIPLIER="$NON_HIP_GAIN_MULTIPLIER"
 [[ -n "$ANKLE_GAIN_MULTIPLIER" ]] || ANKLE_GAIN_MULTIPLIER="$LEG_GAIN_MULTIPLIER"
+[[ -n "$WAIST_ROLL_GAIN_MULTIPLIER" ]] || WAIST_ROLL_GAIN_MULTIPLIER="$NON_HIP_GAIN_MULTIPLIER"
 [[ "$ACK" == "$EXPECTED_ACK" ]] || {
   echo "Exact acknowledgement required: $EXPECTED_ACK" >&2
   exit 2
@@ -763,7 +774,8 @@ SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
   "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
-  "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" \
+  "$WAIST_ROLL_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -780,7 +792,8 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   "$LEG_COMMAND_CAP_NM" \
   "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
   "$ANKLE_COMMAND_CAP_NM" \
-  "$PREFLIGHT_TORQUE_MULTIPLIER" <<'PY'
+  "$PREFLIGHT_TORQUE_MULTIPLIER" \
+  "$WAIST_ROLL_COMMAND_CAP_NM" <<'PY'
 import json
 import sys
 
@@ -790,6 +803,7 @@ leg_limit = float(sys.argv[3]) if sys.argv[3] else None
 hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
 ankle_limit = float(sys.argv[5]) if sys.argv[5] else None
 torque_multiplier = float(sys.argv[6])
+waist_roll_limit = float(sys.argv[7]) if sys.argv[7] else None
 if not 1.0 <= torque_multiplier <= 1.5:
     raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
 leg_motors = {
@@ -807,7 +821,9 @@ for name, raw_observed in report[
     "preview_maximum_abs_estimated_torque_nm_by_motor"
 ].items():
     observed = float(raw_observed)
-    if ankle_limit is not None and name in {
+    if waist_roll_limit is not None and name == "waist_roll_motor":
+        limit = waist_roll_limit
+    elif ankle_limit is not None and name in {
         "left_ankle_motor_a",
         "left_ankle_motor_b",
         "right_ankle_motor_a",
@@ -836,6 +852,7 @@ print(
     f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
     f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
     f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
+    f" waist_roll_limit={waist_roll_limit}"
     f" torque_multiplier={torque_multiplier}"
 )
 PY
@@ -880,7 +897,7 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
 fi
 if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
-    waist_roll_joint waist_yaw_joint \
+    waist_yaw_joint \
     left_shoulder_pitch_joint right_shoulder_pitch_joint \
     left_shoulder_roll_joint right_shoulder_roll_joint \
     left_shoulder_yaw_joint right_shoulder_yaw_joint \
@@ -888,6 +905,9 @@ if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
     left_wrist_yaw_joint right_wrist_yaw_joint; do
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$NON_HIP_GAIN_MULTIPLIER")
   done
+fi
+if [[ "$WAIST_ROLL_GAIN_MULTIPLIER" != "1.0" ]]; then
+  JOINT_GAIN_ARGS+=(--joint-gain-multiplier "waist_roll_joint=$WAIST_ROLL_GAIN_MULTIPLIER")
 fi
 if [[ "$LEG_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
@@ -937,6 +957,10 @@ if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
     MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$feedback_cap")
   done
 fi
+if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
+  MOTOR_CAP_ARGS+=(--motor-command-cap "waist_roll_motor=$WAIST_ROLL_COMMAND_CAP_NM")
+  MOTOR_CAP_ARGS+=(--motor-feedback-cap "waist_roll_motor=$WAIST_ROLL_FEEDBACK_CAP_NM")
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
@@ -962,7 +986,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
     echo "Per-motor command cap: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"

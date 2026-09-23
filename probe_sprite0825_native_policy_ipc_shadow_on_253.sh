@@ -13,6 +13,7 @@ NON_HIP_GAIN_MULTIPLIER="${7:-1.0}"
 LEG_GAIN_MULTIPLIER="${8:-$NON_HIP_GAIN_MULTIPLIER}"
 ANKLE_GAIN_MULTIPLIER="${9:-$LEG_GAIN_MULTIPLIER}"
 HIP_GAIN_MULTIPLIER="${10:-1.0}"
+WAIST_ROLL_GAIN_MULTIPLIER="${11:-$NON_HIP_GAIN_MULTIPLIER}"
 REPLAY_ACTION_TRACE="${SPRITE_REPLAY_ACTION_TRACE:-}"
 REPLAY_SOURCE_HZ="${SPRITE_REPLAY_SOURCE_HZ:-50.0}"
 REPLAY_START_SECONDS="${SPRITE_REPLAY_START_SECONDS:-10.0}"
@@ -69,7 +70,7 @@ if [[ -n "$REPLAY_ACTION_TRACE" ]]; then
 fi
 if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
-    waist_roll_joint waist_yaw_joint \
+    waist_yaw_joint \
     left_shoulder_pitch_joint right_shoulder_pitch_joint \
     left_shoulder_roll_joint right_shoulder_roll_joint \
     left_shoulder_yaw_joint right_shoulder_yaw_joint \
@@ -77,6 +78,9 @@ if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
     left_wrist_yaw_joint right_wrist_yaw_joint; do
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$NON_HIP_GAIN_MULTIPLIER")
   done
+fi
+if [[ "$WAIST_ROLL_GAIN_MULTIPLIER" != "1.0" ]]; then
+  JOINT_GAIN_ARGS+=(--joint-gain-multiplier "waist_roll_joint=$WAIST_ROLL_GAIN_MULTIPLIER")
 fi
 if [[ "$LEG_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
@@ -136,6 +140,7 @@ echo "PROTECTED_TARGET_GAIN_SCALE ${GAIN_SCALE:-disabled}"
 echo "PHYSICAL_STARTUP hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 echo "DM3507_GAIN_MULTIPLIER $DM3507_GAIN_MULTIPLIER"
 echo "NON_HIP_GAIN_MULTIPLIER $NON_HIP_GAIN_MULTIPLIER"
+echo "WAIST_ROLL_GAIN_MULTIPLIER $WAIST_ROLL_GAIN_MULTIPLIER"
 echo "LEG_GAIN_MULTIPLIER $LEG_GAIN_MULTIPLIER"
 echo "ANKLE_GAIN_MULTIPLIER $ANKLE_GAIN_MULTIPLIER"
 echo "HIP_GAIN_MULTIPLIER $HIP_GAIN_MULTIPLIER"
