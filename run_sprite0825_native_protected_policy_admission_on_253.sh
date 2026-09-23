@@ -579,6 +579,35 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  grounded_walk_vx010_gain016_rated_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_GROUNDED_WALK_VX010_GAIN016_RATED
+    DURATION=8.0
+    GAIN_SCALE=0.32
+    DM3507_GAIN_MULTIPLIER=0.02
+    NON_HIP_GAIN_MULTIPLIER=0.15
+    LEG_GAIN_MULTIPLIER=0.5
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.5
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=8.0
+    LEG_FEEDBACK_CAP_NM=9.0
+    ANKLE_COMMAND_CAP_NM=3.5
+    ANKLE_FEEDBACK_CAP_NM=3.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=8.0
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=9.0
+    COMMAND_VX=0.10
+    SUPPORT_INSTRUCTION="Both soles are on a flat floor; lifting frame remains attached as a fall arrest; safety operator controls independent power cutoff; clear the walking area"
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+      --clamp-watchdog-ignored-initial-ticks 250
+    )
+    ;;
   suspended_walk_10nm_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_10NM_SUSPENDED_WALK
     DURATION=8.0
