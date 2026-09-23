@@ -574,6 +574,23 @@ corresponding hard candidate. This change authorizes only a fresh zero-gain
 readiness evaluation; active control still requires all torque gates and an
 explicit approval.
 
+The zero-gain evaluation with that reviewed positive boundary accepted the
+measured pose and completed with full CAN coverage and zero deadline misses,
+but it did not qualify policy actuation. Body tilt was about 3.64 degrees,
+compared with about 1.51 degrees in the qualified 20-second baseline. Measured
+right ankle pitch was +0.4142 rad while the actor requested as low as -0.4458
+rad. Projection clamped that target to the unchanged -0.386 rad negative soft
+boundary on 293 of 300 policy ticks, leaving a roughly 0.80 rad projected
+measured-to-target separation. The preview also estimated 2.315 Nm at the
+right knee, above its unchanged 2.0 Nm commissioning command cap. Do not widen
+the negative ankle boundary or raise the knee cap to force admission: those
+would hide a policy/start-pose incompatibility. This pose may be used for an
+explicitly approved measured-pose hold, but policy actuation requires a closer
+standing start pose and a fresh zero-gain gate. Evidence:
+`reports/native_policy_ipc_actor_20260923_111343.json`,
+`reports/native_policy_ipc_transport_20260923_111343.json`, and
+`reports/native_policy_ipc_trace_20260923_111343.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
