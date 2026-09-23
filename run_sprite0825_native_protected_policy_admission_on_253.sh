@@ -644,6 +644,9 @@ case "$TIER" in
     COMMAND_VX=0.0
     PREFLIGHT_TORQUE_MULTIPLIER=1.5
     PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
+      ANKLE_FEEDBACK_CAP_NM=4.0
+    fi
     SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; after 8s stable standing apply one gentle disturbance direction at a time; ankle gains are full contract values while ankle torque remains capped at 3.5Nm; safety operator controls independent power cutoff"
     EXTENDED_NATIVE_ACK_ARGS=(
       --extended-policy-actuation-acknowledgement
@@ -989,12 +992,15 @@ echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
-    echo "Per-motor command cap: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+    echo "Per-motor command/feedback caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}/${HIP_PITCH_ROLL_FEEDBACK_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}/${LEG_FEEDBACK_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}/${ANKLE_FEEDBACK_CAP_NM:-$LEG_FEEDBACK_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
   else
     echo "Per-motor command cap: legs=${LEG_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
   fi
 else
   echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
+fi
+if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
+  echo "Waist-roll command/feedback caps: ${WAIST_ROLL_COMMAND_CAP_NM}/${WAIST_ROLL_FEEDBACK_CAP_NM}Nm"
 fi
 echo "Native watchdogs cover target age, status, hard position, speed, torque, temperature, and timing"
 echo "Any fault or SIGINT/SIGTERM performs whole-body disable and verifies all 31 disabled"
