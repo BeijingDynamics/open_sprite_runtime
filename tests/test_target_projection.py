@@ -142,6 +142,26 @@ class ProtectedTargetProjectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown"):
             ConsecutiveClampWatchdog(NAMES, ("missing",), 0.05, 5)
 
+    def test_consecutive_clamp_watchdog_ignores_startup_ticks(self) -> None:
+        watchdog = ConsecutiveClampWatchdog(
+            NAMES, ("joint_2",), 0.05, 2, ignored_initial_ticks=3
+        )
+        raw = np.zeros(31)
+        projected = np.zeros(31)
+        raw[2] = 0.08
+
+        for _ in range(3):
+            watchdog.update(raw, projected)
+        report = watchdog.report()
+        self.assertEqual(report["ignored_initial_ticks"], 3)
+        self.assertEqual(
+            report["maximum_observed_consecutive_ticks_by_joint"]["joint_2"], 0
+        )
+
+        watchdog.update(raw, projected)
+        with self.assertRaisesRegex(RuntimeError, "joint_2.*2 consecutive"):
+            watchdog.update(raw, projected)
+
 
 if __name__ == "__main__":
     unittest.main()

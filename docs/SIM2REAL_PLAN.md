@@ -674,6 +674,25 @@ Evidence: `reports/native_protected_policy_preflight_20260923_114033.json`,
 `reports/native_protected_policy_admission_20260923_114033.json`, and
 `reports/native_protected_policy_trace_20260923_114033.npz`.
 
+After the harness was lowered again, a zero-gain shadow showed that the new pose
+requires an explicit recovery stage rather than another static-hold tier. Body
+roll was about -4.25 degrees. Measured right knee and ankle pitch were -0.571
+and +0.276 rad, while the policy requested right ankle pitch near -0.426 rad.
+The raw target exceeded the unchanged -0.386 rad soft boundary by at most
+0.0583 rad and was safely projected to that boundary; the preview estimated
+2.405 Nm at the right knee. No motor was enabled. The recovery tier therefore
+retains gain 0.08 and the one-second hold plus four-second smooth ramp, permits
+3.0 Nm command and 3.5 Nm feedback only for knee and hip yaw, retains 4.5/5.0
+Nm for hip pitch/roll, and retains 2.2/2.5 Nm for the ankle motors. Target
+projection remains active. The ankle clamp watchdog records but does not trip
+during the 250-tick startup hold/ramp, then immediately resumes its original
+0.05 rad/five-tick gate. A zero-gain replay accepted the reviewed 0.065 rad
+startup projection ceiling and 0.10 horizontal-gravity ceiling. Active recovery
+still requires a separate explicit approval. Evidence:
+`reports/native_policy_ipc_transport_20260923_114557.json`,
+`reports/native_policy_ipc_trace_20260923_114557.npz`, and
+`reports/native_recovery_preflight_review_20260923_114557.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and

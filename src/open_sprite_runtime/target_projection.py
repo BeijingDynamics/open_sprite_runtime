@@ -42,6 +42,7 @@ class ConsecutiveClampWatchdog:
     watched_joint_names: tuple[str, ...]
     minimum_overshoot_rad: float
     maximum_consecutive_ticks: int
+    ignored_initial_ticks: int = 0
 
     def __post_init__(self) -> None:
         indices = {name: index for index, name in enumerate(self.joint_names)}
@@ -58,8 +59,11 @@ class ConsecutiveClampWatchdog:
             raise ValueError("clamp watchdog overshoot must be in (0, 0.2] rad")
         if not 1 <= self.maximum_consecutive_ticks <= 100:
             raise ValueError("clamp watchdog consecutive ticks must be in [1, 100]")
+        if not 0 <= self.ignored_initial_ticks <= 1000:
+            raise ValueError("clamp watchdog ignored initial ticks must be in [0, 1000]")
         self._indices = {name: indices[name] for name in self.watched_joint_names}
         self._consecutive = {name: 0 for name in self.watched_joint_names}
+        self._update_count = 0
         self.maximum_observed_consecutive_ticks = {
             name: 0 for name in self.watched_joint_names
         }
@@ -74,6 +78,9 @@ class ConsecutiveClampWatchdog:
             or not np.isfinite(projected).all()
         ):
             raise ValueError("clamp watchdog positions must be finite joint vectors")
+        self._update_count += 1
+        if self._update_count <= self.ignored_initial_ticks:
+            return
         for name, index in self._indices.items():
             overshoot = abs(float(raw[index] - projected[index]))
             self._consecutive[name] = (
@@ -96,6 +103,8 @@ class ConsecutiveClampWatchdog:
             "watched_joint_names": list(self.watched_joint_names),
             "minimum_overshoot_rad": self.minimum_overshoot_rad,
             "maximum_consecutive_ticks": self.maximum_consecutive_ticks,
+            "ignored_initial_ticks": self.ignored_initial_ticks,
+            "observed_ticks": self._update_count,
             "maximum_observed_consecutive_ticks_by_joint": dict(
                 self.maximum_observed_consecutive_ticks
             ),

@@ -90,6 +90,7 @@ def run(args: argparse.Namespace) -> dict:
             tuple(args.fail_on_consecutive_clamp_joint),
             args.clamp_watchdog_minimum_overshoot_rad,
             args.clamp_watchdog_maximum_consecutive_ticks,
+            args.clamp_watchdog_ignored_initial_ticks,
         )
     startup = None
     if args.physical_startup_hold_seconds or args.physical_startup_ramp_seconds:
@@ -374,6 +375,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--clamp-watchdog-maximum-consecutive-ticks", type=int, default=5
+    )
+    parser.add_argument(
+        "--clamp-watchdog-ignored-initial-ticks", type=int, default=0
     )
     parser.add_argument("--physical-startup-hold-seconds", type=float, default=0.0)
     parser.add_argument("--physical-startup-ramp-seconds", type=float, default=0.0)
