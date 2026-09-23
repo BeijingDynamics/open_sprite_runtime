@@ -22,6 +22,7 @@ EXTENDED_NATIVE_ACK_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
 POLICY_REPLAY_ARGS=()
 REPLAY_ACTION_TRACE=""
+REPLAY_AMPLITUDE_SCALE=0.2
 SUPPORT_INSTRUCTION="Robot must remain suspended"
 
 case "$TIER" in
@@ -487,14 +488,56 @@ case "$TIER" in
     HIP_PITCH_ROLL_FEEDBACK_CAP_NM=3.5
     COMMAND_VX=0.15
     REPLAY_ACTION_TRACE="/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate/evaluation/mujoco_matrix/straight_60s_trace.json"
+    REPLAY_AMPLITUDE_SCALE=0.2
     POLICY_REPLAY_ARGS=(
       --replay-action-trace "$REPLAY_ACTION_TRACE"
       --replay-source-hz 50.0
       --replay-start-seconds 10.0
       --replay-duration-seconds 20.0
-      --replay-amplitude-scale 0.2
+      --replay-amplitude-scale "$REPLAY_AMPLITUDE_SCALE"
     )
     SUPPORT_INSTRUCTION="Robot is securely suspended; both feet remain at least 4cm above the floor; start from the qualified policy pose; no contact and no disturbance; safety operator controls independent power cutoff; replays a centered 20-percent-amplitude qualified MuJoCo policy action trace for direction audit only"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
+  suspended_trace_direction_audit_scale050_gain012_35nm_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_SUSPENDED_TRACE_DIRECTION_AUDIT_SCALE050_GAIN012_35NM_20S
+    DURATION=20.0
+    GAIN_SCALE=0.24
+    DM3507_GAIN_MULTIPLIER=0.025
+    NON_HIP_GAIN_MULTIPLIER=0.2
+    LEG_GAIN_MULTIPLIER=0.5
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.5
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=3.5
+    LEG_FEEDBACK_CAP_NM=3.5
+    ANKLE_COMMAND_CAP_NM=3.5
+    ANKLE_FEEDBACK_CAP_NM=3.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=3.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=3.5
+    COMMAND_VX=0.15
+    REPLAY_ACTION_TRACE="/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate/evaluation/mujoco_matrix/straight_60s_trace.json"
+    REPLAY_AMPLITUDE_SCALE=0.5
+    POLICY_REPLAY_ARGS=(
+      --replay-action-trace "$REPLAY_ACTION_TRACE"
+      --replay-source-hz 50.0
+      --replay-start-seconds 10.0
+      --replay-duration-seconds 20.0
+      --replay-amplitude-scale "$REPLAY_AMPLITUDE_SCALE"
+    )
+    SUPPORT_INSTRUCTION="Robot is securely suspended; both feet remain at least 4cm above the floor; start from the qualified policy pose; no contact and no disturbance; safety operator controls independent power cutoff; replays a centered 50-percent-amplitude qualified MuJoCo policy action trace for visible direction audit only"
     EXTENDED_NATIVE_ACK_ARGS=(
       --extended-policy-actuation-acknowledgement
       ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
@@ -588,7 +631,7 @@ SPRITE_REPLAY_ACTION_TRACE="$REPLAY_ACTION_TRACE" \
 SPRITE_REPLAY_SOURCE_HZ=50.0 \
 SPRITE_REPLAY_START_SECONDS=10.0 \
 SPRITE_REPLAY_DURATION_SECONDS=20.0 \
-SPRITE_REPLAY_AMPLITUDE_SCALE=0.2 \
+SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
   "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
