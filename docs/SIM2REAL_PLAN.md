@@ -702,6 +702,29 @@ a new explicit approval. Evidence:
 `reports/native_policy_ipc_trace_20260923_115919.npz`, and
 `reports/native_policy_ipc_trace_20260923_120058.npz`.
 
+The explicitly approved revised eight-second recovery attempt enabled the
+motors, but did not qualify the lower-support pose. The ankle watchdog stopped
+the run safely after 355 policy ticks (about 7.1 seconds): right ankle-pitch
+raw-target overshoot remained 0.141147 rad for five consecutive ticks after
+the 350-tick startup-ignore interval. The transport reported zero deadline
+misses, no mode switch or zero reset, and verified all 31 motors disabled.
+Measured body roll changed only from -4.481 to -4.390 degrees and total tilt
+from 4.519 to 4.398 degrees. More importantly, right ankle pitch moved from
++0.299 to +0.311 rad while its ramped, soft-limit-projected target moved to
+-0.386 rad. The final reconstructed joint command was approximately -0.79 Nm
+pitch and -0.37 Nm roll, mapping to approximately +0.49/-0.12 Nm at the two
+right-ankle motors; neither motor approached its torque cap. The earlier
+right-ankle low-PD gate held the measured pose with effectively zero position
+error, so it did not validate closed-loop direction under a nonzero position
+error. Do not widen the watchdog, lower the harness again, or promote this
+recovery tier. The next active operation must be a separately approved,
+mechanically supported right-ankle diagnostic with small explicit positive and
+negative joint-position errors, used to distinguish a control-map direction
+fault from insufficient torque under support load. Evidence:
+`reports/native_protected_policy_admission_20260923_120632.json`,
+`reports/native_protected_policy_actor_20260923_120632.json`, and
+`reports/native_protected_policy_trace_20260923_120632.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
