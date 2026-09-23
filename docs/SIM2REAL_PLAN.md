@@ -743,6 +743,23 @@ while raising only the joint-torque excitation enough to produce roughly
 0.2 Nm per motor. Evidence:
 `reports/right_ankle_pitch_direction_500hz_20260923_123036.json`.
 
+The separately approved observable-excitation repeat resolved the sign question
+before failing closed on its deliberately conservative velocity guard. With
+both feet fully unloaded, a +0.03 rad pitch request produced a +0.012714 rad
+measured pitch response. The commanded and observed signs therefore agree;
+the calibrated right-ankle pitch control map must not be inverted. Peak pitch
+joint torque was 0.431 Nm, mapping to at most 0.164/0.179 Nm at the two motors,
+and measured motor torque matched at 0.164/0.178 Nm. Motor B then exceeded the
+0.4 rad/s diagnostic velocity ceiling before the negative half-cycle began, so
+the gate disabled both motors and did not qualify bidirectional response. kcan2
+remained ERROR-ACTIVE with zero errors. This establishes that the earlier
+loaded whole-body motion opposite the target was caused by external
+load/posture overwhelming the available recovery torque, not by a reversed
+pitch sign. Any follow-up must preserve the verified matrix, slow the target
+ramp, and separately qualify the negative direction before returning to loaded
+whole-body recovery. Evidence:
+`reports/right_ankle_pitch_direction_observable_500hz_20260923_123627.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
