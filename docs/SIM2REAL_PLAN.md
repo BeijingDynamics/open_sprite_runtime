@@ -545,6 +545,21 @@ slightly or reposition the feet so both measured ankle-pitch joints are below
 readiness gate. Evidence:
 `reports/native_policy_ipc_actor_20260923_105255.json`.
 
+After manually correcting both ankles, a repeated six-second zero-gain shadow
+completed with full feedback coverage, zero deadline misses, and no target
+projection. Both ankle-pitch joints returned inside the reviewed envelope
+(left settled near +0.348 rad and right near +0.292 rad). Active admission was
+still withheld because the whole-leg pose had changed substantially from the
+qualified baseline: left hip pitch was about -0.35 rad and left knee about
++0.64 rad, compared with -0.05 and +0.33 rad in the qualified 20-second run.
+The resulting preview estimated 3.54 Nm at the left knee, above its unchanged
+2.0 Nm commissioning command cap. Do not raise the knee torque cap. With all
+motors disabled, reduce the asymmetric left-leg crouch while keeping both
+ankle-pitch joints below +0.35 rad, then repeat this zero-gain gate. Evidence:
+`reports/native_policy_ipc_actor_20260923_110251.json`,
+`reports/native_policy_ipc_transport_20260923_110251.json`, and
+`reports/native_policy_ipc_trace_20260923_110251.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
