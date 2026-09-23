@@ -579,6 +579,39 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  grounded_full_weight_stand_gain025_rated_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_GAIN025_RATED_20S
+    DURATION=20.0
+    GAIN_SCALE=0.5
+    DM3507_GAIN_MULTIPLIER=0.02
+    NON_HIP_GAIN_MULTIPLIER=0.25
+    LEG_GAIN_MULTIPLIER=0.5
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.5
+    MAXIMUM_COMMAND_TORQUE_NM=3.0
+    LEG_COMMAND_CAP_NM=8.0
+    LEG_FEEDBACK_CAP_NM=9.0
+    ANKLE_COMMAND_CAP_NM=3.5
+    ANKLE_FEEDBACK_CAP_NM=3.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=8.0
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=9.0
+    COMMAND_VX=0.0
+    SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; after 8s stable standing apply one gentle disturbance direction at a time; safety operator controls independent power cutoff"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+      --clamp-watchdog-ignored-initial-ticks 250
+    )
+    ;;
   grounded_walk_vx010_gain016_rated_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_GROUNDED_WALK_VX010_GAIN016_RATED
     DURATION=8.0
