@@ -637,6 +637,24 @@ watchdog remains active. This new tier requires its own explicit approval.
 Evidence: `reports/native_protected_policy_preflight_20260923_112720.json` and
 `reports/native_policy_ipc_trace_20260923_112720.npz`.
 
+The separately approved eight-second lower-support test at the conservative
+2.2/2.5 Nm non-hip leg command/feedback tier passed its repeated immediate
+zero-gain gate and the active run. The preflight estimated 2.0047 Nm at the
+right knee, below the new command cap. Active control completed with zero
+deadline misses, zero target clamp, no ankle clamp-watchdog event, no rejected
+IMU frame, and all 31 motors verified disabled. Maximum measured feedback was
+1.566 Nm at right hip pitch, 1.361 Nm at right knee, 1.251 Nm at left hip
+pitch, and 0.286 Nm among the ankle motors. Total tilt changed from 3.148 to
+3.061 degrees; its final three-second mean was 3.071 degrees. The remaining
+attitude offset stayed predominantly a steady roll near -3.064 degrees, while
+the final three-second mean pitch was -0.183 degrees. This qualifies this
+lower-support height for a sustained static repeat at the same gains and caps;
+it does not yet qualify another support reduction or a walking command.
+Evidence: `reports/native_protected_policy_preflight_20260923_113227.json`,
+`reports/native_policy_ipc_trace_20260923_113227.npz`,
+`reports/native_protected_policy_admission_20260923_113227.json`, and
+`reports/native_protected_policy_trace_20260923_113227.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
