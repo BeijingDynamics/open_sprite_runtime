@@ -434,6 +434,38 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  suspended_direction_audit_vx015_35nm_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_SUSPENDED_DIRECTION_AUDIT_VX015_35NM_20S
+    DURATION=20.0
+    GAIN_SCALE=0.11
+    DM3507_GAIN_MULTIPLIER=0.05
+    NON_HIP_GAIN_MULTIPLIER=0.4
+    LEG_GAIN_MULTIPLIER=0.48
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.48
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=3.5
+    LEG_FEEDBACK_CAP_NM=3.5
+    ANKLE_COMMAND_CAP_NM=3.5
+    ANKLE_FEEDBACK_CAP_NM=3.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=3.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=3.5
+    COMMAND_VX=0.15
+    SUPPORT_INSTRUCTION="Robot is securely suspended; both feet remain at least 4cm above the floor; start from the qualified policy pose; no contact and no disturbance; safety operator controls independent power cutoff; this test audits commanded-versus-measured joint direction and phase only"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   stand_leg_gain08_lowered_harness_static_20s_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_GAIN08_LOWERED_HARNESS_STATIC_20S
     DURATION=20.0
