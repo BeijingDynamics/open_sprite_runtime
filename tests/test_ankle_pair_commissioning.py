@@ -6,6 +6,7 @@ from open_sprite_runtime.ankle_pair_commissioning import (
     ANKLE_GROUPS,
     HEAD_GROUP,
     run_ankle_pair_joint_pd_gate,
+    run_ankle_pitch_direction_gate,
     run_ankle_pair_zero_torque_gate,
     run_head_pair_joint_pd_gate,
 )
@@ -169,6 +170,41 @@ class AnklePairCommissioningTests(unittest.TestCase):
         self.assertEqual(report.joint_kp_nm_rad, 0.2)
         self.assertEqual(report.maximum_joint_torque_nm, 0.05)
         self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_pitch_direction_gate_fails_closed_without_bidirectional_response(self):
+        endpoints, pair = fixture("right")
+        writer = Writer(endpoints)
+        clock = Clock()
+        report = run_ankle_pitch_direction_gate(
+            writer,
+            endpoints,
+            pair,
+            side="right",
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertFalse(report.passed)
+        self.assertIn(
+            "positive pitch command produced no qualified positive response",
+            report.errors,
+        )
+        self.assertIn(
+            "negative pitch command produced no qualified negative response",
+            report.errors,
+        )
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_pitch_direction_gate_rejects_wrong_endpoint_order(self):
+        endpoints, pair = fixture("right")
+        with self.assertRaisesRegex(ValueError, "frozen ordered pair"):
+            run_ankle_pitch_direction_gate(
+                Writer(tuple(reversed(endpoints))),
+                tuple(reversed(endpoints)),
+                pair,
+                side="right",
+                soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            )
 
 
 if __name__ == "__main__":

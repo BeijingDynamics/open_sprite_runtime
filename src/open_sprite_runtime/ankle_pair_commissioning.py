@@ -111,6 +111,53 @@ class AnkleJointPdReport:
         return {**asdict(self), "passed": self.passed}
 
 
+@dataclass(frozen=True)
+class AnklePitchDirectionReport:
+    side: str
+    interface: str
+    motor_names: tuple[str, str]
+    initial_joint_position_rad: dict[str, float]
+    final_joint_position_rad: dict[str, float]
+    requested_pitch_excursion_rad: float
+    maximum_positive_pitch_response_rad: float
+    minimum_negative_pitch_response_rad: float
+    minimum_required_response_rad: float
+    duration_s: float
+    rate_hz_per_motor: float
+    joint_kp_nm_rad: float
+    joint_kd_nm_s_rad: float
+    maximum_joint_torque_nm: float
+    command_count: dict[str, int]
+    feedback_count: dict[str, int]
+    enable_attempts: dict[str, int]
+    disable_attempts: dict[str, int]
+    maximum_abs_joint_velocity_rad_s: dict[str, float]
+    maximum_abs_joint_torque_command_nm: dict[str, float]
+    maximum_abs_motor_torque_command_nm: dict[str, float]
+    maximum_abs_estimated_motor_torque_nm: dict[str, float]
+    final_status: dict[str, str | None]
+    errors: tuple[str, ...]
+
+    @property
+    def passed(self) -> bool:
+        minimum_count = math.floor(self.duration_s * self.rate_hz_per_motor * 0.95)
+        return (
+            not self.errors
+            and self.maximum_positive_pitch_response_rad
+            >= self.minimum_required_response_rad
+            and self.minimum_negative_pitch_response_rad
+            <= -self.minimum_required_response_rad
+            and all(value >= minimum_count for value in self.command_count.values())
+            and all(value >= minimum_count for value in self.feedback_count.values())
+            and all(value == 1 for value in self.enable_attempts.values())
+            and all(value >= 3 for value in self.disable_attempts.values())
+            and all(value == "disabled" for value in self.final_status.values())
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {**asdict(self), "passed": self.passed}
+
+
 def _receive(
     writer: Any,
     endpoint: DamiaoFeedbackEndpoint,
@@ -529,6 +576,261 @@ def run_ankle_pair_joint_pd_gate(
         maximum_joint_position_error=0.08,
         monotonic=monotonic,
         sleep=sleep,
+    )
+
+
+def run_ankle_pitch_direction_gate(
+    writer: Any,
+    endpoints: Sequence[DamiaoFeedbackEndpoint],
+    pair: DifferentialPairDriveMap,
+    *,
+    side: str,
+    soft_position_rad: Mapping[str, tuple[float, float]],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> AnklePitchDirectionReport:
+    """Exercise a fully unloaded ankle pitch in both directions at 500 Hz."""
+    if side not in ANKLE_GROUPS:
+        raise ValueError("ankle side must be left or right")
+    expected = ANKLE_GROUPS[side]
+    selected = tuple(endpoints)
+    identity = tuple(
+        (item.motor_name, item.interface, item.can_id, item.master_id) for item in selected
+    )
+    if identity != expected or tuple(pair.motor_names) != tuple(item[0] for item in expected):
+        raise ValueError("ankle direction gate does not match the frozen ordered pair")
+    names = tuple(item.motor_name for item in selected)
+    interface = expected[0][1]
+    if writer.interface != interface or set(soft_position_rad) != set(names):
+        raise ValueError("ankle direction writer or soft-limit coverage mismatch")
+
+    duration_s = 4.5
+    rate_hz = 500.0
+    period = 1.0 / rate_hz
+    feedback_timeout_s = 0.02
+    excursion = 0.03
+    minimum_response = 0.002
+    joint_kp = 4.0
+    joint_kd = 0.05
+    maximum_joint_torque = 0.15
+    maximum_motor_torque = 0.25
+    maximum_motor_velocity = 0.30
+    maximum_joint_displacement = 0.08
+
+    errors: list[str] = []
+    initial_motor: dict[str, float] = {}
+    initial_joint: dict[str, float] = {}
+    final_joint: dict[str, float] = {}
+    latest: dict[str, DamiaoFeedback] = {}
+    command_count = {name: 0 for name in names}
+    feedback_count = {name: 0 for name in names}
+    max_joint_velocity = {name: 0.0 for name in pair.joint_names}
+    max_joint_torque = {name: 0.0 for name in pair.joint_names}
+    max_motor_command = {name: 0.0 for name in names}
+    max_motor_estimated = {name: 0.0 for name in names}
+    final_status: dict[str, str | None] = {name: None for name in names}
+    maximum_positive_response = 0.0
+    minimum_negative_response = 0.0
+
+    def pitch_scale(elapsed: float) -> float:
+        if elapsed < 0.5:
+            return 0.0
+        if elapsed < 1.0:
+            return (elapsed - 0.5) / 0.5
+        if elapsed < 1.5:
+            return 1.0
+        if elapsed < 2.0:
+            return 1.0 - (elapsed - 1.5) / 0.5
+        if elapsed < 2.5:
+            return 0.0
+        if elapsed < 3.0:
+            return -(elapsed - 2.5) / 0.5
+        if elapsed < 3.5:
+            return -1.0
+        if elapsed < 4.0:
+            return -1.0 + (elapsed - 3.5) / 0.5
+        return 0.0
+
+    try:
+        for endpoint in selected:
+            writer.send_command(encode_zero_gain_position_echo(endpoint, 0.0))
+            feedback = _receive(
+                writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
+            )
+            if feedback.status_name != "disabled":
+                raise RuntimeError(f"{endpoint.motor_name} must start disabled")
+            low, high = soft_position_rad[endpoint.motor_name]
+            if not low + 0.10 <= feedback.position_rad <= high - 0.10:
+                raise RuntimeError(f"{endpoint.motor_name} lacks direction-test margin")
+            initial_motor[endpoint.motor_name] = feedback.position_rad
+            latest[endpoint.motor_name] = feedback
+
+        initial_values = pair.drive_to_joint_position([initial_motor[name] for name in names])
+        if len(initial_values) != 2 or not all(
+            math.isfinite(float(value)) for value in initial_values
+        ):
+            raise RuntimeError("ankle direction reconstruction is not finite")
+        initial_joint = dict(zip(pair.joint_names, map(float, initial_values), strict=True))
+        pitch_initial = float(initial_values[0])
+        roll_initial = float(initial_values[1])
+        for sign in (-1.0, 1.0):
+            target_motor = pair.joint_to_drive_position(
+                [pitch_initial + sign * excursion, roll_initial]
+            )
+            for index, name in enumerate(names):
+                low, high = soft_position_rad[name]
+                if not low + 0.05 <= float(target_motor[index]) <= high - 0.05:
+                    raise RuntimeError(f"{name} target lacks soft-limit margin")
+
+        for endpoint in selected:
+            writer.send_command(
+                encode_zero_gain_position_echo(endpoint, initial_motor[endpoint.motor_name])
+            )
+            prepared = _receive(
+                writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
+            )
+            if prepared.status_name != "disabled":
+                raise RuntimeError(f"{endpoint.motor_name} changed status during preparation")
+            latest[endpoint.motor_name] = prepared
+        for endpoint in selected:
+            writer.send_enable(endpoint.motor_name)
+
+        start = monotonic()
+        next_cycle = start
+        while monotonic() - start < duration_s:
+            now = monotonic()
+            if now < next_cycle:
+                sleep(min(next_cycle - now, 0.0001))
+                continue
+            elapsed = now - start
+            motor_position = [latest[name].position_rad for name in names]
+            motor_velocity = [latest[name].velocity_rad_s for name in names]
+            joint_position = pair.drive_to_joint_position(motor_position)
+            joint_velocity = pair.drive_to_joint_velocity(motor_velocity)
+            pitch_response = float(joint_position[0]) - pitch_initial
+            maximum_positive_response = max(maximum_positive_response, pitch_response)
+            minimum_negative_response = min(minimum_negative_response, pitch_response)
+            if abs(pitch_response) > maximum_joint_displacement:
+                raise RuntimeError("ankle pitch displacement guard tripped")
+            if abs(float(joint_position[1]) - roll_initial) > maximum_joint_displacement:
+                raise RuntimeError("ankle roll displacement guard tripped")
+
+            desired = (pitch_initial + pitch_scale(elapsed) * excursion, roll_initial)
+            joint_torque: list[float] = []
+            for index, joint_name in enumerate(pair.joint_names):
+                velocity = float(joint_velocity[index])
+                torque = joint_kp * (desired[index] - float(joint_position[index]))
+                torque -= joint_kd * velocity
+                torque = max(-maximum_joint_torque, min(maximum_joint_torque, torque))
+                max_joint_velocity[joint_name] = max(
+                    max_joint_velocity[joint_name], abs(velocity)
+                )
+                max_joint_torque[joint_name] = max(
+                    max_joint_torque[joint_name], abs(torque)
+                )
+                if abs(velocity) > maximum_motor_velocity:
+                    raise RuntimeError(f"{joint_name} velocity guard tripped")
+                joint_torque.append(torque)
+            motor_torque = pair.joint_to_drive_torque(joint_torque)
+            if any(abs(float(value)) > maximum_motor_torque for value in motor_torque):
+                raise RuntimeError("mapped ankle direction motor torque guard tripped")
+
+            for index, endpoint in enumerate(selected):
+                name = endpoint.motor_name
+                torque = float(motor_torque[index])
+                low, high = soft_position_rad[name]
+                command = encode_damiao_mit_command(
+                    endpoint,
+                    DamiaoMitCommand(latest[name].position_rad, 0.0, 0.0, 0.0, torque),
+                    DamiaoMitState(latest[name].position_rad, latest[name].velocity_rad_s),
+                    DamiaoMitCommandEnvelope(
+                        position_rad=(low, high),
+                        maximum_velocity_rad_s=maximum_motor_velocity,
+                        maximum_feedforward_torque_nm=maximum_motor_torque,
+                        maximum_output_torque_nm=maximum_motor_torque,
+                    ),
+                )
+                writer.send_command(command)
+                command_count[name] += 1
+                max_motor_command[name] = max(max_motor_command[name], abs(torque))
+                feedback = _receive(
+                    writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
+                )
+                feedback_count[name] += 1
+                if feedback.status_name != "enabled":
+                    raise RuntimeError(f"{name} status must be enabled")
+                if abs(feedback.velocity_rad_s) > maximum_motor_velocity:
+                    raise RuntimeError(f"{name} velocity guard tripped")
+                estimated = abs(feedback.estimated_output_torque_nm)
+                max_motor_estimated[name] = max(max_motor_estimated[name], estimated)
+                if estimated > maximum_motor_torque:
+                    raise RuntimeError(f"{name} estimated-torque guard tripped")
+                latest[name] = feedback
+            next_cycle += period
+            if next_cycle <= monotonic():
+                next_cycle = monotonic() + period
+
+        final_values = pair.drive_to_joint_position([latest[name].position_rad for name in names])
+        final_joint = dict(zip(pair.joint_names, map(float, final_values), strict=True))
+        if maximum_positive_response < minimum_response:
+            errors.append("positive pitch command produced no qualified positive response")
+        if minimum_negative_response > -minimum_response:
+            errors.append("negative pitch command produced no qualified negative response")
+    except BaseException as exc:
+        errors.append(str(exc))
+    finally:
+        for _ in range(3):
+            for endpoint in selected:
+                try:
+                    writer.send_disable(endpoint.motor_name)
+                except BaseException as exc:
+                    errors.append(f"{endpoint.motor_name} disable failed: {exc}")
+            sleep(0.01)
+        for endpoint in selected:
+            name = endpoint.motor_name
+            deadline = monotonic() + 0.5
+            last_error: str | None = None
+            while final_status[name] != "disabled" and monotonic() < deadline:
+                try:
+                    writer.send_disable(name)
+                    writer.send_command(
+                        encode_zero_gain_position_echo(endpoint, initial_motor.get(name, 0.0))
+                    )
+                    feedback = _receive(
+                        writer, endpoint, feedback_timeout_s, monotonic=monotonic, sleep=sleep
+                    )
+                    final_status[name] = feedback.status_name
+                except BaseException as exc:
+                    last_error = str(exc)
+            if final_status[name] != "disabled":
+                detail = f": {last_error}" if last_error else ""
+                errors.append(f"{name} final disabled verification failed{detail}")
+
+    return AnklePitchDirectionReport(
+        side=side,
+        interface=interface,
+        motor_names=names,
+        initial_joint_position_rad=initial_joint,
+        final_joint_position_rad=final_joint,
+        requested_pitch_excursion_rad=excursion,
+        maximum_positive_pitch_response_rad=maximum_positive_response,
+        minimum_negative_pitch_response_rad=minimum_negative_response,
+        minimum_required_response_rad=minimum_response,
+        duration_s=duration_s,
+        rate_hz_per_motor=rate_hz,
+        joint_kp_nm_rad=joint_kp,
+        joint_kd_nm_s_rad=joint_kd,
+        maximum_joint_torque_nm=maximum_joint_torque,
+        command_count=command_count,
+        feedback_count=feedback_count,
+        enable_attempts=dict(writer.enable_attempts),
+        disable_attempts=dict(writer.disable_attempts),
+        maximum_abs_joint_velocity_rad_s=max_joint_velocity,
+        maximum_abs_joint_torque_command_nm=max_joint_torque,
+        maximum_abs_motor_torque_command_nm=max_motor_command,
+        maximum_abs_estimated_motor_torque_nm=max_motor_estimated,
+        final_status=final_status,
+        errors=tuple(errors),
     )
 
 
