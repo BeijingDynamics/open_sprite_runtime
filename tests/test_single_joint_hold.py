@@ -6,6 +6,7 @@ from open_sprite_runtime.single_joint_hold import (
     _quintic_smoothstep,
     run_head_yaw_low_gain_hold,
     run_head_yaw_low_gain_motion,
+    run_right_hip_yaw_low_gain_motion,
     run_right_wrist_roll_low_gain_hold,
     run_right_wrist_roll_low_gain_motion,
 )
@@ -283,6 +284,30 @@ class SingleJointMotionTests(unittest.TestCase):
         self.assertGreater(
             report.measured_maximum_position_rad - report.initial_position_rad,
             math.radians(4.9),
+        )
+        self.assertEqual(report.final_status, "disabled")
+
+    def test_right_hip_yaw_motion_tracks_both_sides_and_disables(self):
+        hip = DamiaoFeedbackEndpoint(
+            "right_hip_yaw_motor", "kcan2", 3, 0x13, endpoint().ranges
+        )
+        clock = Clock()
+        writer = FakeWriter(hip, track_command=True)
+        report = run_right_hip_yaw_low_gain_motion(
+            writer, hip, soft_position_rad=(-2.69, 2.69),
+            monotonic=clock, sleep=clock.sleep,
+        )
+        self.assertTrue(report.passed, report.errors)
+        self.assertGreater(
+            report.measured_maximum_position_rad - report.initial_position_rad,
+            math.radians(4.9),
+        )
+        self.assertLess(
+            report.measured_minimum_position_rad - report.initial_position_rad,
+            -math.radians(4.9),
+        )
+        self.assertAlmostEqual(
+            report.final_measured_position_rad, report.initial_position_rad, delta=0.001
         )
         self.assertEqual(report.final_status, "disabled")
 

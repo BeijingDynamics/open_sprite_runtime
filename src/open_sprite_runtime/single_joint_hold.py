@@ -389,7 +389,25 @@ def run_head_yaw_low_gain_motion(
         100,
         80,
     )
-    if requested_profile not in (micro_profile, visible_profile, wrist_profile):
+    hip_yaw_profile = (
+        math.radians(5.0),
+        4.0,
+        1.0,
+        50.0,
+        8.0,
+        0.3,
+        0.12,
+        0.6,
+        1.0,
+        100,
+        80,
+    )
+    if requested_profile not in (
+        micro_profile,
+        visible_profile,
+        wrist_profile,
+        hip_yaw_profile,
+    ):
         raise ValueError("single-joint powered-motion trajectory, gains, and guards are frozen")
     soft_low, soft_high = map(float, soft_position_rad)
     if soft_low >= soft_high:
@@ -618,4 +636,32 @@ def run_right_wrist_roll_low_gain_motion(
         sleep=sleep,
         _expected_endpoint=("right_wrist_roll_motor", "kcan4", 7),
         _joint_to_motor_sign=-1,
+    )
+
+
+def run_right_hip_yaw_low_gain_motion(
+    writer: Any,
+    endpoint: DamiaoFeedbackEndpoint,
+    *,
+    soft_position_rad: tuple[float, float],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> SingleJointMotionReport:
+    """Frozen joint-space +/-5 degree motion for the unloaded right hip yaw."""
+    return run_head_yaw_low_gain_motion(
+        writer,
+        endpoint,
+        soft_position_rad=soft_position_rad,
+        excursion_rad=math.radians(5.0),
+        transition_s=4.0,
+        dwell_s=1.0,
+        kp=8.0,
+        kd=0.3,
+        maximum_position_error_rad=0.12,
+        maximum_velocity_rad_s=0.6,
+        maximum_torque_nm=1.0,
+        monotonic=monotonic,
+        sleep=sleep,
+        _expected_endpoint=("right_hip_yaw_motor", "kcan2", 3),
+        _joint_to_motor_sign=1,
     )
