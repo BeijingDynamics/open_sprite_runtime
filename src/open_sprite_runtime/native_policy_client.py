@@ -14,9 +14,11 @@ import time
 
 import numpy as np
 
+from .action_trace_replay import CenteredActionTraceReplay
 from .contracts import PolicyContract
 from .damiao import DamiaoMitState
 from .motor_mapping import motor_map_from_hardware_config
+from .multirate_control import JointImpedanceTarget
 from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
 from .physical_startup import PhysicalStartupRamp
 from .policy_shadow import LivePolicyShadow
@@ -65,6 +67,17 @@ def run(args: argparse.Namespace) -> dict:
         hardware, contract.data["joint_names"], require_armable=False
     )
     shadow = LivePolicyShadow(contract, hardware, mapping, (args.vx, args.vy, args.yaw_rate))
+    action_replay = None
+    replay_center: np.ndarray | None = None
+    if args.replay_action_trace:
+        action_replay = CenteredActionTraceReplay.load(
+            args.replay_action_trace,
+            np.asarray(contract.data["action_scale"], dtype=np.float64),
+            source_hz=args.replay_source_hz,
+            start_seconds=args.replay_start_seconds,
+            duration_seconds=args.replay_duration_seconds,
+            amplitude_scale=args.replay_amplitude_scale,
+        )
     projector = None
     if args.joint_limit_candidates:
         joint_names = tuple(contract.data["joint_names"])
@@ -129,6 +142,7 @@ def run(args: argparse.Namespace) -> dict:
             "raw_action": [],
             "handoff_action": [],
             "target_position_rad": [],
+            "command_target_position_rad": [],
             "projected_target_position_rad": [],
             "projected_target_velocity_rad_s": [],
             "projected_kp": [],
@@ -210,6 +224,19 @@ def run(args: argparse.Namespace) -> dict:
                     policy_trace = shadow.last_policy_trace
                     if policy_trace is None:
                         raise RuntimeError("policy trace was not captured")
+                    if action_replay is not None:
+                        if replay_center is None:
+                            replay_center = policy_trace.joint_position_rad.copy()
+                        target = JointImpedanceTarget(
+                            position_rad=(
+                                replay_center
+                                + action_replay.position_delta(target_count)
+                            ),
+                            velocity_rad_s=np.zeros(31),
+                            kp=target.kp.copy(),
+                            kd=target.kd.copy(),
+                            feedforward_torque_nm=np.zeros(31),
+                        )
                     raw_target = target
                     if projector is not None:
                         target = projector.project(raw_target)
@@ -251,6 +278,9 @@ def run(args: argparse.Namespace) -> dict:
                             "target_position_rad",
                         ):
                             trace[field].append(getattr(policy_trace, field))
+                        trace["command_target_position_rad"].append(
+                            raw_target.position_rad
+                        )
                         trace["projected_target_position_rad"].append(
                             projected_target.position_rad
                         )
@@ -325,6 +355,11 @@ def run(args: argparse.Namespace) -> dict:
         "physical_startup_ramp": (
             startup.report() if startup is not None else {"enabled": False}
         ),
+        "action_trace_replay": (
+            action_replay.report()
+            if action_replay is not None
+            else {"enabled": False}
+        ),
         "trace_output": str(Path(args.trace_output).resolve()) if args.trace_output else None,
         "trace_sha256": trace_sha256,
         "trace_tick_count": len(trace["state_sequence"]) if trace is not None else 0,
@@ -381,6 +416,11 @@ def main() -> None:
     )
     parser.add_argument("--physical-startup-hold-seconds", type=float, default=0.0)
     parser.add_argument("--physical-startup-ramp-seconds", type=float, default=0.0)
+    parser.add_argument("--replay-action-trace")
+    parser.add_argument("--replay-source-hz", type=float, default=50.0)
+    parser.add_argument("--replay-start-seconds", type=float, default=10.0)
+    parser.add_argument("--replay-duration-seconds", type=float, default=20.0)
+    parser.add_argument("--replay-amplitude-scale", type=float, default=0.2)
     args = parser.parse_args()
     report = run(args)
     print(json.dumps(report, indent=2))

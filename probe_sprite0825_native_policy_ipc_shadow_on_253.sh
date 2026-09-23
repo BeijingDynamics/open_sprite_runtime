@@ -13,6 +13,11 @@ NON_HIP_GAIN_MULTIPLIER="${7:-1.0}"
 LEG_GAIN_MULTIPLIER="${8:-$NON_HIP_GAIN_MULTIPLIER}"
 ANKLE_GAIN_MULTIPLIER="${9:-$LEG_GAIN_MULTIPLIER}"
 HIP_GAIN_MULTIPLIER="${10:-1.0}"
+REPLAY_ACTION_TRACE="${SPRITE_REPLAY_ACTION_TRACE:-}"
+REPLAY_SOURCE_HZ="${SPRITE_REPLAY_SOURCE_HZ:-50.0}"
+REPLAY_START_SECONDS="${SPRITE_REPLAY_START_SECONDS:-10.0}"
+REPLAY_DURATION_SECONDS="${SPRITE_REPLAY_DURATION_SECONDS:-20.0}"
+REPLAY_AMPLITUDE_SCALE="${SPRITE_REPLAY_AMPLITUDE_SCALE:-0.2}"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_policy_ipc_transport_${STAMP}.json"
@@ -39,6 +44,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
 
 NATIVE_SAFETY_ARGS=()
 POLICY_SAFETY_ARGS=()
+POLICY_REPLAY_ARGS=()
 JOINT_GAIN_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
@@ -47,6 +53,19 @@ if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
     right_wrist_pitch_joint right_wrist_roll_joint; do
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
   done
+fi
+if [[ -n "$REPLAY_ACTION_TRACE" ]]; then
+  [[ -f "$REPLAY_ACTION_TRACE" ]] || {
+    echo "Replay action trace not found: $REPLAY_ACTION_TRACE" >&2
+    exit 1
+  }
+  POLICY_REPLAY_ARGS=(
+    --replay-action-trace "$REPLAY_ACTION_TRACE"
+    --replay-source-hz "$REPLAY_SOURCE_HZ"
+    --replay-start-seconds "$REPLAY_START_SECONDS"
+    --replay-duration-seconds "$REPLAY_DURATION_SECONDS"
+    --replay-amplitude-scale "$REPLAY_AMPLITUDE_SCALE"
+  )
 fi
 if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
@@ -121,6 +140,7 @@ echo "LEG_GAIN_MULTIPLIER $LEG_GAIN_MULTIPLIER"
 echo "ANKLE_GAIN_MULTIPLIER $ANKLE_GAIN_MULTIPLIER"
 echo "HIP_GAIN_MULTIPLIER $HIP_GAIN_MULTIPLIER"
 echo "COMMAND_VX $COMMAND_VX"
+echo "ACTION_TRACE_REPLAY ${REPLAY_ACTION_TRACE:-disabled} amplitude=${REPLAY_AMPLITUDE_SCALE}"
 
 "$ROOT/build/native/sprite_can_shadow" \
   --config "$ROOT/build/native/motors.tsv" \
@@ -168,6 +188,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
   --vx "$COMMAND_VX" --vy 0 --yaw-rate 0 \
+  "${POLICY_REPLAY_ARGS[@]}" \
   "${POLICY_SAFETY_ARGS[@]}" \
   --output "$POLICY_REPORT" \
   --trace-output "$POLICY_TRACE"

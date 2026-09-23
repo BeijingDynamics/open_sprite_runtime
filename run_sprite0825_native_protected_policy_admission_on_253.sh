@@ -20,6 +20,8 @@ ANKLE_GAIN_MULTIPLIER=""
 HIP_GAIN_MULTIPLIER=1.0
 EXTENDED_NATIVE_ACK_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
+POLICY_REPLAY_ARGS=()
+REPLAY_ACTION_TRACE=""
 SUPPORT_INSTRUCTION="Robot must remain suspended"
 
 case "$TIER" in
@@ -467,6 +469,46 @@ case "$TIER" in
       --clamp-watchdog-maximum-consecutive-ticks 5
     )
     ;;
+  suspended_trace_direction_audit_scale020_35nm_20s_tier)
+    EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_SUSPENDED_TRACE_DIRECTION_AUDIT_SCALE020_35NM_20S
+    DURATION=20.0
+    GAIN_SCALE=0.11
+    DM3507_GAIN_MULTIPLIER=0.05
+    NON_HIP_GAIN_MULTIPLIER=0.4
+    LEG_GAIN_MULTIPLIER=0.48
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=0.48
+    MAXIMUM_COMMAND_TORQUE_NM=1.0
+    LEG_COMMAND_CAP_NM=3.5
+    LEG_FEEDBACK_CAP_NM=3.5
+    ANKLE_COMMAND_CAP_NM=3.5
+    ANKLE_FEEDBACK_CAP_NM=3.5
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=3.5
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=3.5
+    COMMAND_VX=0.15
+    REPLAY_ACTION_TRACE="/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate/evaluation/mujoco_matrix/straight_60s_trace.json"
+    POLICY_REPLAY_ARGS=(
+      --replay-action-trace "$REPLAY_ACTION_TRACE"
+      --replay-source-hz 50.0
+      --replay-start-seconds 10.0
+      --replay-duration-seconds 20.0
+      --replay-amplitude-scale 0.2
+    )
+    SUPPORT_INSTRUCTION="Robot is securely suspended; both feet remain at least 4cm above the floor; start from the qualified policy pose; no contact and no disturbance; safety operator controls independent power cutoff; replays a centered 20-percent-amplitude qualified MuJoCo policy action trace for direction audit only"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
+    for joint in \
+      left_ankle_pitch_joint right_ankle_pitch_joint \
+      left_ankle_roll_joint right_ankle_roll_joint; do
+      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
+    done
+    CLAMP_WATCHDOG_ARGS+=(
+      --clamp-watchdog-minimum-overshoot-rad 0.05
+      --clamp-watchdog-maximum-consecutive-ticks 5
+    )
+    ;;
   stand_leg_gain08_lowered_harness_static_20s_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_LEG_GAIN08_LOWERED_HARNESS_STATIC_20S
     DURATION=20.0
@@ -542,6 +584,11 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
 
 echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
 echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
+SPRITE_REPLAY_ACTION_TRACE="$REPLAY_ACTION_TRACE" \
+SPRITE_REPLAY_SOURCE_HZ=50.0 \
+SPRITE_REPLAY_START_SECONDS=10.0 \
+SPRITE_REPLAY_DURATION_SECONDS=20.0 \
+SPRITE_REPLAY_AMPLITUDE_SCALE=0.2 \
 "$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
   "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
@@ -794,6 +841,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
   --vx "$COMMAND_VX" --vy 0 --yaw-rate 0 \
+  "${POLICY_REPLAY_ARGS[@]}" \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
   "${JOINT_GAIN_ARGS[@]}" \

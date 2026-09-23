@@ -43,7 +43,12 @@ def main() -> None:
     limits = limits_data["joint_limits"]
     with np.load(args.trace, allow_pickle=False) as trace:
         names = tuple(str(value) for value in trace["joint_names"])
-        raw = np.asarray(trace["target_position_rad"], dtype=np.float64)
+        raw_key = (
+            "command_target_position_rad"
+            if "command_target_position_rad" in trace.files
+            else "target_position_rad"
+        )
+        raw = np.asarray(trace[raw_key], dtype=np.float64)
         projected = np.asarray(
             trace["projected_target_position_rad"], dtype=np.float64
         )
