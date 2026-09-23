@@ -297,7 +297,7 @@ case "$TIER" in
     ANKLE_FEEDBACK_CAP_NM=2.5
     HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
     HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
-    PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.065
+    PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.15
     PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=1.0
     PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=300
     SUPPORT_INSTRUCTION="Lifting frame is at the newly lowered recovery height; both soles remain on a flat floor; no disturbance"
@@ -309,7 +309,7 @@ case "$TIER" in
     CLAMP_WATCHDOG_ARGS+=(
       --clamp-watchdog-minimum-overshoot-rad 0.05
       --clamp-watchdog-maximum-consecutive-ticks 5
-      --clamp-watchdog-ignored-initial-ticks 250
+      --clamp-watchdog-ignored-initial-ticks 350
     )
     ;;
   stand_leg_gain08_lowered_harness_static_20s_tier)

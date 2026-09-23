@@ -684,14 +684,23 @@ The raw target exceeded the unchanged -0.386 rad soft boundary by at most
 retains gain 0.08 and the one-second hold plus four-second smooth ramp, permits
 3.0 Nm command and 3.5 Nm feedback only for knee and hip yaw, retains 4.5/5.0
 Nm for hip pitch/roll, and retains 2.2/2.5 Nm for the ankle motors. Target
-projection remains active. The ankle clamp watchdog records but does not trip
-during the 250-tick startup hold/ramp, then immediately resumes its original
-0.05 rad/five-tick gate. A zero-gain replay accepted the reviewed 0.065 rad
-startup projection ceiling and 0.10 horizontal-gravity ceiling. Active recovery
-still requires a separate explicit approval. Evidence:
+projection remains active. The first explicitly approved recovery attempt did
+not enable any motor: its repeated preflight found that the unloaded pose had
+sagged further, increasing the stable right-ankle raw-target overshoot from
+0.0583 to about 0.125 rad. Two zero-gain samples reproduced that value while
+the right-knee preview remained about 2.35 Nm. The recovery-only preflight
+ceiling is therefore 0.15 rad, while projection continues to prevent that raw
+target from reaching hardware. The ankle clamp watchdog records but does not
+trip during the first 350 ticks (seven seconds), leaving the final second under
+the original 0.05 rad/five-tick gate. If the policy has not moved out of the
+infeasible-target regime by then, control disables automatically. The
+horizontal-gravity ceiling remains 0.10. This revised active recovery requires
+a new explicit approval. Evidence:
 `reports/native_policy_ipc_transport_20260923_114557.json`,
-`reports/native_policy_ipc_trace_20260923_114557.npz`, and
-`reports/native_recovery_preflight_review_20260923_114557.json`.
+`reports/native_policy_ipc_trace_20260923_114557.npz`,
+`reports/native_recovery_preflight_review_20260923_114557.json`,
+`reports/native_policy_ipc_trace_20260923_115919.npz`, and
+`reports/native_policy_ipc_trace_20260923_120058.npz`.
 
 ## First milestone
 

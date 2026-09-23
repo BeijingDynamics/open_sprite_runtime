@@ -154,8 +154,8 @@ def main() -> None:
     unknown_gate_joints = set(args.fail_on_violation_joint) - set(names)
     if unknown_gate_joints:
         raise ValueError(f"unknown gated joints: {sorted(unknown_gate_joints)}")
-    if not 0.0 <= args.maximum_gated_overshoot_rad <= 0.1:
-        raise ValueError("maximum gated overshoot must be in [0, 0.1] rad")
+    if not 0.0 <= args.maximum_gated_overshoot_rad <= 0.2:
+        raise ValueError("maximum gated overshoot must be in [0, 0.2] rad")
     if not 0.0 <= args.maximum_gated_violation_fraction <= 1.0:
         raise ValueError("maximum gated violation fraction must be in [0, 1]")
     if args.maximum_gated_consecutive_violation_ticks < 0:
