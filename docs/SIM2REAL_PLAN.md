@@ -591,6 +591,23 @@ standing start pose and a fresh zero-gain gate. Evidence:
 `reports/native_policy_ipc_transport_20260923_111343.json`, and
 `reports/native_policy_ipc_trace_20260923_111343.npz`.
 
+After the right ankle was manually repositioned again, the zero-gain readiness
+gate completed with no projection or clamp and estimated at most 1.84 Nm, so
+the owner's available 3.5 Nm leg ceiling was not needed. The explicitly
+authorized eight-second active test therefore retained the more conservative
+2.0 Nm non-hip leg command cap, 2.2 Nm feedback cap, and 4.5/5.0 Nm hip
+pitch/roll caps. It completed with zero deadline misses, no ankle clamp, and all
+31 motors verified disabled. Total tilt decreased from 3.29 to 2.59 degrees;
+pitch improved from about -2.00 to -0.80 degrees. Maximum measured feedback was
+1.374 Nm at left hip pitch, 1.320 Nm at right hip pitch, 0.745 Nm at the right
+knee, and 0.295 Nm among the ankle motors. The joint trajectories moved
+smoothly toward their policy targets without approaching a reviewed position
+boundary. This qualifies the adjusted pose for a 20-second repeat at identical
+support height and limits, without disturbance; it does not qualify reduced
+support or walking. Evidence:
+`reports/native_protected_policy_admission_20260923_112015.json` and
+`reports/native_protected_policy_trace_20260923_112015.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
