@@ -206,6 +206,38 @@ class AnklePairCommissioningTests(unittest.TestCase):
                 soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
             )
 
+    def test_observable_pitch_tier_uses_bounded_higher_excitation(self):
+        endpoints, pair = fixture("right")
+        writer = Writer(endpoints)
+        clock = Clock()
+        report = run_ankle_pitch_direction_gate(
+            writer,
+            endpoints,
+            pair,
+            side="right",
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            excitation_tier="observable",
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertFalse(report.passed)
+        self.assertEqual(report.joint_kp_nm_rad, 16.0)
+        self.assertEqual(report.maximum_joint_torque_nm, 0.5)
+        self.assertLessEqual(max(report.maximum_abs_motor_torque_command_nm.values()), 0.3)
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
+    def test_pitch_direction_gate_rejects_unknown_excitation_tier(self):
+        endpoints, pair = fixture("right")
+        with self.assertRaisesRegex(ValueError, "unknown ankle pitch-direction"):
+            run_ankle_pitch_direction_gate(
+                Writer(endpoints),
+                endpoints,
+                pair,
+                side="right",
+                soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+                excitation_tier="unbounded",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

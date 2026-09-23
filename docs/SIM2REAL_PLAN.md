@@ -725,6 +725,24 @@ fault from insufficient torque under support load. Evidence:
 `reports/native_protected_policy_actor_20260923_120632.json`, and
 `reports/native_protected_policy_trace_20260923_120632.npz`.
 
+The first separately approved, fully unloaded right-ankle bidirectional pitch
+diagnostic also failed closed, but it did not show a reversed response. The
+500 Hz test requested +0.03 rad, returned to zero, requested -0.03 rad, and
+returned to zero with a 0.15 Nm joint-torque cap. Both motors delivered 2249
+commands and feedback samples and were verified disabled, while kcan2 remained
+ERROR-ACTIVE with zero CAN errors. The reconstructed pitch response was 0 in
+the positive direction and only -0.000146 rad in the negative direction. The
+0.12 Nm maximum pitch command mapped to only 0.0457/0.0463 Nm at the two
+motors, comparable to their 0.0659/0.0708 Nm peak estimated-feedback values.
+This result is therefore inconclusive on direction and indicates that the
+first diagnostic excitation was below mechanism friction and telemetry
+resolution. Do not change the differential signs from this evidence. A second
+active diagnostic, if separately approved, should keep the foot fully unloaded
+and the same displacement, timing, limits, watchdogs, and automatic disable,
+while raising only the joint-torque excitation enough to produce roughly
+0.2 Nm per motor. Evidence:
+`reports/right_ankle_pitch_direction_500hz_20260923_123036.json`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and

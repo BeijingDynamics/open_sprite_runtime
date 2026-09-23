@@ -586,6 +586,7 @@ def run_ankle_pitch_direction_gate(
     *,
     side: str,
     soft_position_rad: Mapping[str, tuple[float, float]],
+    excitation_tier: str = "low",
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
 ) -> AnklePitchDirectionReport:
@@ -610,11 +611,20 @@ def run_ankle_pitch_direction_gate(
     feedback_timeout_s = 0.02
     excursion = 0.03
     minimum_response = 0.002
-    joint_kp = 4.0
-    joint_kd = 0.05
-    maximum_joint_torque = 0.15
-    maximum_motor_torque = 0.25
-    maximum_motor_velocity = 0.30
+    if excitation_tier == "low":
+        joint_kp = 4.0
+        joint_kd = 0.05
+        maximum_joint_torque = 0.15
+        maximum_motor_torque = 0.25
+        maximum_motor_velocity = 0.30
+    elif excitation_tier == "observable":
+        joint_kp = 16.0
+        joint_kd = 0.10
+        maximum_joint_torque = 0.50
+        maximum_motor_torque = 0.30
+        maximum_motor_velocity = 0.40
+    else:
+        raise ValueError("unknown ankle pitch-direction excitation tier")
     maximum_joint_displacement = 0.08
 
     errors: list[str] = []

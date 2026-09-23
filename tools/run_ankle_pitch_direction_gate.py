@@ -23,6 +23,9 @@ from open_sprite_runtime.socketcan import (
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--side", choices=("left", "right"), required=True)
+    parser.add_argument(
+        "--excitation-tier", choices=("low", "observable"), default="low"
+    )
     parser.add_argument("--hardware", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
     parser.add_argument("--socketcan-snapshot", type=Path, required=True)
@@ -33,7 +36,11 @@ def main() -> None:
     parser.add_argument("--ankle-clear", action="store_true")
     parser.add_argument("--confirm-hardware-tx", required=True)
     args = parser.parse_args()
-    acknowledgement = f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_GATE"
+    acknowledgement = (
+        f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_GATE"
+        if args.excitation_tier == "low"
+        else f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_OBSERVABLE_GATE"
+    )
     if not (
         args.robot_supported
         and args.tested_foot_unloaded
@@ -90,10 +97,29 @@ def main() -> None:
             pair,
             side=args.side,
             soft_position_rad=soft_limits,
+            excitation_tier=args.excitation_tier,
         )
+    envelope = (
+        {
+            "joint_kp_nm_rad": 4.0,
+            "joint_kd_nm_s_rad": 0.05,
+            "maximum_joint_torque_nm": 0.15,
+            "maximum_motor_torque_nm": 0.25,
+            "maximum_motor_velocity_rad_s": 0.30,
+        }
+        if args.excitation_tier == "low"
+        else {
+            "joint_kp_nm_rad": 16.0,
+            "joint_kd_nm_s_rad": 0.10,
+            "maximum_joint_torque_nm": 0.50,
+            "maximum_motor_torque_nm": 0.30,
+            "maximum_motor_velocity_rad_s": 0.40,
+        }
+    )
     report = {
         "mode": "unloaded_ankle_bidirectional_pitch_response_500hz_gate",
         "side": args.side,
+        "excitation_tier": args.excitation_tier,
         "preflight": preflight.to_dict(),
         "calibration_source": pair_record.get("source"),
         "joint_to_motor_matrix": pair_record["joint_to_motor_matrix"],
@@ -102,11 +128,7 @@ def main() -> None:
             "duration_s": 4.5,
             "rate_hz_per_motor": 500.0,
             "pitch_excursion_rad": 0.03,
-            "joint_kp_nm_rad": 4.0,
-            "joint_kd_nm_s_rad": 0.05,
-            "maximum_joint_torque_nm": 0.15,
-            "maximum_motor_torque_nm": 0.25,
-            "maximum_motor_velocity_rad_s": 0.30,
+            **envelope,
             "automatic_disable": True,
         },
         "gate": gate.to_dict(),
