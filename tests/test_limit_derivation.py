@@ -46,6 +46,40 @@ class LimitDerivationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "SHA256 mismatch"):
                 derive_limit_candidates(complete_hardware(), contract, urdf)
 
+    def test_joint_soft_override_updates_differential_motor_boxes(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            baseline = derive_limit_candidates(complete_hardware(), contract, urdf)
+            report = derive_limit_candidates(
+                complete_hardware(),
+                contract,
+                urdf,
+                joint_soft_limit_overrides={"left_ankle_pitch_joint": (-0.9, 1.99)},
+            )
+        self.assertEqual(
+            report["joint_limits"]["left_ankle_pitch_joint"]["soft_limit_rad_candidate"],
+            [-0.9, 1.99],
+        )
+        self.assertEqual(
+            report["joint_soft_limit_overrides"],
+            {"left_ankle_pitch_joint": [-0.9, 1.99]},
+        )
+        self.assertNotEqual(
+            report["motor_limits"]["left_ankle_motor_a"]["soft_limit_rad_candidate"],
+            baseline["motor_limits"]["left_ankle_motor_a"]["soft_limit_rad_candidate"],
+        )
+
+    def test_joint_soft_override_must_remain_inside_urdf_hard_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as raw:
+            contract, urdf = self._fixture(Path(raw))
+            with self.assertRaisesRegex(ValueError, "strictly inside URDF hard limits"):
+                derive_limit_candidates(
+                    complete_hardware(),
+                    contract,
+                    urdf,
+                    joint_soft_limit_overrides={"left_ankle_pitch_joint": (-1.0, 1.9)},
+                )
+
     def test_applies_strictly_nested_candidates_with_provenance(self) -> None:
         with tempfile.TemporaryDirectory() as raw:
             contract, urdf = self._fixture(Path(raw))

@@ -6,6 +6,7 @@ import hashlib
 import itertools
 import json
 from pathlib import Path
+from typing import Mapping
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -62,6 +63,7 @@ def derive_limit_candidates(
     urdf_path: str | Path,
     *,
     soft_margin_rad: float = 0.05,
+    joint_soft_limit_overrides: Mapping[str, tuple[float, float]] | None = None,
 ) -> dict:
     urdf = Path(urdf_path).expanduser().resolve()
     actual_hash = _sha256(urdf)
@@ -73,6 +75,21 @@ def derive_limit_candidates(
     joint_names = tuple(contract.data["joint_names"])
     hard_joint = _urdf_joint_limits(urdf, joint_names)
     soft_joint = {name: _inset(bounds, soft_margin_rad) for name, bounds in hard_joint.items()}
+    overrides = dict(joint_soft_limit_overrides or {})
+    unknown_overrides = sorted(set(overrides) - set(joint_names))
+    if unknown_overrides:
+        raise ValueError("unknown joint soft-limit overrides: " + ", ".join(unknown_overrides))
+    for name, values in overrides.items():
+        if len(values) != 2:
+            raise ValueError(f"soft-limit override for {name} must contain lower and upper")
+        low, high = map(float, values)
+        hard_low, hard_high = hard_joint[name]
+        if not np.isfinite((low, high)).all() or not hard_low < low < high < hard_high:
+            raise ValueError(
+                f"soft-limit override for {name} must be finite and strictly inside "
+                f"URDF hard limits [{hard_low}, {hard_high}]"
+            )
+        soft_joint[name] = (low, high)
     mapping = motor_map_from_hardware_config(hardware, joint_names, require_armable=False)
     motors: dict[str, dict] = {}
 
@@ -111,6 +128,9 @@ def derive_limit_candidates(
         "asset_urdf": str(contract.data.get("asset_urdf") or urdf.name),
         "asset_urdf_sha256": actual_hash,
         "soft_margin_rad_each_joint_boundary": soft_margin_rad,
+        "joint_soft_limit_overrides": {
+            name: list(soft_joint[name]) for name in sorted(overrides)
+        },
         "joint_limits": {
             name: {
                 "hard_limit_rad_candidate": list(hard_joint[name]),

@@ -17,15 +17,29 @@ def main() -> None:
     parser.add_argument("--contract", required=True)
     parser.add_argument("--urdf", required=True)
     parser.add_argument("--soft-margin-rad", type=float, default=0.05)
+    parser.add_argument(
+        "--joint-soft-limit",
+        action="append",
+        nargs=3,
+        metavar=("JOINT", "LOW_RAD", "HIGH_RAD"),
+        default=[],
+        help="Override one joint's soft range; repeat for multiple joints",
+    )
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     hardware = json.loads(Path(args.hardware).read_text(encoding="utf-8"))
     contract = PolicyContract.load(args.contract)
+    overrides: dict[str, tuple[float, float]] = {}
+    for name, low, high in args.joint_soft_limit:
+        if name in overrides:
+            parser.error(f"duplicate --joint-soft-limit for {name}")
+        overrides[name] = (float(low), float(high))
     report = derive_limit_candidates(
         hardware,
         contract,
         args.urdf,
         soft_margin_rad=args.soft_margin_rad,
+        joint_soft_limit_overrides=overrides,
     )
     Path(args.output).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(

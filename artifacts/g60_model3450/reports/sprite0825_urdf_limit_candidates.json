@@ -3,6 +3,16 @@
   "asset_urdf": "../assets/isaac/sprite0825_sanitized_v5_4340_shoulders/sprite0825_float.urdf",
   "asset_urdf_sha256": "6c753d563b54103e4278c27a11a22e0f4f1076e4156f0873cb2325f1701a921b",
   "soft_margin_rad_each_joint_boundary": 0.05,
+  "joint_soft_limit_overrides": {
+    "left_ankle_pitch_joint": [
+      -0.386,
+      0.425
+    ],
+    "right_ankle_pitch_joint": [
+      -0.386,
+      0.425
+    ]
+  },
   "joint_limits": {
     "left_hip_pitch_joint": {
       "hard_limit_rad_candidate": [
@@ -171,7 +181,7 @@
       ],
       "soft_limit_rad_candidate": [
         -0.386,
-        0.386
+        0.425
       ]
     },
     "right_ankle_pitch_joint": {
@@ -679,7 +689,7 @@
       ],
       "soft_limit_rad_candidate": [
         -0.9085992804377211,
-        0.8795592804377207
+        0.9304425287024525
       ]
     },
     "left_ankle_motor_b": {
@@ -694,7 +704,7 @@
         1.022893230813641
       ],
       "soft_limit_rad_candidate": [
-        -0.8810797869129943,
+        -0.9319720415152275,
         0.9070797869129941
       ]
     },
@@ -710,7 +720,7 @@
         1.0247719711860181
       ],
       "soft_limit_rad_candidate": [
-        -0.8799528001784472,
+        -0.9308673147625733,
         0.9089128001784473
       ]
     },
@@ -727,7 +737,7 @@
       ],
       "soft_limit_rad_candidate": [
         -0.9077173700024932,
-        0.8812373700024931
+        0.9321385285974835
       ]
     },
     "head_motor_a": {

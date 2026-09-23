@@ -221,7 +221,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -281,7 +281,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -341,7 +341,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -401,7 +401,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -461,7 +461,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -521,7 +521,7 @@
       "policy_to_motor_sign": -1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -581,7 +581,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -641,7 +641,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -701,7 +701,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -761,7 +761,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -821,7 +821,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -881,7 +881,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -941,7 +941,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1001,7 +1001,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1061,7 +1061,7 @@
       "policy_to_motor_sign": -1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1121,7 +1121,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1181,7 +1181,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1241,7 +1241,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1301,7 +1301,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1361,7 +1361,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1421,7 +1421,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1481,7 +1481,7 @@
       "policy_to_motor_sign": -1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1541,7 +1541,7 @@
       "policy_to_motor_sign": 1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1601,7 +1601,7 @@
       "policy_to_motor_sign": -1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1661,7 +1661,7 @@
       "policy_to_motor_sign": -1,
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1679,7 +1679,7 @@
       "linkage_ratio": 1.0,
       "soft_limit_rad": [
         -0.9085992804377211,
-        0.8795592804377207
+        0.9304425287024525
       ],
       "hard_limit_rad": [
         -1.0244126587327627,
@@ -1723,7 +1723,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1740,7 +1740,7 @@
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
       "soft_limit_rad": [
-        -0.8810797869129943,
+        -0.9319720415152275,
         0.9070797869129941
       ],
       "hard_limit_rad": [
@@ -1785,7 +1785,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1802,7 +1802,7 @@
       "reduction_ratio": 1.0,
       "linkage_ratio": 1.0,
       "soft_limit_rad": [
-        -0.8799528001784472,
+        -0.9308673147625733,
         0.9089128001784473
       ],
       "hard_limit_rad": [
@@ -1847,7 +1847,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1865,7 +1865,7 @@
       "linkage_ratio": 1.0,
       "soft_limit_rad": [
         -0.9077173700024932,
-        0.8812373700024931
+        0.9321385285974835
       ],
       "hard_limit_rad": [
         -1.0235823143033345,
@@ -1909,7 +1909,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -1971,7 +1971,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
@@ -2033,7 +2033,7 @@
       ],
       "limit_provenance": {
         "source": "contract_pinned_urdf_design_limits",
-        "report_content_sha256": "ce63d43f19794dc39de882ed689f600d0d177c07cc8cf2585f0612631225866b",
+        "report_content_sha256": "50d051434280f954e00a8c7e522fa017e3205b5bd66b4b1e62bb20f864db244c",
         "soft_margin_rad_each_joint_boundary": 0.05,
         "physical_hard_stop_measured": false,
         "runtime_role": "conservative software guard"
