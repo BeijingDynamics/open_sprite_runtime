@@ -111,6 +111,8 @@ struct Motor {
   double preview_maximum_kd = 0.0;
   double preview_maximum_abs_feedforward_torque = 0.0;
   double preview_maximum_abs_estimated_torque = 0.0;
+  double preview_maximum_abs_unsaturated_torque = 0.0;
+  std::size_t policy_torque_saturation_count = 0;
   double preview_position = 0.0;
   double preview_velocity = 0.0;
   double preview_kp = 0.0;
@@ -159,6 +161,7 @@ struct Options {
   int realtime_priority = 0;
   bool measured_pose_hold = false;
   bool policy_actuation = false;
+  bool saturate_policy_torque = false;
 };
 
 struct Socket {
@@ -498,6 +501,9 @@ Options parse_options(int argc, char** argv) {
     }
     else if (argument == "--measured-pose-hold") result.measured_pose_hold = true;
     else if (argument == "--policy-actuation") result.policy_actuation = true;
+    else if (argument == "--saturate-policy-torque-to-commissioning-cap") {
+      result.saturate_policy_torque = true;
+    }
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -558,6 +564,13 @@ Options parse_options(int argc, char** argv) {
     if (result.duration_s > 40.0) {
       throw std::runtime_error("extended protected policy actuation must not exceed 40 seconds");
     }
+  }
+  if (result.saturate_policy_torque &&
+      (!result.policy_actuation ||
+       result.extended_policy_actuation_acknowledgement !=
+           "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST")) {
+    throw std::runtime_error(
+        "policy torque saturation requires the exact 40-second grounded-test acknowledgement");
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
     throw std::runtime_error("realtime priority must be in [0, 80]");
@@ -739,7 +752,8 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
 }
 
 void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
-                                  const NativeKinematics& kinematics) {
+                                  const NativeKinematics& kinematics,
+                                  bool saturate_to_commissioning_cap = false) {
   if (!ipc.has_target) return;
   std::array<double, kJointCount> joint_position{};
   std::array<double, kJointCount> joint_velocity{};
@@ -823,6 +837,24 @@ void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
             (motor.preview_position - motor.last_position) +
         motor.preview_kd * (motor.preview_velocity - motor.last_velocity) +
         motor.preview_feedforward_torque;
+    motor.preview_maximum_abs_unsaturated_torque = std::max(
+        motor.preview_maximum_abs_unsaturated_torque, std::abs(estimated_torque));
+    if (saturate_to_commissioning_cap &&
+        std::abs(estimated_torque) > 0.98 * motor.commissioning_torque_cap) {
+      const double limited_torque =
+          std::copysign(0.98 * motor.commissioning_torque_cap, estimated_torque);
+      if (motor.preview_kp > 1.0e-9) {
+        motor.preview_position +=
+            (limited_torque - estimated_torque) / motor.preview_kp;
+      } else {
+        motor.preview_feedforward_torque += limited_torque - estimated_torque;
+      }
+      ++motor.policy_torque_saturation_count;
+    }
+    const double protected_estimated_torque = motor.preview_kp *
+            (motor.preview_position - motor.last_position) +
+        motor.preview_kd * (motor.preview_velocity - motor.last_velocity) +
+        motor.preview_feedforward_torque;
     constexpr double tolerance = 1.0e-9;
     if (motor.preview_position < motor.soft_position_min - tolerance ||
         motor.preview_position > motor.soft_position_max + tolerance ||
@@ -835,9 +867,9 @@ void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
         motor.preview_kd < 0.0 || motor.preview_kd > 3.0 + tolerance ||
         std::abs(motor.preview_feedforward_torque) >
             std::min(std::abs(motor.torque_min), motor.torque_max) + tolerance ||
-        std::abs(estimated_torque) >
+        std::abs(protected_estimated_torque) >
             std::min(std::abs(motor.torque_min), motor.torque_max) + tolerance ||
-        std::abs(estimated_torque) > motor.mechanical_peak_torque + tolerance) {
+        std::abs(protected_estimated_torque) > motor.mechanical_peak_torque + tolerance) {
       throw std::runtime_error("final motor command preview invariant failed for " + motor.name);
     }
     motor.preview_maximum_abs_position =
@@ -850,7 +882,8 @@ void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
         motor.preview_maximum_abs_feedforward_torque,
         std::abs(motor.preview_feedforward_torque));
     motor.preview_maximum_abs_estimated_torque = std::max(
-        motor.preview_maximum_abs_estimated_torque, std::abs(estimated_torque));
+        motor.preview_maximum_abs_estimated_torque,
+        std::abs(protected_estimated_torque));
   }
   ++ipc.motor_preview_count;
 }
@@ -1475,7 +1508,8 @@ int run_native_protected_policy(
         throw std::runtime_error("protected-policy target watchdog expired");
       }
       if (slot % 4 == 0) {
-        preview_final_motor_commands(motors, ipc, kinematics);
+        preview_final_motor_commands(
+            motors, ipc, kinematics, options.saturate_policy_torque);
       }
       for (auto& motor : motors) {
         if (!due(motor, slot)) continue;
@@ -1561,6 +1595,8 @@ int run_native_protected_policy(
       << "  \"maximum_lateness_ms\": " << maximum_lateness_ms << ",\n"
       << "  \"policy_state_count\": " << ipc.state_sequence << ",\n"
       << "  \"policy_target_count\": " << ipc.target_count << ",\n"
+      << "  \"policy_torque_saturation_enabled\": "
+      << (options.saturate_policy_torque ? "true" : "false") << ",\n"
       << "  \"automatic_mode_switch_attempts\": 0,\n"
       << "  \"automatic_zero_reset_attempts\": 0,\n"
       << "  \"motors\": {\n";
@@ -1572,6 +1608,9 @@ int run_native_protected_policy(
         << ", \"feedback_torque_cap_nm\": " << motor.feedback_torque_cap
         << ", \"max_command_torque_nm\": " << motor.maximum_abs_commanded_torque
         << ", \"max_feedback_torque_nm\": " << motor.maximum_abs_feedback_torque
+        << ", \"torque_saturation_count\": " << motor.policy_torque_saturation_count
+        << ", \"max_unsaturated_torque_nm\": "
+        << motor.preview_maximum_abs_unsaturated_torque
         << ", \"max_speed_rad_s\": " << motor.maximum_abs_speed
         << ", \"final_disabled\": " << (motor.final_disabled ? "true" : "false")
         << "}" << (index + 1 == motors.size() ? "\n" : ",\n");
@@ -1864,7 +1903,7 @@ int main(int argc, char** argv) {
         drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
         if (slot % 4 == 0 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
-          preview_final_motor_commands(motors, ipc, kinematics);
+          preview_final_motor_commands(motors, ipc, kinematics, false);
         }
         if (slot % 40 == 39 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {

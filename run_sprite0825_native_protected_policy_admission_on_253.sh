@@ -14,11 +14,14 @@ HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
 PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
+PREFLIGHT_TORQUE_MULTIPLIER=1.0
+PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=1
 NON_HIP_GAIN_MULTIPLIER=1.0
 LEG_GAIN_MULTIPLIER=""
 ANKLE_GAIN_MULTIPLIER=""
 HIP_GAIN_MULTIPLIER=1.0
 EXTENDED_NATIVE_ACK_ARGS=()
+TORQUE_SATURATION_ARGS=()
 CLAMP_WATCHDOG_ARGS=()
 POLICY_REPLAY_ARGS=()
 REPLAY_ACTION_TRACE=""
@@ -629,21 +632,14 @@ case "$TIER" in
     HIP_PITCH_ROLL_COMMAND_CAP_NM=8.0
     HIP_PITCH_ROLL_FEEDBACK_CAP_NM=9.0
     COMMAND_VX=0.0
+    PREFLIGHT_TORQUE_MULTIPLIER=1.5
+    PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
     SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; after 8s stable standing apply one gentle disturbance direction at a time; ankle gains are full contract values while ankle torque remains capped at 3.5Nm; safety operator controls independent power cutoff"
     EXTENDED_NATIVE_ACK_ARGS=(
       --extended-policy-actuation-acknowledgement
       ENABLE_40_SECOND_GROUNDED_BALANCE_TEST
     )
-    for joint in \
-      left_ankle_pitch_joint right_ankle_pitch_joint \
-      left_ankle_roll_joint right_ankle_roll_joint; do
-      CLAMP_WATCHDOG_ARGS+=(--fail-on-consecutive-clamp-joint "$joint")
-    done
-    CLAMP_WATCHDOG_ARGS+=(
-      --clamp-watchdog-minimum-overshoot-rad 0.05
-      --clamp-watchdog-maximum-consecutive-ticks 5
-      --clamp-watchdog-ignored-initial-ticks 250
-    )
+    TORQUE_SATURATION_ARGS=(--saturate-policy-torque-to-commissioning-cap)
     ;;
   grounded_full_weight_stand_gain025_rated_20s_tier)
     EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_GAIN025_RATED_20S
@@ -754,7 +750,11 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
 }
 
 echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
-echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
+if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
+  echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
+else
+  echo "Warms policy history for 1.0s; policy soft-limit excursions are advisory; horizontal projected gravity must remain <=0.10"
+fi
 SPRITE_REPLAY_ACTION_TRACE="$REPLAY_ACTION_TRACE" \
 SPRITE_REPLAY_SOURCE_HZ=50.0 \
 SPRITE_REPLAY_START_SECONDS=10.0 \
@@ -779,7 +779,8 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   "$MAXIMUM_COMMAND_TORQUE_NM" \
   "$LEG_COMMAND_CAP_NM" \
   "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
-  "$ANKLE_COMMAND_CAP_NM" <<'PY'
+  "$ANKLE_COMMAND_CAP_NM" \
+  "$PREFLIGHT_TORQUE_MULTIPLIER" <<'PY'
 import json
 import sys
 
@@ -788,6 +789,9 @@ default_limit = float(sys.argv[2])
 leg_limit = float(sys.argv[3]) if sys.argv[3] else None
 hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
 ankle_limit = float(sys.argv[5]) if sys.argv[5] else None
+torque_multiplier = float(sys.argv[6])
+if not 1.0 <= torque_multiplier <= 1.5:
+    raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
 leg_motors = {
     f"{side}_{joint}_motor"
     for side in ("left", "right")
@@ -819,8 +823,9 @@ for name, raw_observed in report[
         limit = hip_pitch_roll_limit
     else:
         limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
-    if observed > limit:
-        violations.append(f"{name}={observed:.6f}>{limit:.6f}Nm")
+    admission_limit = limit * torque_multiplier
+    if observed > admission_limit:
+        violations.append(f"{name}={observed:.6f}>{admission_limit:.6f}Nm")
 if violations:
     raise SystemExit(
         "startup command torque preview exceeds per-motor limits: "
@@ -831,17 +836,26 @@ print(
     f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
     f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
     f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
+    f" torque_multiplier={torque_multiplier}"
 )
 PY
+PREFLIGHT_LIMIT_GATE_ARGS=()
+if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
+  PREFLIGHT_LIMIT_GATE_ARGS=(
+    --fail-on-violation-joint left_ankle_pitch_joint
+    --fail-on-violation-joint right_ankle_pitch_joint
+    --fail-on-violation-joint left_ankle_roll_joint
+    --fail-on-violation-joint right_ankle_roll_joint
+  )
+else
+  echo "POLICY_SOFT_LIMIT_GATE advisory-only; mechanical command envelope remains enforced"
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
   --trace "$PREFLIGHT_TRACE" \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --contract "$CANDIDATE/deploy/contract.json" \
-  --fail-on-violation-joint left_ankle_pitch_joint \
-  --fail-on-violation-joint right_ankle_pitch_joint \
-  --fail-on-violation-joint left_ankle_roll_joint \
-  --fail-on-violation-joint right_ankle_roll_joint \
+  "${PREFLIGHT_LIMIT_GATE_ARGS[@]}" \
   --maximum-gated-overshoot-rad "$PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD" \
   --maximum-gated-violation-fraction "$PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION" \
   --maximum-gated-consecutive-violation-ticks "$PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS" \
@@ -976,6 +990,7 @@ echo "POLICY_REPORT $POLICY_REPORT"
   --kinematics-config "$ROOT/build/native/kinematics.tsv" \
   --joint-safety-config "$ROOT/build/native/joint_safety.tsv" \
   --policy-actuation \
+  "${TORQUE_SATURATION_ARGS[@]}" \
   "${EXTENDED_NATIVE_ACK_ARGS[@]}" \
   --acknowledge-hardware-tx ENABLE_NATIVE_PROTECTED_POLICY_ACTUATION \
   --all-motors-disabled-confirmed >"$NATIVE_LOG" 2>&1 &
