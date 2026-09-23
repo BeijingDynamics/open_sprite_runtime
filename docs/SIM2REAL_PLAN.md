@@ -655,6 +655,25 @@ Evidence: `reports/native_protected_policy_preflight_20260923_113227.json`,
 `reports/native_protected_policy_admission_20260923_113227.json`, and
 `reports/native_protected_policy_trace_20260923_113227.npz`.
 
+The explicitly approved 20-second repeat at the same lower-support height and
+the same 0.08 gain and 2.2/2.5 Nm non-hip leg tier also passed. Its repeated
+immediate preflight estimated at most 1.993 Nm. Active control had zero deadline
+misses, zero target clamp, no ankle clamp-watchdog event, no rejected IMU frame,
+and all 31 motors were verified disabled. Mean tilt over successive five-second
+windows was 3.145, 3.138, 3.136, and 3.138 degrees; the last window remained
+within 3.124 to 3.154 degrees. Maximum measured leg feedback was 1.361 Nm at
+right hip pitch, 1.224 Nm at left hip pitch, 0.882 Nm at right knee, and 0.305
+Nm among the ankle motors. Waist roll measured a transient 1.612 Nm while its
+maximum policy command was only 0.149 Nm, but this was below its independent
+3.0 Nm feedback gate and had no corresponding attitude drift. Treat that as a
+contact/harness-load observation to monitor rather than a reason to change a
+gain or limit. This qualifies sustained static contact at this support height;
+the next support reduction remains a separately gated physical change.
+Evidence: `reports/native_protected_policy_preflight_20260923_114033.json`,
+`reports/native_policy_ipc_trace_20260923_114033.npz`,
+`reports/native_protected_policy_admission_20260923_114033.json`, and
+`reports/native_protected_policy_trace_20260923_114033.npz`.
+
 ## First milestone
 
 In a lifting frame, Sprite0825 starts from stand, walks at 0.15 m/s, stops, and
