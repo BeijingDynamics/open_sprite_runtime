@@ -540,14 +540,23 @@ Options parse_options(int argc, char** argv) {
       throw std::runtime_error(
           "policy actuation requires IPC, kinematics, joint safety, and joint hash");
     }
+    const bool acknowledged_20_seconds =
+        result.extended_policy_actuation_acknowledgement ==
+        "ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST";
+    const bool acknowledged_40_seconds =
+        result.extended_policy_actuation_acknowledgement ==
+        "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST";
     if (result.duration_s > 10.0 &&
-        result.extended_policy_actuation_acknowledgement !=
-            "ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST") {
+        !acknowledged_20_seconds && !acknowledged_40_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 10 seconds requires the exact extended-test acknowledgement");
     }
-    if (result.duration_s > 20.0) {
-      throw std::runtime_error("extended protected policy actuation must not exceed 20 seconds");
+    if (result.duration_s > 20.0 && !acknowledged_40_seconds) {
+      throw std::runtime_error(
+          "protected policy actuation over 20 seconds requires the exact 40-second acknowledgement");
+    }
+    if (result.duration_s > 40.0) {
+      throw std::runtime_error("extended protected policy actuation must not exceed 40 seconds");
     }
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
