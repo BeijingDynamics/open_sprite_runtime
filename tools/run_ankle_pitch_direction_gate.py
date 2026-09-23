@@ -24,7 +24,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--side", choices=("left", "right"), required=True)
     parser.add_argument(
-        "--excitation-tier", choices=("low", "observable"), default="low"
+        "--excitation-tier",
+        choices=("low", "observable", "negative-slow"),
+        default="low",
     )
     parser.add_argument("--hardware", type=Path, required=True)
     parser.add_argument("--contract", type=Path, required=True)
@@ -36,11 +38,12 @@ def main() -> None:
     parser.add_argument("--ankle-clear", action="store_true")
     parser.add_argument("--confirm-hardware-tx", required=True)
     args = parser.parse_args()
-    acknowledgement = (
-        f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_GATE"
-        if args.excitation_tier == "low"
-        else f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_OBSERVABLE_GATE"
-    )
+    acknowledgement_by_tier = {
+        "low": f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_GATE",
+        "observable": f"ENABLE_{args.side.upper()}_ANKLE_PITCH_DIRECTION_OBSERVABLE_GATE",
+        "negative-slow": f"ENABLE_{args.side.upper()}_ANKLE_PITCH_NEGATIVE_SLOW_GATE",
+    }
+    acknowledgement = acknowledgement_by_tier[args.excitation_tier]
     if not (
         args.robot_supported
         and args.tested_foot_unloaded
@@ -99,23 +102,30 @@ def main() -> None:
             soft_position_rad=soft_limits,
             excitation_tier=args.excitation_tier,
         )
-    envelope = (
-        {
+    envelope_by_tier = {
+        "low": {
             "joint_kp_nm_rad": 4.0,
             "joint_kd_nm_s_rad": 0.05,
             "maximum_joint_torque_nm": 0.15,
             "maximum_motor_torque_nm": 0.25,
             "maximum_motor_velocity_rad_s": 0.30,
-        }
-        if args.excitation_tier == "low"
-        else {
+        },
+        "observable": {
             "joint_kp_nm_rad": 16.0,
             "joint_kd_nm_s_rad": 0.10,
             "maximum_joint_torque_nm": 0.50,
             "maximum_motor_torque_nm": 0.30,
             "maximum_motor_velocity_rad_s": 0.40,
-        }
-    )
+        },
+        "negative-slow": {
+            "joint_kp_nm_rad": 16.0,
+            "joint_kd_nm_s_rad": 0.10,
+            "maximum_joint_torque_nm": 0.50,
+            "maximum_motor_torque_nm": 0.30,
+            "maximum_motor_velocity_rad_s": 0.80,
+        },
+    }
+    envelope = envelope_by_tier[args.excitation_tier]
     report = {
         "mode": "unloaded_ankle_bidirectional_pitch_response_500hz_gate",
         "side": args.side,
@@ -125,7 +135,7 @@ def main() -> None:
         "joint_to_motor_matrix": pair_record["joint_to_motor_matrix"],
         "motor_zero_rad": pair_record["motor_zero_rad"],
         "fixed_safety_envelope": {
-            "duration_s": 4.5,
+            "duration_s": 5.0 if args.excitation_tier == "negative-slow" else 4.5,
             "rate_hz_per_motor": 500.0,
             "pitch_excursion_rad": 0.03,
             **envelope,

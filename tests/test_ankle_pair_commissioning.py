@@ -238,6 +238,34 @@ class AnklePairCommissioningTests(unittest.TestCase):
                 excitation_tier="unbounded",
             )
 
+    def test_negative_slow_pitch_tier_requires_only_negative_response(self):
+        endpoints, pair = fixture("right")
+        writer = Writer(endpoints)
+        clock = Clock()
+        report = run_ankle_pitch_direction_gate(
+            writer,
+            endpoints,
+            pair,
+            side="right",
+            soft_position_rad={item.motor_name: (-1.0, 1.0) for item in endpoints},
+            excitation_tier="negative-slow",
+            monotonic=clock,
+            sleep=clock.sleep,
+        )
+        self.assertFalse(report.passed)
+        self.assertEqual(report.required_response_directions, ("negative",))
+        self.assertEqual(report.duration_s, 5.0)
+        self.assertNotIn(
+            "positive pitch command produced no qualified positive response",
+            report.errors,
+        )
+        self.assertIn(
+            "negative pitch command produced no qualified negative response",
+            report.errors,
+        )
+        self.assertLessEqual(max(report.maximum_abs_motor_torque_command_nm.values()), 0.3)
+        self.assertTrue(all(value == "disabled" for value in report.final_status.values()))
+
 
 if __name__ == "__main__":
     unittest.main()

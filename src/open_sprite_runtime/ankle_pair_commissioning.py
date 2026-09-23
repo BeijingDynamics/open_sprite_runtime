@@ -119,6 +119,7 @@ class AnklePitchDirectionReport:
     initial_joint_position_rad: dict[str, float]
     final_joint_position_rad: dict[str, float]
     requested_pitch_excursion_rad: float
+    required_response_directions: tuple[str, ...]
     maximum_positive_pitch_response_rad: float
     minimum_negative_pitch_response_rad: float
     minimum_required_response_rad: float
@@ -143,10 +144,16 @@ class AnklePitchDirectionReport:
         minimum_count = math.floor(self.duration_s * self.rate_hz_per_motor * 0.95)
         return (
             not self.errors
-            and self.maximum_positive_pitch_response_rad
-            >= self.minimum_required_response_rad
-            and self.minimum_negative_pitch_response_rad
-            <= -self.minimum_required_response_rad
+            and (
+                "positive" not in self.required_response_directions
+                or self.maximum_positive_pitch_response_rad
+                >= self.minimum_required_response_rad
+            )
+            and (
+                "negative" not in self.required_response_directions
+                or self.minimum_negative_pitch_response_rad
+                <= -self.minimum_required_response_rad
+            )
             and all(value >= minimum_count for value in self.command_count.values())
             and all(value >= minimum_count for value in self.feedback_count.values())
             and all(value == 1 for value in self.enable_attempts.values())
@@ -605,24 +612,35 @@ def run_ankle_pitch_direction_gate(
     if writer.interface != interface or set(soft_position_rad) != set(names):
         raise ValueError("ankle direction writer or soft-limit coverage mismatch")
 
-    duration_s = 4.5
     rate_hz = 500.0
     period = 1.0 / rate_hz
     feedback_timeout_s = 0.02
     excursion = 0.03
     minimum_response = 0.002
     if excitation_tier == "low":
+        duration_s = 4.5
+        required_directions = ("positive", "negative")
         joint_kp = 4.0
         joint_kd = 0.05
         maximum_joint_torque = 0.15
         maximum_motor_torque = 0.25
         maximum_motor_velocity = 0.30
     elif excitation_tier == "observable":
+        duration_s = 4.5
+        required_directions = ("positive", "negative")
         joint_kp = 16.0
         joint_kd = 0.10
         maximum_joint_torque = 0.50
         maximum_motor_torque = 0.30
         maximum_motor_velocity = 0.40
+    elif excitation_tier == "negative-slow":
+        duration_s = 5.0
+        required_directions = ("negative",)
+        joint_kp = 16.0
+        joint_kd = 0.10
+        maximum_joint_torque = 0.50
+        maximum_motor_torque = 0.30
+        maximum_motor_velocity = 0.80
     else:
         raise ValueError("unknown ankle pitch-direction excitation tier")
     maximum_joint_displacement = 0.08
@@ -643,6 +661,16 @@ def run_ankle_pitch_direction_gate(
     minimum_negative_response = 0.0
 
     def pitch_scale(elapsed: float) -> float:
+        if excitation_tier == "negative-slow":
+            if elapsed < 0.5:
+                return 0.0
+            if elapsed < 2.0:
+                return -(elapsed - 0.5) / 1.5
+            if elapsed < 3.0:
+                return -1.0
+            if elapsed < 4.5:
+                return -1.0 + (elapsed - 3.0) / 1.5
+            return 0.0
         if elapsed < 0.5:
             return 0.0
         if elapsed < 1.0:
@@ -782,9 +810,9 @@ def run_ankle_pitch_direction_gate(
 
         final_values = pair.drive_to_joint_position([latest[name].position_rad for name in names])
         final_joint = dict(zip(pair.joint_names, map(float, final_values), strict=True))
-        if maximum_positive_response < minimum_response:
+        if "positive" in required_directions and maximum_positive_response < minimum_response:
             errors.append("positive pitch command produced no qualified positive response")
-        if minimum_negative_response > -minimum_response:
+        if "negative" in required_directions and minimum_negative_response > -minimum_response:
             errors.append("negative pitch command produced no qualified negative response")
     except BaseException as exc:
         errors.append(str(exc))
@@ -823,6 +851,7 @@ def run_ankle_pitch_direction_gate(
         initial_joint_position_rad=initial_joint,
         final_joint_position_rad=final_joint,
         requested_pitch_excursion_rad=excursion,
+        required_response_directions=required_directions,
         maximum_positive_pitch_response_rad=maximum_positive_response,
         minimum_negative_pitch_response_rad=minimum_negative_response,
         minimum_required_response_rad=minimum_response,
