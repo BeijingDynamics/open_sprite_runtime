@@ -5,6 +5,7 @@
 #include <csignal>
 #include <cstdint>
 #include <cstring>
+#include <deque>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -91,17 +92,26 @@ struct Motor {
   double hard_position_min = 0.0;
   double hard_position_max = 0.0;
   double deployment_velocity_max = 0.0;
+  double rated_torque = 0.0;
   double mechanical_peak_torque = 0.0;
   double commissioning_torque_cap = 0.0;
   double feedback_torque_cap = 0.0;
   double mos_temperature_limit = 0.0;
   double rotor_temperature_limit = 0.0;
+  double filtered_mos_temperature_limit = 0.0;
+  double filtered_rotor_temperature_limit = 0.0;
+  double temperature_filter_time_constant_s = 0.0;
   int poll_rate_hz = 0;
   int poll_phase = 0;
   double last_position = 0.0;
   double last_velocity = 0.0;
   int maximum_mos_temperature = 0;
   int maximum_rotor_temperature = 0;
+  double filtered_mos_temperature = 0.0;
+  double filtered_rotor_temperature = 0.0;
+  double maximum_filtered_mos_temperature = 0.0;
+  double maximum_filtered_rotor_temperature = 0.0;
+  bool temperature_filter_initialized = false;
   std::size_t tx_count = 0;
   std::size_t rx_count = 0;
   bool seen = false;
@@ -124,6 +134,12 @@ struct Motor {
   double maximum_abs_speed = 0.0;
   double maximum_abs_commanded_torque = 0.0;
   double maximum_abs_feedback_torque = 0.0;
+  std::deque<double> short_torque_squared_samples;
+  std::deque<double> long_torque_squared_samples;
+  double short_torque_squared_sum = 0.0;
+  double long_torque_squared_sum = 0.0;
+  double maximum_short_torque_rms = 0.0;
+  double maximum_long_torque_rms = 0.0;
   bool final_disabled = false;
   int last_status_code = -1;
 };
@@ -278,10 +294,11 @@ std::vector<Motor> load_motors(const std::string& path) {
       "position_max_rad", "velocity_min_rad_s", "velocity_max_rad_s",
       "torque_min_nm", "torque_max_nm", "soft_position_min_rad",
       "soft_position_max_rad", "hard_position_min_rad", "hard_position_max_rad",
-      "deployment_velocity_max_rad_s", "mechanical_peak_torque_nm",
+      "deployment_velocity_max_rad_s", "rated_torque_nm", "mechanical_peak_torque_nm",
       "commissioning_torque_cap_nm", "feedback_torque_cap_nm",
-      "mos_temperature_limit_c",
-      "rotor_temperature_limit_c", "poll_rate_hz"};
+      "mos_temperature_limit_c", "rotor_temperature_limit_c",
+      "filtered_mos_temperature_limit_c", "filtered_rotor_temperature_limit_c",
+      "temperature_filter_time_constant_s", "poll_rate_hz"};
   if (split(line, '\t') != expected_header) {
     throw std::runtime_error("native motor config header mismatch");
   }
@@ -311,12 +328,16 @@ std::vector<Motor> load_motors(const std::string& path) {
     motor.hard_position_min = number(fields[12]);
     motor.hard_position_max = number(fields[13]);
     motor.deployment_velocity_max = number(fields[14]);
-    motor.mechanical_peak_torque = number(fields[15]);
-    motor.commissioning_torque_cap = number(fields[16]);
-    motor.feedback_torque_cap = number(fields[17]);
-    motor.mos_temperature_limit = number(fields[18]);
-    motor.rotor_temperature_limit = number(fields[19]);
-    motor.poll_rate_hz = static_cast<int>(number(fields[20]));
+    motor.rated_torque = number(fields[15]);
+    motor.mechanical_peak_torque = number(fields[16]);
+    motor.commissioning_torque_cap = number(fields[17]);
+    motor.feedback_torque_cap = number(fields[18]);
+    motor.mos_temperature_limit = number(fields[19]);
+    motor.rotor_temperature_limit = number(fields[20]);
+    motor.filtered_mos_temperature_limit = number(fields[21]);
+    motor.filtered_rotor_temperature_limit = number(fields[22]);
+    motor.temperature_filter_time_constant_s = number(fields[23]);
+    motor.poll_rate_hz = static_cast<int>(number(fields[24]));
     if (motor.can_id < 1 || motor.can_id > 8 || motor.master_id != motor.can_id + 0x10 ||
         motor.position_min >= motor.soft_position_min ||
         motor.soft_position_min >= motor.soft_position_max ||
@@ -325,12 +346,19 @@ std::vector<Motor> load_motors(const std::string& path) {
         motor.hard_position_max <= motor.soft_position_max ||
         motor.deployment_velocity_max <= 0.0 ||
         motor.deployment_velocity_max > motor.velocity_max ||
+        motor.rated_torque <= 0.0 ||
+        motor.rated_torque > motor.mechanical_peak_torque ||
         motor.mechanical_peak_torque <= 0.0 ||
         motor.commissioning_torque_cap <= 0.0 ||
         motor.commissioning_torque_cap > motor.mechanical_peak_torque ||
         motor.feedback_torque_cap <= 0.0 ||
         motor.feedback_torque_cap > motor.mechanical_peak_torque ||
         motor.mos_temperature_limit <= 0.0 || motor.rotor_temperature_limit <= 0.0 ||
+        motor.filtered_mos_temperature_limit <= 0.0 ||
+        motor.filtered_mos_temperature_limit >= motor.mos_temperature_limit ||
+        motor.filtered_rotor_temperature_limit <= 0.0 ||
+        motor.filtered_rotor_temperature_limit >= motor.rotor_temperature_limit ||
+        motor.temperature_filter_time_constant_s <= 0.0 ||
         (motor.poll_rate_hz != 50 && motor.poll_rate_hz != 500)) {
       throw std::runtime_error("native motor config endpoint/rate invariant failed");
     }
@@ -1079,6 +1107,62 @@ void drain_hold_feedback(
   }
 }
 
+void reset_torque_rms_monitor(Motor& motor) {
+  motor.short_torque_squared_samples.clear();
+  motor.long_torque_squared_samples.clear();
+  motor.short_torque_squared_sum = 0.0;
+  motor.long_torque_squared_sum = 0.0;
+  motor.maximum_short_torque_rms = 0.0;
+  motor.maximum_long_torque_rms = 0.0;
+}
+
+void update_torque_rms_monitor(Motor& motor, double torque_nm) {
+  const double squared = torque_nm * torque_nm;
+  const auto update_window = [&](std::deque<double>& samples, double& sum,
+                                 std::size_t maximum_samples) {
+    samples.push_back(squared);
+    sum += squared;
+    while (samples.size() > maximum_samples) {
+      sum -= samples.front();
+      samples.pop_front();
+    }
+    return std::sqrt(std::max(0.0, sum) / static_cast<double>(samples.size()));
+  };
+  const auto rate = static_cast<std::size_t>(motor.poll_rate_hz);
+  const double short_rms = update_window(
+      motor.short_torque_squared_samples, motor.short_torque_squared_sum, rate);
+  const double long_rms = update_window(
+      motor.long_torque_squared_samples, motor.long_torque_squared_sum, 10 * rate);
+  if (motor.short_torque_squared_samples.size() == rate) {
+    motor.maximum_short_torque_rms =
+        std::max(motor.maximum_short_torque_rms, short_rms);
+  }
+  if (motor.long_torque_squared_samples.size() == 10 * rate) {
+    motor.maximum_long_torque_rms =
+        std::max(motor.maximum_long_torque_rms, long_rms);
+  }
+}
+
+void update_temperature_filter(Motor& motor, double mos_c, double rotor_c) {
+  if (!motor.temperature_filter_initialized) {
+    motor.filtered_mos_temperature = mos_c;
+    motor.filtered_rotor_temperature = rotor_c;
+    motor.temperature_filter_initialized = true;
+  } else {
+    const double sample_period_s = 1.0 / static_cast<double>(motor.poll_rate_hz);
+    const double alpha = 1.0 - std::exp(
+        -sample_period_s / motor.temperature_filter_time_constant_s);
+    motor.filtered_mos_temperature +=
+        alpha * (mos_c - motor.filtered_mos_temperature);
+    motor.filtered_rotor_temperature +=
+        alpha * (rotor_c - motor.filtered_rotor_temperature);
+  }
+  motor.maximum_filtered_mos_temperature = std::max(
+      motor.maximum_filtered_mos_temperature, motor.filtered_mos_temperature);
+  motor.maximum_filtered_rotor_temperature = std::max(
+      motor.maximum_filtered_rotor_temperature, motor.filtered_rotor_temperature);
+}
+
 void drain_policy_feedback(
     std::vector<Socket>& sockets, std::vector<Motor>& motors,
     const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
@@ -1120,13 +1204,24 @@ void drain_policy_feedback(
           std::max(motor.maximum_abs_speed, std::abs(motor.last_velocity));
       motor.maximum_abs_feedback_torque = std::max(
           motor.maximum_abs_feedback_torque, std::abs(feedback_torque));
+      if (enforce_dynamic_guards && status_code == 1) {
+        update_torque_rms_monitor(motor, feedback_torque);
+      }
       motor.maximum_mos_temperature =
           std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
       motor.maximum_rotor_temperature =
           std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
+      update_temperature_filter(
+          motor, static_cast<double>(frame.data[6]), static_cast<double>(frame.data[7]));
       if (frame.data[6] >= motor.mos_temperature_limit ||
           frame.data[7] >= motor.rotor_temperature_limit) {
         throw std::runtime_error("protected-policy temperature failed for " + motor.name);
+      }
+      if (enforce_dynamic_guards &&
+          (motor.filtered_mos_temperature >= motor.filtered_mos_temperature_limit ||
+           motor.filtered_rotor_temperature >= motor.filtered_rotor_temperature_limit)) {
+        throw std::runtime_error(
+            "protected-policy filtered temperature guard failed for " + motor.name);
       }
       if (enforce_dynamic_guards &&
           (motor.last_position < motor.hard_position_min ||
@@ -1211,6 +1306,7 @@ int run_native_measured_pose_hold(
       motor.maximum_abs_speed = 0.0;
       motor.maximum_abs_commanded_torque = 0.0;
       motor.maximum_abs_feedback_torque = 0.0;
+      reset_torque_rms_monitor(motor);
       motor.final_disabled = false;
     }
     for (std::size_t joint = 0; joint < kJointCount; ++joint) {
@@ -1475,6 +1571,7 @@ int run_native_protected_policy(
       motor.maximum_abs_speed = 0.0;
       motor.maximum_abs_commanded_torque = 0.0;
       motor.maximum_abs_feedback_torque = 0.0;
+      reset_torque_rms_monitor(motor);
       motor.final_disabled = false;
       motor.last_status_code = 0;
     }
@@ -1606,8 +1703,31 @@ int run_native_protected_policy(
         << "\"tx\": " << active_tx[index] << ", \"rx\": " << active_rx[index]
         << ", \"commissioning_torque_cap_nm\": " << motor.commissioning_torque_cap
         << ", \"feedback_torque_cap_nm\": " << motor.feedback_torque_cap
+        << ", \"rated_torque_nm\": " << motor.rated_torque
         << ", \"max_command_torque_nm\": " << motor.maximum_abs_commanded_torque
         << ", \"max_feedback_torque_nm\": " << motor.maximum_abs_feedback_torque
+        << ", \"max_1s_feedback_torque_rms_nm\": "
+        << motor.maximum_short_torque_rms
+        << ", \"max_10s_feedback_torque_rms_nm\": "
+        << motor.maximum_long_torque_rms
+        << ", \"max_1s_rated_torque_ratio\": "
+        << motor.maximum_short_torque_rms / motor.rated_torque
+        << ", \"max_10s_rated_torque_ratio\": "
+        << motor.maximum_long_torque_rms / motor.rated_torque
+        << ", \"raw_mos_temperature_limit_c\": " << motor.mos_temperature_limit
+        << ", \"raw_rotor_temperature_limit_c\": " << motor.rotor_temperature_limit
+        << ", \"filtered_mos_temperature_limit_c\": "
+        << motor.filtered_mos_temperature_limit
+        << ", \"filtered_rotor_temperature_limit_c\": "
+        << motor.filtered_rotor_temperature_limit
+        << ", \"temperature_filter_time_constant_s\": "
+        << motor.temperature_filter_time_constant_s
+        << ", \"max_raw_mos_temperature_c\": " << motor.maximum_mos_temperature
+        << ", \"max_raw_rotor_temperature_c\": " << motor.maximum_rotor_temperature
+        << ", \"max_filtered_mos_temperature_c\": "
+        << motor.maximum_filtered_mos_temperature
+        << ", \"max_filtered_rotor_temperature_c\": "
+        << motor.maximum_filtered_rotor_temperature
         << ", \"torque_saturation_count\": " << motor.policy_torque_saturation_count
         << ", \"max_unsaturated_torque_nm\": "
         << motor.preview_maximum_abs_unsaturated_torque

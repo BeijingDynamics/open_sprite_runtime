@@ -25,11 +25,15 @@ FIELDS = (
     "hard_position_min_rad",
     "hard_position_max_rad",
     "deployment_velocity_max_rad_s",
+    "rated_torque_nm",
     "mechanical_peak_torque_nm",
     "commissioning_torque_cap_nm",
     "feedback_torque_cap_nm",
     "mos_temperature_limit_c",
     "rotor_temperature_limit_c",
+    "filtered_mos_temperature_limit_c",
+    "filtered_rotor_temperature_limit_c",
+    "temperature_filter_time_constant_s",
     "poll_rate_hz",
 )
 
@@ -76,12 +80,21 @@ def main() -> None:
         metavar="MOTOR_NAME=NM",
         help="Override the independent feedback anomaly cap for one named motor.",
     )
+    parser.add_argument("--filtered-mos-temperature-limit-c", type=float, default=90.0)
+    parser.add_argument("--filtered-rotor-temperature-limit-c", type=float, default=80.0)
+    parser.add_argument("--temperature-filter-time-constant-s", type=float, default=2.0)
     args = parser.parse_args()
     if (
         args.maximum_commissioning_torque_nm is not None
         and args.maximum_commissioning_torque_nm <= 0.0
     ):
         raise SystemExit("--maximum-commissioning-torque-nm must be positive")
+    if not 0.0 < args.filtered_mos_temperature_limit_c < 120.0:
+        raise SystemExit("filtered MOS temperature limit must be in (0, 120) C")
+    if not 0.0 < args.filtered_rotor_temperature_limit_c < 100.0:
+        raise SystemExit("filtered rotor temperature limit must be in (0, 100) C")
+    if not 0.0 < args.temperature_filter_time_constant_s <= 30.0:
+        raise SystemExit("temperature filter time constant must be in (0, 30] s")
     hardware = json.loads(args.hardware.read_text(encoding="utf-8"))
     command_caps = _parse_motor_caps(args.motor_command_cap, "--motor-command-cap")
     feedback_caps = _parse_motor_caps(args.motor_feedback_cap, "--motor-feedback-cap")
@@ -141,6 +154,7 @@ def main() -> None:
                 "hard_position_min_rad": float(motor["hard_limit_rad"][0]),
                 "hard_position_max_rad": float(motor["hard_limit_rad"][1]),
                 "deployment_velocity_max_rad_s": deployment_speed,
+                "rated_torque_nm": float(motor["rated_torque_nm"]),
                 "mechanical_peak_torque_nm": mechanical_peak,
                 # Commissioning caps remain independent from protocol TMAX and
                 # may only be raised for explicitly named, reviewed motors.
@@ -154,6 +168,9 @@ def main() -> None:
                 "rotor_temperature_limit_c": float(
                     specs["recommended_motor_temperature_limit_c"]
                 ),
+                "filtered_mos_temperature_limit_c": args.filtered_mos_temperature_limit_c,
+                "filtered_rotor_temperature_limit_c": args.filtered_rotor_temperature_limit_c,
+                "temperature_filter_time_constant_s": args.temperature_filter_time_constant_s,
                 "poll_rate_hz": 500 if "ankle_motor" in name else 50,
             }
         )
