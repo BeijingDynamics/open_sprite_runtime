@@ -264,6 +264,10 @@ case "$TIER" in
     HIP_PITCH_ROLL_COMMAND_CAP_NM=4.5
     HIP_PITCH_ROLL_FEEDBACK_CAP_NM=5.0
     SUPPORT_INSTRUCTION="Lifting frame remains at the qualified lower-support height; both soles remain on a flat floor; no disturbance"
+    EXTENDED_NATIVE_ACK_ARGS=(
+      --extended-policy-actuation-acknowledgement
+      ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST
+    )
     for joint in \
       left_ankle_pitch_joint right_ankle_pitch_joint \
       left_ankle_roll_joint right_ankle_roll_joint; do
