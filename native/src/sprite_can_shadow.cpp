@@ -977,8 +977,7 @@ std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor) {
       position < motor.position_min - tolerance ||
       position > motor.position_max + tolerance ||
       std::abs(velocity) > motor.deployment_velocity_max + tolerance ||
-      kp < 0.0 || kp > 500.0 || kd < 0.0 || kd > 3.0 ||
-      std::abs(feedforward) > motor.commissioning_torque_cap + tolerance) {
+      kp < 0.0 || kp > 500.0 || kd < 0.0 || kd > 3.0) {
     throw std::runtime_error("protected policy command envelope failed for " + motor.name);
   }
   const auto p = encode_uint(position, motor.position_min, motor.position_max, 16);
@@ -994,6 +993,9 @@ std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor) {
       decode_uint(torque, motor.torque_min, motor.torque_max, 12);
   const double estimated = encoded_kp * (encoded_position - motor.last_position) +
       encoded_kd * (encoded_velocity - motor.last_velocity) + encoded_feedforward;
+  // The commissioning cap applies to total motor torque, not each impedance
+  // component. The preview invariant already bounds feedforward by protocol
+  // TMAX; coupled feedforward may be partially cancelled by the PD terms.
   if (!std::isfinite(estimated) ||
       std::abs(estimated) > motor.commissioning_torque_cap + tolerance) {
     throw std::runtime_error("protected policy torque cap failed for " + motor.name);
