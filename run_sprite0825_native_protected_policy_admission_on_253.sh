@@ -14,7 +14,7 @@ HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 WAIST_ROLL_COMMAND_CAP_NM=""
 WAIST_ROLL_FEEDBACK_CAP_NM=""
 SHOULDER_PITCH_FEEDBACK_CAP_NM=""
-HEAD_COMMAND_CAP_NM=""
+DM3507_COMMAND_CAP_NM=""
 HARDWARE_FEEDBACK_CAPS=0
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
@@ -652,7 +652,7 @@ case "$TIER" in
     ANKLE_GAIN_MULTIPLIER=1.0
     HIP_GAIN_MULTIPLIER=0.25
     MAXIMUM_COMMAND_TORQUE_NM=3.0
-    HEAD_COMMAND_CAP_NM=0.5
+    DM3507_COMMAND_CAP_NM=0.5
     LEG_COMMAND_CAP_NM=8.0
     LEG_FEEDBACK_CAP_NM=9.0
     ANKLE_COMMAND_CAP_NM=3.5
@@ -818,7 +818,7 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   "$ANKLE_COMMAND_CAP_NM" \
   "$PREFLIGHT_TORQUE_MULTIPLIER" \
   "$WAIST_ROLL_COMMAND_CAP_NM" \
-  "$HEAD_COMMAND_CAP_NM" <<'PY'
+  "$DM3507_COMMAND_CAP_NM" <<'PY'
 import json
 import sys
 
@@ -829,7 +829,7 @@ hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
 ankle_limit = float(sys.argv[5]) if sys.argv[5] else None
 torque_multiplier = float(sys.argv[6])
 waist_roll_limit = float(sys.argv[7]) if sys.argv[7] else None
-head_limit = float(sys.argv[8]) if sys.argv[8] else None
+dm3507_limit = float(sys.argv[8]) if sys.argv[8] else None
 if not 1.0 <= torque_multiplier <= 1.5:
     raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
 leg_motors = {
@@ -847,12 +847,16 @@ for name, raw_observed in report[
     "preview_maximum_abs_estimated_torque_nm_by_motor"
 ].items():
     observed = float(raw_observed)
-    if head_limit is not None and name in {
+    if dm3507_limit is not None and name in {
         "head_motor_a",
         "head_motor_b",
         "head_yaw_motor",
+        "left_wrist_pitch_motor",
+        "left_wrist_roll_motor",
+        "right_wrist_pitch_motor",
+        "right_wrist_roll_motor",
     }:
-        limit = head_limit
+        limit = dm3507_limit
     elif waist_roll_limit is not None and name == "waist_roll_motor":
         limit = waist_roll_limit
     elif ankle_limit is not None and name in {
@@ -885,7 +889,7 @@ print(
     f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
     f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
     f" waist_roll_limit={waist_roll_limit}"
-    f" head_limit={head_limit}"
+    f" dm3507_limit={dm3507_limit}"
     f" torque_multiplier={torque_multiplier}"
 )
 PY
@@ -1008,9 +1012,12 @@ if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "left_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "right_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
 fi
-if [[ -n "$HEAD_COMMAND_CAP_NM" ]]; then
-  for motor in head_motor_a head_motor_b head_yaw_motor; do
-    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$HEAD_COMMAND_CAP_NM")
+if [[ -n "$DM3507_COMMAND_CAP_NM" ]]; then
+  for motor in \
+    head_motor_a head_motor_b head_yaw_motor \
+    left_wrist_pitch_motor left_wrist_roll_motor \
+    right_wrist_pitch_motor right_wrist_roll_motor; do
+    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$DM3507_COMMAND_CAP_NM")
   done
 fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
@@ -1059,8 +1066,8 @@ elif [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
 else
   echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
 fi
-if [[ -n "$HEAD_COMMAND_CAP_NM" ]]; then
-  echo "Head motor command cap: ${HEAD_COMMAND_CAP_NM}Nm; feedback anomaly cap remains at the DM-J3507 hardware limit"
+if [[ -n "$DM3507_COMMAND_CAP_NM" ]]; then
+  echo "DM-J3507 motor command cap: ${DM3507_COMMAND_CAP_NM}Nm for head and wrist motors; feedback anomaly cap remains 3Nm"
 fi
 if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" && "$HARDWARE_FEEDBACK_CAPS" != "1" ]]; then
   echo "Waist-roll command/feedback caps: ${WAIST_ROLL_COMMAND_CAP_NM}/${WAIST_ROLL_FEEDBACK_CAP_NM}Nm"
