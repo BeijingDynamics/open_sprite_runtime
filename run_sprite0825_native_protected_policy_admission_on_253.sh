@@ -14,6 +14,7 @@ HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 WAIST_ROLL_COMMAND_CAP_NM=""
 WAIST_ROLL_FEEDBACK_CAP_NM=""
 SHOULDER_PITCH_FEEDBACK_CAP_NM=""
+HEAD_COMMAND_CAP_NM=""
 HARDWARE_FEEDBACK_CAPS=0
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
@@ -21,6 +22,7 @@ PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
 PREFLIGHT_TORQUE_MULTIPLIER=1.0
 PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=1
 NON_HIP_GAIN_MULTIPLIER=1.0
+HEAD_GAIN_MULTIPLIER=""
 WAIST_ROLL_GAIN_MULTIPLIER=""
 LEG_GAIN_MULTIPLIER=""
 ANKLE_GAIN_MULTIPLIER=""
@@ -644,11 +646,13 @@ case "$TIER" in
     DURATION=40.0
     GAIN_SCALE=1.0
     DM3507_GAIN_MULTIPLIER=0.01
+    HEAD_GAIN_MULTIPLIER=0.05
     NON_HIP_GAIN_MULTIPLIER=0.125
     LEG_GAIN_MULTIPLIER=0.25
     ANKLE_GAIN_MULTIPLIER=1.0
     HIP_GAIN_MULTIPLIER=0.25
     MAXIMUM_COMMAND_TORQUE_NM=3.0
+    HEAD_COMMAND_CAP_NM=0.5
     LEG_COMMAND_CAP_NM=8.0
     LEG_FEEDBACK_CAP_NM=9.0
     ANKLE_COMMAND_CAP_NM=3.5
@@ -795,7 +799,7 @@ SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
   "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
   "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" \
-  "$WAIST_ROLL_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  "$WAIST_ROLL_GAIN_MULTIPLIER" "$HEAD_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -813,7 +817,8 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
   "$ANKLE_COMMAND_CAP_NM" \
   "$PREFLIGHT_TORQUE_MULTIPLIER" \
-  "$WAIST_ROLL_COMMAND_CAP_NM" <<'PY'
+  "$WAIST_ROLL_COMMAND_CAP_NM" \
+  "$HEAD_COMMAND_CAP_NM" <<'PY'
 import json
 import sys
 
@@ -824,6 +829,7 @@ hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
 ankle_limit = float(sys.argv[5]) if sys.argv[5] else None
 torque_multiplier = float(sys.argv[6])
 waist_roll_limit = float(sys.argv[7]) if sys.argv[7] else None
+head_limit = float(sys.argv[8]) if sys.argv[8] else None
 if not 1.0 <= torque_multiplier <= 1.5:
     raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
 leg_motors = {
@@ -841,7 +847,13 @@ for name, raw_observed in report[
     "preview_maximum_abs_estimated_torque_nm_by_motor"
 ].items():
     observed = float(raw_observed)
-    if waist_roll_limit is not None and name == "waist_roll_motor":
+    if head_limit is not None and name in {
+        "head_motor_a",
+        "head_motor_b",
+        "head_yaw_motor",
+    }:
+        limit = head_limit
+    elif waist_roll_limit is not None and name == "waist_roll_motor":
         limit = waist_roll_limit
     elif ankle_limit is not None and name in {
         "left_ankle_motor_a",
@@ -873,6 +885,7 @@ print(
     f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
     f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
     f" waist_roll_limit={waist_roll_limit}"
+    f" head_limit={head_limit}"
     f" torque_multiplier={torque_multiplier}"
 )
 PY
@@ -904,10 +917,17 @@ echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
 JOINT_GAIN_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
-    head_pitch_joint head_roll_joint head_yaw_joint \
     left_wrist_pitch_joint left_wrist_roll_joint \
     right_wrist_pitch_joint right_wrist_roll_joint; do
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$DM3507_GAIN_MULTIPLIER")
+  done
+fi
+if [[ -z "$HEAD_GAIN_MULTIPLIER" ]]; then
+  HEAD_GAIN_MULTIPLIER="$DM3507_GAIN_MULTIPLIER"
+fi
+if [[ "$HEAD_GAIN_MULTIPLIER" != "1.0" ]]; then
+  for joint in head_pitch_joint head_roll_joint head_yaw_joint; do
+    JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HEAD_GAIN_MULTIPLIER")
   done
 fi
 if [[ "$NON_HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
@@ -988,6 +1008,11 @@ if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "left_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "right_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
 fi
+if [[ -n "$HEAD_COMMAND_CAP_NM" ]]; then
+  for motor in head_motor_a head_motor_b head_yaw_motor; do
+    MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$HEAD_COMMAND_CAP_NM")
+  done
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
@@ -1019,7 +1044,7 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} head_multiplier=${HEAD_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
   echo "Feedback anomaly caps: min(protocol TMAX, mechanical peak); command staircase remains independently enforced"
 fi
@@ -1033,6 +1058,9 @@ elif [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   fi
 else
   echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
+fi
+if [[ -n "$HEAD_COMMAND_CAP_NM" ]]; then
+  echo "Head motor command cap: ${HEAD_COMMAND_CAP_NM}Nm; feedback anomaly cap remains at the DM-J3507 hardware limit"
 fi
 if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" && "$HARDWARE_FEEDBACK_CAPS" != "1" ]]; then
   echo "Waist-roll command/feedback caps: ${WAIST_ROLL_COMMAND_CAP_NM}/${WAIST_ROLL_FEEDBACK_CAP_NM}Nm"
