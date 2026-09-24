@@ -34,6 +34,29 @@ def parse_joint_gain_multiplier_overrides(
     return result
 
 
+def parse_joint_damping_multiplier_overrides(
+    joint_names: tuple[str, ...], specifications: list[str] | tuple[str, ...]
+) -> np.ndarray:
+    """Parse unique ``joint=value`` multipliers applied only to Kd."""
+    result = np.ones(len(joint_names), dtype=np.float64)
+    indices = {name: index for index, name in enumerate(joint_names)}
+    seen: set[str] = set()
+    for specification in specifications:
+        name, separator, raw_value = specification.partition("=")
+        if not separator or name not in indices:
+            raise ValueError(f"invalid joint damping multiplier: {specification}")
+        if name in seen:
+            raise ValueError(f"duplicate joint damping multiplier: {name}")
+        value = float(raw_value)
+        if not math.isfinite(value) or not 0.0 < value <= 4.0:
+            raise ValueError(
+                f"joint damping multiplier for {name} must be in (0, 4]"
+            )
+        result[indices[name]] = value
+        seen.add(name)
+    return result
+
+
 @dataclass
 class ConsecutiveClampWatchdog:
     """Abort when selected raw targets remain materially beyond soft limits."""
@@ -121,6 +144,7 @@ class ProtectedTargetProjector:
     gain_scale: float
     maximum_embedded_kd: float = 3.0
     joint_gain_multipliers: np.ndarray | None = None
+    joint_damping_multipliers: np.ndarray | None = None
 
     def __post_init__(self) -> None:
         if len(self.joint_names) != 31 or len(set(self.joint_names)) != 31:
@@ -152,6 +176,21 @@ class ProtectedTargetProjector:
             or np.any(self.joint_gain_multipliers > 1.0)
         ):
             raise ValueError("joint_gain_multipliers must be a finite (0, 1] 31-vector")
+        if self.joint_damping_multipliers is None:
+            self.joint_damping_multipliers = np.ones(31, dtype=np.float64)
+        else:
+            self.joint_damping_multipliers = np.asarray(
+                self.joint_damping_multipliers, dtype=np.float64
+            )
+        if (
+            self.joint_damping_multipliers.shape != (31,)
+            or not np.isfinite(self.joint_damping_multipliers).all()
+            or np.any(self.joint_damping_multipliers <= 0.0)
+            or np.any(self.joint_damping_multipliers > 4.0)
+        ):
+            raise ValueError(
+                "joint_damping_multipliers must be a finite (0, 4] 31-vector"
+            )
         self.clamp_count_by_joint = {name: 0 for name in self.joint_names}
         self.maximum_raw_position_overshoot_rad = 0.0
 
@@ -164,6 +203,7 @@ class ProtectedTargetProjector:
         gain_scale: float,
         maximum_embedded_kd: float = 3.0,
         joint_gain_multipliers: np.ndarray | None = None,
+        joint_damping_multipliers: np.ndarray | None = None,
     ) -> "ProtectedTargetProjector":
         if isinstance(report, (str, Path)):
             data = json.loads(Path(report).read_text(encoding="utf-8"))
@@ -181,12 +221,13 @@ class ProtectedTargetProjector:
             lower.append(float(values[0]))
             upper.append(float(values[1]))
         return cls(
-            joint_names,
-            np.asarray(lower),
-            np.asarray(upper),
-            gain_scale,
-            maximum_embedded_kd,
-            joint_gain_multipliers,
+            joint_names=joint_names,
+            lower_rad=np.asarray(lower),
+            upper_rad=np.asarray(upper),
+            gain_scale=gain_scale,
+            maximum_embedded_kd=maximum_embedded_kd,
+            joint_gain_multipliers=joint_gain_multipliers,
+            joint_damping_multipliers=joint_damping_multipliers,
         )
 
     def project(self, target: JointImpedanceTarget) -> JointImpedanceTarget:
@@ -212,7 +253,7 @@ class ProtectedTargetProjector:
 
         scale = self.gain_scale * self.joint_gain_multipliers
         projected_kp = scale * kp
-        projected_kd = scale * kd
+        projected_kd = scale * self.joint_damping_multipliers * kd
         projected_feedforward = scale * feedforward
         if np.any(projected_kd > self.maximum_embedded_kd):
             raise ValueError("projected Kd exceeds the qualified Damiao limit")
@@ -259,6 +300,11 @@ class ProtectedTargetProjector:
                 name: float(self.joint_gain_multipliers[index])
                 for index, name in enumerate(self.joint_names)
                 if self.joint_gain_multipliers[index] != 1.0
+            },
+            "joint_damping_multiplier_overrides": {
+                name: float(self.joint_damping_multipliers[index])
+                for index, name in enumerate(self.joint_names)
+                if self.joint_damping_multipliers[index] != 1.0
             },
             "maximum_raw_position_overshoot_rad": self.maximum_raw_position_overshoot_rad,
             "clamp_count_by_joint": self.clamp_count_by_joint,

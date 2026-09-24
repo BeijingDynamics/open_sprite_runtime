@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from open_sprite_runtime.target_projection import (
+    parse_joint_damping_multiplier_overrides,
     parse_joint_gain_multiplier_overrides,
 )
 
@@ -34,6 +35,12 @@ def main() -> None:
     parser.add_argument("--gain-scale", type=float, required=True)
     parser.add_argument(
         "--joint-gain-multiplier",
+        action="append",
+        default=[],
+        metavar="JOINT=FACTOR",
+    )
+    parser.add_argument(
+        "--joint-damping-multiplier",
         action="append",
         default=[],
         metavar="JOINT=FACTOR",
@@ -73,6 +80,9 @@ def main() -> None:
     joint_gain_multipliers = parse_joint_gain_multiplier_overrides(
         names, args.joint_gain_multiplier
     )
+    joint_damping_multipliers = parse_joint_damping_multiplier_overrides(
+        names, args.joint_damping_multiplier
+    )
 
     rows = []
     for index, name in enumerate(names):
@@ -103,6 +113,7 @@ def main() -> None:
                 * float(arrays["stiffness"][index]),
                 "kd_max": args.gain_scale
                 * joint_gain_multipliers[index]
+                * joint_damping_multipliers[index]
                 * min(float(arrays["damping"][index]), args.maximum_embedded_kd),
                 "feedforward_torque_max_nm": args.gain_scale
                 * joint_gain_multipliers[index]
@@ -119,6 +130,7 @@ def main() -> None:
     print(
         f"EXPORTED joints={len(rows)} gain_scale={args.gain_scale} "
         f"joint_gain_overrides={len(args.joint_gain_multiplier)} "
+        f"joint_damping_overrides={len(args.joint_damping_multiplier)} "
         f"output={args.output}"
     )
 

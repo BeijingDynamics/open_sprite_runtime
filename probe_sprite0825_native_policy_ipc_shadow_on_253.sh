@@ -15,6 +15,7 @@ ANKLE_GAIN_MULTIPLIER="${9:-$LEG_GAIN_MULTIPLIER}"
 HIP_GAIN_MULTIPLIER="${10:-1.0}"
 WAIST_ROLL_GAIN_MULTIPLIER="${11:-$NON_HIP_GAIN_MULTIPLIER}"
 HEAD_GAIN_MULTIPLIER="${12:-$DM3507_GAIN_MULTIPLIER}"
+LEG_DAMPING_MULTIPLIER="${13:-1.0}"
 REPLAY_ACTION_TRACE="${SPRITE_REPLAY_ACTION_TRACE:-}"
 REPLAY_SOURCE_HZ="${SPRITE_REPLAY_SOURCE_HZ:-50.0}"
 REPLAY_START_SECONDS="${SPRITE_REPLAY_START_SECONDS:-10.0}"
@@ -48,6 +49,7 @@ NATIVE_SAFETY_ARGS=()
 POLICY_SAFETY_ARGS=()
 POLICY_REPLAY_ARGS=()
 JOINT_GAIN_ARGS=()
+JOINT_DAMPING_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
     left_wrist_pitch_joint left_wrist_roll_joint \
@@ -108,6 +110,15 @@ if [[ "$HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_GAIN_MULTIPLIER")
   done
 fi
+if [[ "$LEG_DAMPING_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint right_hip_pitch_joint \
+    left_hip_roll_joint right_hip_roll_joint \
+    left_hip_yaw_joint right_hip_yaw_joint \
+    left_knee_joint right_knee_joint; do
+    JOINT_DAMPING_ARGS+=(--joint-damping-multiplier "$joint=$LEG_DAMPING_MULTIPLIER")
+  done
+fi
 if [[ -n "$GAIN_SCALE" ]]; then
   [[ -f "$JOINT_LIMITS" ]] || {
     echo "Joint limit report not found: $JOINT_LIMITS" >&2
@@ -120,12 +131,14 @@ if [[ -n "$GAIN_SCALE" ]]; then
     --gain-scale "$GAIN_SCALE" \
     --maximum-embedded-kd 3.0 \
     "${JOINT_GAIN_ARGS[@]}" \
+    "${JOINT_DAMPING_ARGS[@]}" \
     --output "$ROOT/build/native/joint_safety.tsv"
   NATIVE_SAFETY_ARGS=(--joint-safety-config "$ROOT/build/native/joint_safety.tsv")
   POLICY_SAFETY_ARGS=(
     --joint-limit-candidates "$JOINT_LIMITS"
     --gain-scale "$GAIN_SCALE"
     "${JOINT_GAIN_ARGS[@]}"
+    "${JOINT_DAMPING_ARGS[@]}"
   )
   if [[ "$STARTUP_HOLD_SECONDS" != "0" || "$STARTUP_RAMP_SECONDS" != "0" ]]; then
     POLICY_SAFETY_ARGS+=(
@@ -150,6 +163,7 @@ echo "WAIST_ROLL_GAIN_MULTIPLIER $WAIST_ROLL_GAIN_MULTIPLIER"
 echo "LEG_GAIN_MULTIPLIER $LEG_GAIN_MULTIPLIER"
 echo "ANKLE_GAIN_MULTIPLIER $ANKLE_GAIN_MULTIPLIER"
 echo "HIP_GAIN_MULTIPLIER $HIP_GAIN_MULTIPLIER"
+echo "LEG_DAMPING_MULTIPLIER $LEG_DAMPING_MULTIPLIER"
 echo "COMMAND_VX $COMMAND_VX"
 echo "ACTION_TRACE_REPLAY ${REPLAY_ACTION_TRACE:-disabled} amplitude=${REPLAY_AMPLITUDE_SCALE}"
 

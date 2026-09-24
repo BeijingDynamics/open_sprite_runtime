@@ -7,6 +7,8 @@ PREFLIGHT_ONLY="${SPRITE_PREFLIGHT_ONLY:-0}"
 COMMAND_VX=0.0
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
+KNEE_COMMAND_CAP_NM=""
+KNEE_FEEDBACK_CAP_NM=""
 ANKLE_COMMAND_CAP_NM=""
 ANKLE_FEEDBACK_CAP_NM=""
 HIP_PITCH_ROLL_COMMAND_CAP_NM=""
@@ -25,6 +27,7 @@ NON_HIP_GAIN_MULTIPLIER=1.0
 HEAD_GAIN_MULTIPLIER=""
 WAIST_ROLL_GAIN_MULTIPLIER=""
 LEG_GAIN_MULTIPLIER=""
+LEG_DAMPING_MULTIPLIER=1.0
 ANKLE_GAIN_MULTIPLIER=""
 HIP_GAIN_MULTIPLIER=1.0
 EXTENDED_NATIVE_ACK_ARGS=()
@@ -622,8 +625,17 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier|grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier)
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" ]]; then
+  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier|grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier|grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_LEGKD050_20S
+      DURATION=20.0
+      WAIST_ROLL_GAIN_MULTIPLIER=0.5
+      WAIST_ROLL_COMMAND_CAP_NM=10.0
+      HARDWARE_FEEDBACK_CAPS=1
+      LEG_DAMPING_MULTIPLIER=2.0
+      KNEE_COMMAND_CAP_NM=28.0
+      KNEE_FEEDBACK_CAP_NM=28.0
+    elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" ]]; then
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_PHYSICAL_FEEDBACK_40S
       WAIST_ROLL_GAIN_MULTIPLIER=0.5
       WAIST_ROLL_COMMAND_CAP_NM=10.0
@@ -643,7 +655,7 @@ case "$TIER" in
     else
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_ANKLE100_RATED_40S
     fi
-    DURATION=40.0
+    DURATION="${DURATION:-40.0}"
     GAIN_SCALE=1.0
     DM3507_GAIN_MULTIPLIER=0.01
     HEAD_GAIN_MULTIPLIER=0.05
@@ -662,7 +674,7 @@ case "$TIER" in
     COMMAND_VX=0.0
     PREFLIGHT_TORQUE_MULTIPLIER=1.5
     PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" ]]; then
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" ]]; then
       ANKLE_COMMAND_CAP_NM=5.0
       ANKLE_FEEDBACK_CAP_NM=6.0
     elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
@@ -799,7 +811,8 @@ SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
   6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
   "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
   "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" \
-  "$WAIST_ROLL_GAIN_MULTIPLIER" "$HEAD_GAIN_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+  "$WAIST_ROLL_GAIN_MULTIPLIER" "$HEAD_GAIN_MULTIPLIER" \
+  "$LEG_DAMPING_MULTIPLIER" | tee "$PREFLIGHT_LOG"
 PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
 PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
 [[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
@@ -814,6 +827,7 @@ PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "N
   "$PREFLIGHT_NATIVE_REPORT" \
   "$MAXIMUM_COMMAND_TORQUE_NM" \
   "$LEG_COMMAND_CAP_NM" \
+  "$KNEE_COMMAND_CAP_NM" \
   "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
   "$ANKLE_COMMAND_CAP_NM" \
   "$PREFLIGHT_TORQUE_MULTIPLIER" \
@@ -825,11 +839,12 @@ import sys
 report = json.load(open(sys.argv[1], encoding="utf-8"))
 default_limit = float(sys.argv[2])
 leg_limit = float(sys.argv[3]) if sys.argv[3] else None
-hip_pitch_roll_limit = float(sys.argv[4]) if sys.argv[4] else None
-ankle_limit = float(sys.argv[5]) if sys.argv[5] else None
-torque_multiplier = float(sys.argv[6])
-waist_roll_limit = float(sys.argv[7]) if sys.argv[7] else None
-dm3507_limit = float(sys.argv[8]) if sys.argv[8] else None
+knee_limit = float(sys.argv[4]) if sys.argv[4] else None
+hip_pitch_roll_limit = float(sys.argv[5]) if sys.argv[5] else None
+ankle_limit = float(sys.argv[6]) if sys.argv[6] else None
+torque_multiplier = float(sys.argv[7])
+waist_roll_limit = float(sys.argv[8]) if sys.argv[8] else None
+dm3507_limit = float(sys.argv[9]) if sys.argv[9] else None
 if not 1.0 <= torque_multiplier <= 1.5:
     raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
 leg_motors = {
@@ -866,6 +881,11 @@ for name, raw_observed in report[
         "right_ankle_motor_b",
     }:
         limit = ankle_limit
+    elif knee_limit is not None and name in {
+        "left_knee_motor",
+        "right_knee_motor",
+    }:
+        limit = knee_limit
     elif hip_pitch_roll_limit is not None and name in {
         "left_hip_pitch_motor",
         "left_hip_roll_motor",
@@ -887,6 +907,7 @@ print(
     "STARTUP_COMMAND_TORQUE_PASSED "
     f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
     f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
+    f"knee_limit={knee_limit} "
     f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
     f" waist_roll_limit={waist_roll_limit}"
     f" dm3507_limit={dm3507_limit}"
@@ -919,6 +940,7 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
 echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
 
 JOINT_GAIN_ARGS=()
+JOINT_DAMPING_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
     left_wrist_pitch_joint left_wrist_roll_joint \
@@ -969,6 +991,15 @@ if [[ "$HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
     JOINT_GAIN_ARGS+=(--joint-gain-multiplier "$joint=$HIP_GAIN_MULTIPLIER")
   done
 fi
+if [[ "$LEG_DAMPING_MULTIPLIER" != "1.0" ]]; then
+  for joint in \
+    left_hip_pitch_joint right_hip_pitch_joint \
+    left_hip_roll_joint right_hip_roll_joint \
+    left_hip_yaw_joint right_hip_yaw_joint \
+    left_knee_joint right_knee_joint; do
+    JOINT_DAMPING_ARGS+=(--joint-damping-multiplier "$joint=$LEG_DAMPING_MULTIPLIER")
+  done
+fi
 MOTOR_CAP_ARGS=()
 FEEDBACK_CAP_MODE_ARGS=()
 if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
@@ -993,6 +1024,12 @@ if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
         if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
           command_cap="$HIP_PITCH_ROLL_COMMAND_CAP_NM"
           feedback_cap="$HIP_PITCH_ROLL_FEEDBACK_CAP_NM"
+        fi
+        ;;
+      left_knee_motor|right_knee_motor)
+        if [[ -n "$KNEE_COMMAND_CAP_NM" ]]; then
+          command_cap="$KNEE_COMMAND_CAP_NM"
+          feedback_cap="$KNEE_FEEDBACK_CAP_NM"
         fi
         ;;
     esac
@@ -1039,6 +1076,7 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --gain-scale "$GAIN_SCALE" \
   --maximum-embedded-kd 3.0 \
   "${JOINT_GAIN_ARGS[@]}" \
+  "${JOINT_DAMPING_ARGS[@]}" \
   --output "$ROOT/build/native/joint_safety.tsv"
 
 if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
@@ -1051,12 +1089,12 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
-echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} head_multiplier=${HEAD_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
+echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} leg_damping_multiplier=${LEG_DAMPING_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} head_multiplier=${HEAD_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
   echo "Feedback anomaly caps: min(protocol TMAX, mechanical peak); command staircase remains independently enforced"
 fi
 if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
-  echo "Per-motor command caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM}Nm; waist roll=${WAIST_ROLL_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+  echo "Per-motor command caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; knees=${KNEE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM}Nm; waist roll=${WAIST_ROLL_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
 elif [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
     echo "Per-motor command/feedback caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}/${HIP_PITCH_ROLL_FEEDBACK_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}/${LEG_FEEDBACK_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}/${ANKLE_FEEDBACK_CAP_NM:-$LEG_FEEDBACK_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
@@ -1134,6 +1172,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \
   "${JOINT_GAIN_ARGS[@]}" \
+  "${JOINT_DAMPING_ARGS[@]}" \
   "${CLAMP_WATCHDOG_ARGS[@]}" \
   --physical-startup-hold-seconds "$STARTUP_HOLD_SECONDS" \
   --physical-startup-ramp-seconds "$STARTUP_RAMP_SECONDS" \

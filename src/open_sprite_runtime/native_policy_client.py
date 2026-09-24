@@ -25,6 +25,7 @@ from .policy_shadow import LivePolicyShadow
 from .target_projection import (
     ConsecutiveClampWatchdog,
     ProtectedTargetProjector,
+    parse_joint_damping_multiplier_overrides,
     parse_joint_gain_multiplier_overrides,
 )
 from .yahboom_imu import YahboomQuaternion, YahboomRawImu, YahboomStreamDecoder
@@ -104,6 +105,9 @@ def run(args: argparse.Namespace) -> dict:
             ),
             joint_gain_multipliers=parse_joint_gain_multiplier_overrides(
                 joint_names, args.joint_gain_multiplier
+            ),
+            joint_damping_multipliers=parse_joint_damping_multiplier_overrides(
+                joint_names, args.joint_damping_multiplier
             ),
         )
     elif args.gain_scale != 1.0:
@@ -413,6 +417,13 @@ def main() -> None:
         action="append",
         default=[],
         metavar="JOINT=FACTOR",
+    )
+    parser.add_argument(
+        "--joint-damping-multiplier",
+        action="append",
+        default=[],
+        metavar="JOINT=FACTOR",
+        help="extra per-joint multiplier applied only to Kd after gain scaling",
     )
     parser.add_argument(
         "--fail-on-consecutive-clamp-joint",

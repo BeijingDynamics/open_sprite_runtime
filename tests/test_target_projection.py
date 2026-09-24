@@ -6,6 +6,7 @@ from open_sprite_runtime.multirate_control import JointImpedanceTarget
 from open_sprite_runtime.target_projection import (
     ConsecutiveClampWatchdog,
     ProtectedTargetProjector,
+    parse_joint_damping_multiplier_overrides,
     parse_joint_gain_multiplier_overrides,
 )
 
@@ -113,6 +114,36 @@ class ProtectedTargetProjectorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             parse_joint_gain_multiplier_overrides(
                 NAMES, ["joint_3=0.1", "joint_3=0.2"]
+            )
+
+    def test_applies_independent_per_joint_damping_multipliers(self) -> None:
+        gain_multipliers = parse_joint_gain_multiplier_overrides(
+            NAMES, ["joint_3=0.25"]
+        )
+        damping_multipliers = parse_joint_damping_multiplier_overrides(
+            NAMES, ["joint_3=2.0"]
+        )
+        projector = ProtectedTargetProjector.from_limit_report(
+            NAMES,
+            limit_report(),
+            gain_scale=1.0,
+            joint_gain_multipliers=gain_multipliers,
+            joint_damping_multipliers=damping_multipliers,
+        )
+
+        result = projector.project(target(np.zeros(31)))
+
+        self.assertAlmostEqual(result.kp[3], 25.0)
+        self.assertAlmostEqual(result.kd[3], 1.0)
+        self.assertAlmostEqual(result.feedforward_torque_nm[3], 1.0)
+        self.assertAlmostEqual(result.kd[0], 2.0)
+        self.assertEqual(
+            projector.report()["joint_damping_multiplier_overrides"],
+            {"joint_3": 2.0},
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_joint_damping_multiplier_overrides(
+                NAMES, ["joint_3=2.0", "joint_3=1.5"]
             )
 
     def test_consecutive_clamp_watchdog_resets_and_trips(self) -> None:
