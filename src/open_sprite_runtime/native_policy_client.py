@@ -60,6 +60,20 @@ def _percentile(values: list[float], fraction: float) -> float | None:
     return ordered[min(len(ordered) - 1, math.ceil(fraction * len(ordered)) - 1)]
 
 
+def _startup_measured_position(
+    startup: PhysicalStartupRamp,
+    projector: ProtectedTargetProjector,
+    measured_position_rad: np.ndarray,
+) -> np.ndarray:
+    """Apply reviewed soft limits only to the pose captured at startup."""
+    if startup.initial_position_rad is None:
+        return projector.require_position_within_limits(
+            measured_position_rad,
+            label="physical startup measured pose",
+        )
+    return measured_position_rad
+
+
 def run(args: argparse.Namespace) -> dict:
     hardware = json.loads(Path(args.hardware_config).read_text(encoding="utf-8"))
     contract = PolicyContract.load(args.contract)
@@ -244,9 +258,10 @@ def run(args: argparse.Namespace) -> dict:
                     if startup is not None:
                         target = startup.apply(
                             projected_target,
-                            projector.require_position_within_limits(
+                            _startup_measured_position(
+                                startup,
+                                projector,
                                 policy_trace.joint_position_rad,
-                                label="physical startup measured pose",
                             ),
                         )
                     target_sequence += 1
