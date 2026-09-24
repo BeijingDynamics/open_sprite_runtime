@@ -54,6 +54,18 @@ def _parse_motor_caps(values: list[str], option: str) -> dict[str, float]:
     return caps
 
 
+def _default_feedback_cap(
+    *,
+    rated_torque_nm: float,
+    mechanical_peak_torque_nm: float,
+    protocol_torque_cap_nm: float,
+    use_hardware_limit: bool,
+) -> float:
+    if use_hardware_limit:
+        return min(mechanical_peak_torque_nm, protocol_torque_cap_nm)
+    return 0.1 * rated_torque_nm
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hardware", type=Path, required=True)
@@ -79,6 +91,14 @@ def main() -> None:
         default=[],
         metavar="MOTOR_NAME=NM",
         help="Override the independent feedback anomaly cap for one named motor.",
+    )
+    parser.add_argument(
+        "--feedback-caps-at-hardware-limit",
+        action="store_true",
+        help=(
+            "Default feedback anomaly caps to min(protocol TMAX, mechanical peak). "
+            "Command caps remain unchanged and independently enforced."
+        ),
     )
     parser.add_argument("--filtered-mos-temperature-limit-c", type=float, default=90.0)
     parser.add_argument("--filtered-rotor-temperature-limit-c", type=float, default=80.0)
@@ -120,14 +140,20 @@ def main() -> None:
             ),
         )
         feedback_cap = feedback_caps.get(
-            name, 0.1 * float(motor["rated_torque_nm"])
+            name,
+            _default_feedback_cap(
+                rated_torque_nm=float(motor["rated_torque_nm"]),
+                mechanical_peak_torque_nm=mechanical_peak,
+                protocol_torque_cap_nm=protocol_torque_cap,
+                use_hardware_limit=args.feedback_caps_at_hardware_limit,
+            ),
         )
         if command_cap > min(mechanical_peak, protocol_torque_cap):
             raise SystemExit(f"command cap exceeds hardware/protocol limit for {name}")
         if feedback_cap < command_cap:
             raise SystemExit(f"feedback cap is below command cap for {name}")
-        if feedback_cap > mechanical_peak:
-            raise SystemExit(f"feedback cap exceeds mechanical peak for {name}")
+        if feedback_cap > min(mechanical_peak, protocol_torque_cap):
+            raise SystemExit(f"feedback cap exceeds hardware/protocol limit for {name}")
         configured_speed = motor.get("max_speed_rad_s")
         deployment_speed = min(
             float(ranges["velocity_rad_s"][1]),
@@ -159,8 +185,9 @@ def main() -> None:
                 # Commissioning caps remain independent from protocol TMAX and
                 # may only be raised for explicitly named, reviewed motors.
                 "commissioning_torque_cap_nm": command_cap,
-                # Feedback includes suspended static load and sensor offset. Keep
-                # its independent, previously qualified anomaly threshold.
+                # Feedback protection is independent from the commissioning
+                # command staircase. Hardware-limit mode permits external-load
+                # reaction torque while temperature and RMS expose sustained load.
                 "feedback_torque_cap_nm": feedback_cap,
                 "mos_temperature_limit_c": float(
                     specs["drive_shutdown_temperature_c"]

@@ -14,6 +14,7 @@ HIP_PITCH_ROLL_FEEDBACK_CAP_NM=""
 WAIST_ROLL_COMMAND_CAP_NM=""
 WAIST_ROLL_FEEDBACK_CAP_NM=""
 SHOULDER_PITCH_FEEDBACK_CAP_NM=""
+HARDWARE_FEEDBACK_CAPS=0
 PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD=0.01
 PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION=0.01
 PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS=2
@@ -619,8 +620,13 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier)
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" ]]; then
+  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier|grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_PHYSICAL_FEEDBACK_40S
+      WAIST_ROLL_GAIN_MULTIPLIER=0.5
+      WAIST_ROLL_COMMAND_CAP_NM=10.0
+      HARDWARE_FEEDBACK_CAPS=1
+    elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" ]]; then
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_40S
       WAIST_ROLL_GAIN_MULTIPLIER=0.5
       WAIST_ROLL_COMMAND_CAP_NM=10.0
@@ -652,7 +658,7 @@ case "$TIER" in
     COMMAND_VX=0.0
     PREFLIGHT_TORQUE_MULTIPLIER=1.5
     PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" ]]; then
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" ]]; then
       ANKLE_COMMAND_CAP_NM=5.0
       ANKLE_FEEDBACK_CAP_NM=6.0
     elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then
@@ -895,11 +901,6 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   --output "$PREFLIGHT_REPORT" >/dev/null
 echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
 
-if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
-  echo "PREFLIGHT_ONLY_PASSED no motor enable or nonzero command was attempted"
-  exit 0
-fi
-
 JOINT_GAIN_ARGS=()
 if [[ "$DM3507_GAIN_MULTIPLIER" != "1.0" ]]; then
   for joint in \
@@ -945,6 +946,10 @@ if [[ "$HIP_GAIN_MULTIPLIER" != "1.0" ]]; then
   done
 fi
 MOTOR_CAP_ARGS=()
+FEEDBACK_CAP_MODE_ARGS=()
+if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
+  FEEDBACK_CAP_MODE_ARGS=(--feedback-caps-at-hardware-limit)
+fi
 if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   for motor in \
     left_hip_pitch_motor left_hip_roll_motor left_hip_yaw_motor left_knee_motor \
@@ -968,12 +973,16 @@ if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
         ;;
     esac
     MOTOR_CAP_ARGS+=(--motor-command-cap "$motor=$command_cap")
-    MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$feedback_cap")
+    if [[ "$HARDWARE_FEEDBACK_CAPS" != "1" ]]; then
+      MOTOR_CAP_ARGS+=(--motor-feedback-cap "$motor=$feedback_cap")
+    fi
   done
 fi
 if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
   MOTOR_CAP_ARGS+=(--motor-command-cap "waist_roll_motor=$WAIST_ROLL_COMMAND_CAP_NM")
-  MOTOR_CAP_ARGS+=(--motor-feedback-cap "waist_roll_motor=$WAIST_ROLL_FEEDBACK_CAP_NM")
+  if [[ "$HARDWARE_FEEDBACK_CAPS" != "1" ]]; then
+    MOTOR_CAP_ARGS+=(--motor-feedback-cap "waist_roll_motor=$WAIST_ROLL_FEEDBACK_CAP_NM")
+  fi
 fi
 if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
   MOTOR_CAP_ARGS+=(--motor-feedback-cap "left_shoulder_pitch_motor=$SHOULDER_PITCH_FEEDBACK_CAP_NM")
@@ -983,6 +992,7 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
   --maximum-commissioning-torque-nm "$MAXIMUM_COMMAND_TORQUE_NM" \
+  "${FEEDBACK_CAP_MODE_ARGS[@]}" \
   "${MOTOR_CAP_ARGS[@]}" \
   --output "$ROOT/build/native/motors.tsv"
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
@@ -999,13 +1009,23 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "${JOINT_GAIN_ARGS[@]}" \
   --output "$ROOT/build/native/joint_safety.tsv"
 
+if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  echo "PREFLIGHT_ONLY_PASSED active configuration exported; no motor enable or nonzero command was attempted"
+  exit 0
+fi
+
 JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   'import json,sys; from open_sprite_runtime.native_ipc import ordered_name_hash; d=json.load(open(sys.argv[1])); print(hex(ordered_name_hash(d["joint_names"])))' \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
-if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
+if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
+  echo "Feedback anomaly caps: min(protocol TMAX, mechanical peak); command staircase remains independently enforced"
+fi
+if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
+  echo "Per-motor command caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM}Nm; waist roll=${WAIST_ROLL_COMMAND_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
+elif [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
   if [[ -n "$HIP_PITCH_ROLL_COMMAND_CAP_NM" ]]; then
     echo "Per-motor command/feedback caps: hip pitch/roll=${HIP_PITCH_ROLL_COMMAND_CAP_NM}/${HIP_PITCH_ROLL_FEEDBACK_CAP_NM}Nm; other legs=${LEG_COMMAND_CAP_NM}/${LEG_FEEDBACK_CAP_NM}Nm; ankles=${ANKLE_COMMAND_CAP_NM:-$LEG_COMMAND_CAP_NM}/${ANKLE_FEEDBACK_CAP_NM:-$LEG_FEEDBACK_CAP_NM}Nm; other motors=min(10% rated, ${MAXIMUM_COMMAND_TORQUE_NM}Nm), checked after MIT quantization"
   else
@@ -1014,7 +1034,7 @@ if [[ -n "$LEG_COMMAND_CAP_NM" ]]; then
 else
   echo "Per-motor command cap: min(10% of rated torque, ${MAXIMUM_COMMAND_TORQUE_NM} Nm), checked after MIT quantization"
 fi
-if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" ]]; then
+if [[ -n "$WAIST_ROLL_COMMAND_CAP_NM" && "$HARDWARE_FEEDBACK_CAPS" != "1" ]]; then
   echo "Waist-roll command/feedback caps: ${WAIST_ROLL_COMMAND_CAP_NM}/${WAIST_ROLL_FEEDBACK_CAP_NM}Nm"
 fi
 if [[ -n "$SHOULDER_PITCH_FEEDBACK_CAP_NM" ]]; then
