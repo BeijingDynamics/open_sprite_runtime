@@ -141,6 +141,10 @@ def run(args: argparse.Namespace) -> dict:
     target_sequence = 0
     raw_imu_count = 0
     quaternion_count = 0
+    last_raw_imu: YahboomRawImu | None = None
+    last_quaternion: YahboomQuaternion | None = None
+    last_raw_imu_monotonic_ns = 0
+    last_quaternion_monotonic_ns = 0
     last_state_sequence = 0
     inference_ms: list[float] = []
     errors: list[str] = []
@@ -156,6 +160,14 @@ def run(args: argparse.Namespace) -> dict:
             "joint_velocity_rad_s": [],
             "base_angular_velocity_rad_s": [],
             "projected_gravity": [],
+            "imu_raw_monotonic_ns": [],
+            "imu_quaternion_monotonic_ns": [],
+            "imu_acceleration_m_s2": [],
+            "imu_angular_velocity_sensor_rad_s": [],
+            "imu_magnetic_field_ut": [],
+            "imu_quaternion_wxyz": [],
+            "imu_raw_age_ms": [],
+            "imu_quaternion_age_ms": [],
             "observation": [],
             "raw_action": [],
             "handoff_action": [],
@@ -201,11 +213,16 @@ def run(args: argparse.Namespace) -> dict:
                     if key.data == "imu":
                         payload = imu_port.read(max(imu_port.in_waiting, 1))
                         for packet in decoder.feed(payload):
+                            received_ns = time.monotonic_ns()
                             if isinstance(packet, YahboomRawImu):
                                 raw_imu_count += 1
+                                last_raw_imu = packet
+                                last_raw_imu_monotonic_ns = received_ns
                                 shadow.update_imu(packet)
                             elif isinstance(packet, YahboomQuaternion):
                                 quaternion_count += 1
+                                last_quaternion = packet
+                                last_quaternion_monotonic_ns = received_ns
                                 shadow.update_imu(packet)
                         continue
 
@@ -297,6 +314,42 @@ def run(args: argparse.Namespace) -> dict:
                             "target_position_rad",
                         ):
                             trace[field].append(getattr(policy_trace, field))
+                        nan3 = (float("nan"),) * 3
+                        nan4 = (float("nan"),) * 4
+                        trace["imu_raw_monotonic_ns"].append(last_raw_imu_monotonic_ns)
+                        trace["imu_quaternion_monotonic_ns"].append(
+                            last_quaternion_monotonic_ns
+                        )
+                        trace["imu_acceleration_m_s2"].append(
+                            last_raw_imu.acceleration_m_s2
+                            if last_raw_imu is not None
+                            else nan3
+                        )
+                        trace["imu_angular_velocity_sensor_rad_s"].append(
+                            last_raw_imu.angular_velocity_rad_s
+                            if last_raw_imu is not None
+                            else nan3
+                        )
+                        trace["imu_magnetic_field_ut"].append(
+                            last_raw_imu.magnetic_field_ut
+                            if last_raw_imu is not None
+                            else nan3
+                        )
+                        trace["imu_quaternion_wxyz"].append(
+                            last_quaternion.wxyz
+                            if last_quaternion is not None
+                            else nan4
+                        )
+                        trace["imu_raw_age_ms"].append(
+                            (packet.monotonic_ns - last_raw_imu_monotonic_ns) / 1.0e6
+                            if last_raw_imu_monotonic_ns
+                            else float("nan")
+                        )
+                        trace["imu_quaternion_age_ms"].append(
+                            (packet.monotonic_ns - last_quaternion_monotonic_ns) / 1.0e6
+                            if last_quaternion_monotonic_ns
+                            else float("nan")
+                        )
                         trace["command_target_position_rad"].append(
                             raw_target.position_rad
                         )

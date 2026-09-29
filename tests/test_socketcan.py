@@ -125,6 +125,25 @@ class SocketCanReceiverTests(unittest.TestCase):
         self.assertTrue(fake.closed)
         self.assertEqual(receiver.fileno(), 17)
 
+    def test_active_observer_has_no_transmit_api_and_requires_active_fd(self) -> None:
+        active = audit_socketcan_active_fd_snapshot(
+            [entry("can0", listen_only=False)], "can0"
+        )
+        fake = FakeSocket()
+        observer = SocketCanReceiver.open_active_observer(
+            "can0", active, socket_factory=lambda *_: fake
+        )
+        self.assertEqual(fake.address, ("can0",))
+        self.assertFalse(fake.blocking)
+        self.assertFalse(hasattr(observer, "send"))
+        observer.close()
+
+        listen_only = audit_socketcan_active_fd_snapshot([entry("can0")], "can0")
+        with self.assertRaisesRegex(RuntimeError, "observer preflight did not pass"):
+            SocketCanReceiver.open_active_observer(
+                "can0", listen_only, socket_factory=lambda *_: FakeSocket()
+            )
+
     def test_receive_decodes_fd_frame_and_raw_hardware_timestamp(self) -> None:
         frame = CANFD_FRAME.pack(0x123, 4, 0x01, 0, 0, b"abcd".ljust(64, b"\0"))
         timestamps = struct.pack("=6q", 1, 2, 3, 4, 5, 6)

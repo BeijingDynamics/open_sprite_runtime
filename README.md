@@ -8,14 +8,14 @@ Sim2Real candidate package. G59 `model2999` remains the pre-upgrade rollback
 baseline; the qualified 100 Hz `model1050` release remains a teacher and
 comparison baseline only.
 
-This repository is intentionally **not ready to arm the complete robot yet**.
-It includes receive-only inspection and explicitly acknowledged, finite-duration
-zero-gain position-echo commissioning tools. It does not contain an armable
-whole-robot policy transmit loop. Full hardware transmission remains disabled
-until the IMU convention, watchdog, emergency stop, and final integrated safety
-gates are measured and accepted. Motor mapping, directions, mechanical limits,
-the four 500 Hz CAN-FD bus tests, and the left ankle, right ankle, and head
-differential calibrations are recorded as completed commissioning milestones.
+This repository includes an explicitly acknowledged, finite-duration protected
+whole-robot policy loop. Full-weight standing and bounded disturbance recovery
+have been admitted on hardware with an independent power-cut operator. Battery-
+powered walking has **not** yet been admitted. Motor mapping, directions,
+mechanical limits, IMU convention, four 500 Hz CAN-FD bus tests, differential
+calibrations, watchdogs, and integrated standing gates are recorded as completed
+commissioning milestones. Active scripts remain fail-closed and require their
+exact acknowledgement token; receive-only inspection tools remain available.
 
 ## Timing contract
 
@@ -103,6 +103,10 @@ serial capture, and hardware-arrival checklist are documented in
 [Sprite0825 Yahboom IMU integration](docs/SPRITE0825_YAHBOOM_IMU_INTEGRATION.md).
 The Jetson's existing high-performance CH340 driver is a prerequisite and is
 not modified by this project.
+
+Synchronized raw CAN, policy, motor, temperature, and IMU logging for physical
+parameter identification is documented in
+[Sprite0825 real-data system identification](docs/SPRITE0825_REAL_DATA_SYSTEM_IDENTIFICATION.md).
 
 ## License
 

@@ -244,6 +244,34 @@ class SocketCanReceiver:
             raise
         return cls(interface, raw_socket)
 
+    @classmethod
+    def open_active_observer(
+        cls,
+        interface: str,
+        preflight: SocketCanActiveFdPreflightReport,
+        *,
+        socket_factory: Any = socket.socket,
+    ) -> "SocketCanReceiver":
+        """Observe an active CAN-FD bus without exposing any transmit API."""
+        if not preflight.passed or preflight.interface != interface:
+            raise RuntimeError(f"{interface}: active CAN-FD observer preflight did not pass")
+        raw_socket = socket_factory(socket.PF_CAN, socket.SOCK_RAW, socket.CAN_RAW)
+        try:
+            raw_socket.setsockopt(socket.SOL_CAN_RAW, socket.CAN_RAW_FD_FRAMES, 1)
+            timestamp_flags = (
+                SOF_TIMESTAMPING_RX_HARDWARE
+                | SOF_TIMESTAMPING_RX_SOFTWARE
+                | SOF_TIMESTAMPING_SOFTWARE
+                | SOF_TIMESTAMPING_RAW_HARDWARE
+            )
+            raw_socket.setsockopt(socket.SOL_SOCKET, SO_TIMESTAMPING_LINUX_64, timestamp_flags)
+            raw_socket.bind((interface,))
+            raw_socket.setblocking(False)
+        except BaseException:
+            raw_socket.close()
+            raise
+        return cls(interface, raw_socket)
+
     def receive(self) -> ReceivedCanFrame:
         payload, ancillary, _flags, _address = self._socket.recvmsg(
             CANFD_FRAME.size, socket.CMSG_SPACE(6 * 8)
