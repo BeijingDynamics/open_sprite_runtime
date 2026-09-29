@@ -625,10 +625,67 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier|grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier|grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier)
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" ]]; then
-      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_LEGKD050_20S
-      DURATION=20.0
+  grounded_full_weight_stand_lower_body_sim_pd_8s_tier|grounded_full_weight_stand_lower_body_sim_pd_40s_tier|grounded_full_weight_stand_lower_body_sim_pd_60s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_lower_body_sim_pd_60s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_LOWER_BODY_SIM_PD_60S
+      DURATION=60.0
+      EXTENDED_NATIVE_ACK_ARGS=(
+        --extended-policy-actuation-acknowledgement
+        ENABLE_60_SECOND_GROUNDED_LOWER_BODY_SIM_PD_TEST
+      )
+    elif [[ "$TIER" == "grounded_full_weight_stand_lower_body_sim_pd_40s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_LOWER_BODY_SIM_PD_40S
+      DURATION=40.0
+      EXTENDED_NATIVE_ACK_ARGS=(
+        --extended-policy-actuation-acknowledgement
+        ENABLE_40_SECOND_GROUNDED_BALANCE_TEST
+      )
+    else
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_LOWER_BODY_SIM_PD_8S
+      DURATION=8.0
+      EXTENDED_NATIVE_ACK_ARGS=(
+        --extended-policy-actuation-acknowledgement
+        ENABLE_8_SECOND_FULL_WEIGHT_LOWER_BODY_SIM_PD_TEST
+      )
+    fi
+    GAIN_SCALE=1.0
+    DM3507_GAIN_MULTIPLIER=0.01
+    HEAD_GAIN_MULTIPLIER=0.05
+    NON_HIP_GAIN_MULTIPLIER=0.125
+    WAIST_ROLL_GAIN_MULTIPLIER=1.0
+    LEG_GAIN_MULTIPLIER=1.0
+    LEG_DAMPING_MULTIPLIER=1.0
+    ANKLE_GAIN_MULTIPLIER=1.0
+    HIP_GAIN_MULTIPLIER=1.0
+    MAXIMUM_COMMAND_TORQUE_NM=3.0
+    DM3507_COMMAND_CAP_NM=0.5
+    LEG_COMMAND_CAP_NM=28.0
+    LEG_FEEDBACK_CAP_NM=28.0
+    KNEE_COMMAND_CAP_NM=28.0
+    KNEE_FEEDBACK_CAP_NM=28.0
+    ANKLE_COMMAND_CAP_NM=10.0
+    ANKLE_FEEDBACK_CAP_NM=10.0
+    HIP_PITCH_ROLL_COMMAND_CAP_NM=28.0
+    HIP_PITCH_ROLL_FEEDBACK_CAP_NM=28.0
+    WAIST_ROLL_COMMAND_CAP_NM=30.0
+    HARDWARE_FEEDBACK_CAPS=1
+    COMMAND_VX=0.0
+    # Admission margin covers MIT quantization and small initial pose offsets;
+    # the native runtime still hard-clamps actual commands to the configured caps.
+    PREFLIGHT_TORQUE_MULTIPLIER=1.1
+    PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
+    SUPPORT_INSTRUCTION="Robot full weight is carried by both soles on a flat floor; lifting frame is slack and serves only as fall arrest; lower-body gains match the deployment contract except embedded Kd is capped at 3.0; upper-body gains remain at the previously qualified commissioning values; safety operator controls independent power cutoff"
+    TORQUE_SATURATION_ARGS=(--saturate-policy-torque-to-commissioning-cap)
+    ;;
+  grounded_full_weight_stand_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle100_rated_40s_tier|grounded_full_weight_stand_waist050_ankle5_40s_tier|grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier|grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier|grounded_full_weight_stand_waist050_ankle5_legkd050_40s_tier)
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_40s_tier" ]]; then
+      if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_40s_tier" ]]; then
+        EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_LEGKD050_40S
+        DURATION=40.0
+      else
+        EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_WAIST050_ANKLE5_LEGKD050_20S
+        DURATION=20.0
+      fi
       WAIST_ROLL_GAIN_MULTIPLIER=0.5
       WAIST_ROLL_COMMAND_CAP_NM=10.0
       HARDWARE_FEEDBACK_CAPS=1
@@ -674,7 +731,7 @@ case "$TIER" in
     COMMAND_VX=0.0
     PREFLIGHT_TORQUE_MULTIPLIER=1.5
     PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS=0
-    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" ]]; then
+    if [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle5_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_physical_feedback_40s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_20s_tier" || "$TIER" == "grounded_full_weight_stand_waist050_ankle5_legkd050_40s_tier" ]]; then
       ANKLE_COMMAND_CAP_NM=5.0
       ANKLE_FEEDBACK_CAP_NM=6.0
     elif [[ "$TIER" == "grounded_full_weight_stand_waist050_ankle100_rated_40s_tier" ]]; then

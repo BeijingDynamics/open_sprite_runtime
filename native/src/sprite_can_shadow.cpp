@@ -580,25 +580,41 @@ Options parse_options(int argc, char** argv) {
     const bool acknowledged_40_seconds =
         result.extended_policy_actuation_acknowledgement ==
         "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST";
+    const bool acknowledged_60_seconds =
+        result.extended_policy_actuation_acknowledgement ==
+        "ENABLE_60_SECOND_GROUNDED_LOWER_BODY_SIM_PD_TEST";
     if (result.duration_s > 10.0 &&
-        !acknowledged_20_seconds && !acknowledged_40_seconds) {
+        !acknowledged_20_seconds && !acknowledged_40_seconds &&
+        !acknowledged_60_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 10 seconds requires the exact extended-test acknowledgement");
     }
-    if (result.duration_s > 20.0 && !acknowledged_40_seconds) {
+    if (result.duration_s > 20.0 &&
+        !acknowledged_40_seconds && !acknowledged_60_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 20 seconds requires the exact 40-second acknowledgement");
     }
-    if (result.duration_s > 40.0) {
-      throw std::runtime_error("extended protected policy actuation must not exceed 40 seconds");
+    if (result.duration_s > 40.0 && !acknowledged_60_seconds) {
+      throw std::runtime_error(
+          "protected policy actuation over 40 seconds requires the exact 60-second lower-body sim-PD acknowledgement");
+    }
+    if (result.duration_s > 60.0) {
+      throw std::runtime_error("extended protected policy actuation must not exceed 60 seconds");
     }
   }
+  const bool acknowledged_short_sim_pd_saturation =
+      result.extended_policy_actuation_acknowledgement ==
+          "ENABLE_8_SECOND_FULL_WEIGHT_LOWER_BODY_SIM_PD_TEST" &&
+      result.duration_s <= 8.0;
   if (result.saturate_policy_torque &&
       (!result.policy_actuation ||
-       result.extended_policy_actuation_acknowledgement !=
-           "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST")) {
+       (result.extended_policy_actuation_acknowledgement !=
+            "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST" &&
+        result.extended_policy_actuation_acknowledgement !=
+            "ENABLE_60_SECOND_GROUNDED_LOWER_BODY_SIM_PD_TEST" &&
+        !acknowledged_short_sim_pd_saturation))) {
     throw std::runtime_error(
-        "policy torque saturation requires the exact 40-second grounded-test acknowledgement");
+        "policy torque saturation requires the exact 40-second grounded-test acknowledgement or the duration-limited 8-second lower-body sim-PD acknowledgement");
   }
   if (result.realtime_priority < 0 || result.realtime_priority > 80) {
     throw std::runtime_error("realtime priority must be in [0, 80]");
@@ -1175,6 +1191,9 @@ void drain_policy_feedback(
       const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
       if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
       if (received != CANFD_MTU || frame.len != 8 || (frame.flags & CANFD_BRS) == 0) {
+        // A bus fault can leave stale or malformed frames queued while shutting
+        // down. Keep polling for a valid disabled reply from every endpoint.
+        if (expected_status < 0) continue;
         throw std::runtime_error("invalid protected-policy CAN-FD feedback frame");
       }
       const int frame_id = static_cast<int>(frame.can_id & CAN_SFF_MASK);
@@ -1187,7 +1206,16 @@ void drain_policy_feedback(
           ? status_code == expected_status
           : status_code == 0 || status_code == 1;
       if (controller_id != motor.can_id || !status_valid) {
-        throw std::runtime_error("protected-policy identity/status failed for " + motor.name);
+        if (expected_status < 0) continue;
+        std::ostringstream message;
+        message << "protected-policy identity/status failed for " << motor.name
+                << " interface=" << can_socket.interface
+                << " feedback_id=0x" << std::hex << frame_id << std::dec
+                << " controller_id=" << controller_id
+                << " expected_controller_id=" << motor.can_id
+                << " status_code=" << status_code
+                << " expected_status=" << expected_status;
+        throw std::runtime_error(message.str());
       }
       const auto raw_position =
           (static_cast<unsigned>(frame.data[1]) << 8) | frame.data[2];
