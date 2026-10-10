@@ -15,12 +15,15 @@ import time
 import numpy as np
 
 from .action_trace_replay import CenteredActionTraceReplay
+from .command_schedule import PROFILE_SPEEDS, countdown, sample_stand_walk_stop
 from .contracts import PolicyContract
 from .damiao import DamiaoMitState
 from .motor_mapping import motor_map_from_hardware_config
 from .multirate_control import JointImpedanceTarget
 from .native_ipc import NativeStatePacket, PolicyTargetPacket, ordered_name_hash
 from .physical_startup import PhysicalStartupRamp
+from .imu_receive import drain_imu, require_fresh_imu
+from .session_heading import SessionHeading
 from .policy_shadow import LivePolicyShadow
 from .target_projection import (
     ConsecutiveClampWatchdog,
@@ -82,6 +85,17 @@ def run(args: argparse.Namespace) -> dict:
         hardware, contract.data["joint_names"], require_armable=False
     )
     shadow = LivePolicyShadow(contract, hardware, mapping, (args.vx, args.vy, args.yaw_rate))
+    command_profile = getattr(args, "command_profile", None)
+    if command_profile and (
+        command_profile not in PROFILE_SPEEDS or args.vx != 0 or args.vy != 0
+        or args.yaw_rate != 0 or args.replay_action_trace
+    ):
+        raise ValueError("fixed command profile requires zero CLI commands and no action replay")
+    profile_start_ns = None
+    profile_elapsed_s = 0.0
+    profile_stage = None
+    profile_countdown = None
+    profile_events = []
     action_replay = None
     replay_center: np.ndarray | None = None
     if args.replay_action_trace:
@@ -137,6 +151,8 @@ def run(args: argparse.Namespace) -> dict:
     joint_hash = ordered_name_hash(contract.data["joint_names"])
     decoder = YahboomStreamDecoder()
     state_count = 0
+    heading = SessionHeading()
+    heading_started = False
     target_count = 0
     target_sequence = 0
     raw_imu_count = 0
@@ -146,12 +162,28 @@ def run(args: argparse.Namespace) -> dict:
     last_raw_imu_monotonic_ns = 0
     last_quaternion_monotonic_ns = 0
     last_state_sequence = 0
+    def accept_imu(packet, received_ns):
+        nonlocal raw_imu_count, quaternion_count, last_raw_imu, last_quaternion
+        nonlocal last_raw_imu_monotonic_ns, last_quaternion_monotonic_ns
+        if isinstance(packet, YahboomRawImu):
+            raw_imu_count += 1
+            last_raw_imu = packet
+            last_raw_imu_monotonic_ns = received_ns
+            shadow.update_imu(packet)
+        elif isinstance(packet, YahboomQuaternion):
+            quaternion_count += 1
+            last_quaternion = packet
+            last_quaternion_monotonic_ns = received_ns
+            shadow.update_imu(packet)
+
     inference_ms: list[float] = []
     errors: list[str] = []
     trace: dict[str, list] | None = None
     if args.trace_output:
         trace = {
             "state_sequence": [],
+            "command_vx_vy_yaw_rate": [],
+            "command_profile_elapsed_s": [],
             "state_monotonic_ns": [],
             "target_monotonic_ns": [],
             "motor_position_rad": [],
@@ -160,6 +192,8 @@ def run(args: argparse.Namespace) -> dict:
             "joint_velocity_rad_s": [],
             "base_angular_velocity_rad_s": [],
             "projected_gravity": [],
+            "relative_gyro_yaw_rad": [],
+            "relative_gyro_yaw_valid": [],
             "imu_raw_monotonic_ns": [],
             "imu_quaternion_monotonic_ns": [],
             "imu_acceleration_m_s2": [],
@@ -204,6 +238,8 @@ def run(args: argparse.Namespace) -> dict:
         connection.setblocking(False)
         imu_port.dtr = False
         imu_port.rts = False
+        # Discard pre-session serial bytes; policy waits for fresh complete frames.
+        imu_port.reset_input_buffer()
         with selectors.DefaultSelector() as selector:
             selector.register(connection, selectors.EVENT_READ, "state")
             selector.register(imu_port, selectors.EVENT_READ, "imu")
@@ -211,19 +247,7 @@ def run(args: argparse.Namespace) -> dict:
             while running:
                 for key, _mask in selector.select(timeout=0.1):
                     if key.data == "imu":
-                        payload = imu_port.read(max(imu_port.in_waiting, 1))
-                        for packet in decoder.feed(payload):
-                            received_ns = time.monotonic_ns()
-                            if isinstance(packet, YahboomRawImu):
-                                raw_imu_count += 1
-                                last_raw_imu = packet
-                                last_raw_imu_monotonic_ns = received_ns
-                                shadow.update_imu(packet)
-                            elif isinstance(packet, YahboomQuaternion):
-                                quaternion_count += 1
-                                last_quaternion = packet
-                                last_quaternion_monotonic_ns = received_ns
-                                shadow.update_imu(packet)
+                        drain_imu(imu_port, decoder, accept_imu)
                         continue
 
                     try:
@@ -251,14 +275,40 @@ def run(args: argparse.Namespace) -> dict:
                             motor_names, state.position_rad, state.velocity_rad_s, strict=True
                         )
                     }
+                    # A state event may precede a simultaneously readable IMU event.
+                    drain_imu(imu_port, decoder, accept_imu)
                     if not shadow.ready:
                         continue
+                    require_fresh_imu(last_raw_imu_monotonic_ns,
+                                      last_quaternion_monotonic_ns, time.monotonic_ns())
+                    if command_profile:
+                        if profile_start_ns is None:
+                            profile_start_ns = state.monotonic_ns
+                        profile_elapsed_s = (state.monotonic_ns - profile_start_ns) / 1.0e9
+                        vx, stage = sample_stand_walk_stop(profile_elapsed_s, command_profile)
+                        shadow.command[:] = (vx, 0.0, 0.0)
+                        if stage != profile_stage:
+                            profile_stage = stage
+                            event = {"stage": stage, "elapsed_s": profile_elapsed_s, "vx": vx}
+                            profile_events.append(event)
+                            print(f"COMMAND_STAGE {stage} elapsed={profile_elapsed_s:.2f}s vx={vx:.4f}m/s", flush=True)
+                        remaining = countdown(profile_elapsed_s)
+                        if remaining is not None and remaining != profile_countdown:
+                            profile_countdown = remaining
+                            print(f"DISABLE_COUNTDOWN approximately {remaining}s; zero velocity command; fall arrest must be ready", flush=True)
                     started_ns = time.perf_counter_ns()
+                    if not heading_started:
+                        heading.reset()
+                        heading_started = True
+                        print("HEADING_RESET relative gyro yaw=0; telemetry only; no heading compensation", flush=True)
                     target = shadow.infer_policy_target(state.monotonic_ns)
                     inference_ms.append((time.perf_counter_ns() - started_ns) / 1.0e6)
                     policy_trace = shadow.last_policy_trace
                     if policy_trace is None:
                         raise RuntimeError("policy trace was not captured")
+                    heading.update(policy_trace.base_angular_velocity_rad_s,
+                                   policy_trace.projected_gravity,
+                                   last_raw_imu_monotonic_ns)
                     if action_replay is not None:
                         if replay_center is None:
                             replay_center = policy_trace.joint_position_rad.copy()
@@ -297,8 +347,15 @@ def run(args: argparse.Namespace) -> dict:
                         kd=tuple(map(float, target.kd)),
                         feedforward_torque_nm=tuple(map(float, target.feedforward_torque_nm)),
                     )
+                    # Do not send a new target if inference consumed the freshness budget.
+                    require_fresh_imu(last_raw_imu_monotonic_ns,
+                                      last_quaternion_monotonic_ns, time.monotonic_ns())
                     if trace is not None:
                         trace["state_sequence"].append(state.sequence)
+                        trace["relative_gyro_yaw_rad"].append(heading.yaw_rad)
+                        trace["relative_gyro_yaw_valid"].append(heading.valid)
+                        trace["command_vx_vy_yaw_rate"].append(shadow.command.copy())
+                        trace["command_profile_elapsed_s"].append(profile_elapsed_s)
                         trace["state_monotonic_ns"].append(state.monotonic_ns)
                         trace["target_monotonic_ns"].append(packet.monotonic_ns)
                         trace["motor_position_rad"].append(state.position_rad)
@@ -381,6 +438,8 @@ def run(args: argparse.Namespace) -> dict:
                             raw_target.position_rad, projected_target.position_rad
                         )
                     try:
+                        require_fresh_imu(last_raw_imu_monotonic_ns,
+                                          last_quaternion_monotonic_ns, time.monotonic_ns())
                         connection.sendall(packet.pack())
                     except BrokenPipeError:
                         if target_count == 0:
@@ -408,6 +467,7 @@ def run(args: argparse.Namespace) -> dict:
         "mode": "python_onnx_native_ipc_policy_shadow_no_actuation",
         "state_count": state_count,
         "target_count": target_count,
+        "session_heading": heading.report(),
         "target_coverage": coverage,
         "raw_imu_count": raw_imu_count,
         "quaternion_count": quaternion_count,
@@ -427,6 +487,8 @@ def run(args: argparse.Namespace) -> dict:
         "physical_startup_ramp": (
             startup.report() if startup is not None else {"enabled": False}
         ),
+        "command_profile": {"name": command_profile, "events": profile_events,
+                            "last_elapsed_s": profile_elapsed_s},
         "action_trace_replay": (
             action_replay.report()
             if action_replay is not None
@@ -459,6 +521,7 @@ def main() -> None:
     parser.add_argument("--imu-device", default="/dev/ttyCH341USB0")
     parser.add_argument("--imu-baud", type=int, default=115200)
     parser.add_argument("--vx", type=float, default=0.0)
+    parser.add_argument("--command-profile", choices=list(PROFILE_SPEEDS))
     parser.add_argument("--vy", type=float, default=0.0)
     parser.add_argument("--yaw-rate", type=float, default=0.0)
     parser.add_argument("--output", required=True)

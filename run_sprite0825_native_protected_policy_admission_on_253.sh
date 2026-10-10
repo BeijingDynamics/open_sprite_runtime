@@ -5,6 +5,7 @@ ACK="${1:-}"
 TIER="${2:-first_admission}"
 PREFLIGHT_ONLY="${SPRITE_PREFLIGHT_ONLY:-0}"
 COMMAND_VX=0.0
+COMMAND_PROFILE_ARGS=()
 LEG_COMMAND_CAP_NM=""
 LEG_FEEDBACK_CAP_NM=""
 KNEE_COMMAND_CAP_NM=""
@@ -625,8 +626,22 @@ case "$TIER" in
       --clamp-watchdog-ignored-initial-ticks 250
     )
     ;;
-  grounded_full_weight_stand_lower_body_sim_pd_8s_tier|grounded_full_weight_stand_lower_body_sim_pd_40s_tier|grounded_full_weight_stand_lower_body_sim_pd_60s_tier)
-    if [[ "$TIER" == "grounded_full_weight_stand_lower_body_sim_pd_60s_tier" ]]; then
+  grounded_full_weight_walk010_stop_40s_tier|grounded_full_weight_walk005_stop_40s_tier|grounded_full_weight_stand_lower_body_sim_pd_8s_tier|grounded_full_weight_stand_lower_body_sim_pd_40s_tier|grounded_full_weight_stand_lower_body_sim_pd_60s_tier)
+    if [[ "$TIER" == "grounded_full_weight_walk010_stop_40s_tier" || "$TIER" == "grounded_full_weight_walk005_stop_40s_tier" ]]; then
+      EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_WALK005_STOP_40S
+      DURATION=40.0
+      COMMAND_PROFILE_ARGS=(--command-profile stand-walk-stop-40s)
+      PROFILE_FORWARD_SPEED=0.05
+      if [[ "$TIER" == "grounded_full_weight_walk010_stop_40s_tier" ]]; then
+        EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_WALK010_STOP_40S
+        COMMAND_PROFILE_ARGS=(--command-profile stand-walk010-stop-40s)
+        PROFILE_FORWARD_SPEED=0.10
+      fi
+      EXTENDED_NATIVE_ACK_ARGS=(
+        --extended-policy-actuation-acknowledgement
+        ENABLE_40_SECOND_GROUNDED_BALANCE_TEST
+      )
+    elif [[ "$TIER" == "grounded_full_weight_stand_lower_body_sim_pd_60s_tier" ]]; then
       EXPECTED_ACK=ENABLE_NATIVE_PROTECTED_POLICY_FULL_WEIGHT_STAND_LOWER_BODY_SIM_PD_60S
       DURATION=60.0
       EXTENDED_NATIVE_ACK_ARGS=(
@@ -1146,6 +1161,10 @@ JOINT_HASH="$(PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" -c \
   "$CANDIDATE/deploy/contract.json")"
 
 echo "ACTIVE HARDWARE CONTROL: suspended protected-policy admission"
+if [[ ${#COMMAND_PROFILE_ARGS[@]} -gt 0 ]]; then
+  echo "TIMELINE 0-10s stand; 10-13s ramp to ${PROFILE_FORWARD_SPEED}m/s; 13-27s forward; 27-30s ramp to zero; 30-40s stand then disable"
+  echo "Zero velocity is not proof of stable standing. Fall arrest must catch the robot after disable. Faults exit immediately."
+fi
 echo "Fixed tier: name=${TIER} duration=${DURATION}s gain_scale=${GAIN_SCALE} non_hip_multiplier=${NON_HIP_GAIN_MULTIPLIER} waist_roll_multiplier=${WAIST_ROLL_GAIN_MULTIPLIER} leg_multiplier=${LEG_GAIN_MULTIPLIER} leg_damping_multiplier=${LEG_DAMPING_MULTIPLIER} ankle_multiplier=${ANKLE_GAIN_MULTIPLIER} hip_multiplier=${HIP_GAIN_MULTIPLIER} DM3507_multiplier=${DM3507_GAIN_MULTIPLIER} head_multiplier=${HEAD_GAIN_MULTIPLIER} vx=${COMMAND_VX} hold=${STARTUP_HOLD_SECONDS}s ramp=${STARTUP_RAMP_SECONDS}s"
 if [[ "$HARDWARE_FEEDBACK_CAPS" == "1" ]]; then
   echo "Feedback anomaly caps: min(protocol TMAX, mechanical peak); command staircase remains independently enforced"
@@ -1225,6 +1244,7 @@ OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 taskset -c 4 env PYTHONPATH="$ROOT/src"
   --imu-device /dev/sprite0825-imu \
   --imu-baud 115200 \
   --vx "$COMMAND_VX" --vy 0 --yaw-rate 0 \
+  "${COMMAND_PROFILE_ARGS[@]}" \
   "${POLICY_REPLAY_ARGS[@]}" \
   --joint-limit-candidates "$JOINT_LIMITS" \
   --gain-scale "$GAIN_SCALE" \

@@ -10,14 +10,21 @@ comparison baseline only.
 
 This repository includes an explicitly acknowledged, finite-duration protected
 whole-robot policy loop. Full-weight standing and bounded disturbance recovery
-have been admitted on hardware with an independent power-cut operator. Battery-
-powered walking has **not** yet been admitted. Motor mapping, directions,
+have been admitted on hardware with an independent power-cut operator. A bounded
+battery-powered 0.10 m/s stand-walk-stop trial completed on 2026-10-10 with fall
+arrest and operator supervision; this is not unrestricted walking qualification.
+Subsequent IMU freshness and heading-telemetry changes require full shadow
+validation before another powered trial. Motor mapping, directions,
 mechanical limits, IMU convention, four 500 Hz CAN-FD bus tests, differential
 calibrations, watchdogs, and integrated standing gates are recorded as completed
 commissioning milestones. Active scripts remain fail-closed and require their
 exact acknowledgement token; receive-only inspection tools remain available.
 
 ## Timing contract
+
+See the [October 10 development update](docs/DEVELOPMENT_UPDATE_20261010.md)
+and [Xbox Bluetooth pairing and walking control](docs/XBOX_BLUETOOTH_CONTROL.md).
+The gamepad interface is an agreed design, not yet connected to motor control.
 
 - Deployment policy inference: **50 Hz** (`dt=0.02 s`)
 - SBC feedback, safety, ankle coupling, and held-target refresh: **500 Hz**
@@ -69,11 +76,15 @@ errors, and zero nonzero-command, enable, or mode-switch attempts. The older
 listen-only receiver remains useful only when another approved controller is
 already producing bus traffic.
 
-The heading controller follows Isaac Lab's PM01 command interface: while
+The separate heading-controller implementation follows Isaac Lab's PM01 command interface: while
 walking straight it computes `wz = clip(0.5 * wrap(target_yaw - imu_yaw),
 -0.2, 0.2)`. Standing resets the target to the current integrated IMU yaw;
 manual yaw-rate commands are passed through and the new heading is held when
 the operator releases the turn command. Global yaw remains outside the actor.
+This controller is **not wired into the current native powered-policy path**.
+That path resets and logs relative gyro heading at session startup without
+altering actor observations or applying automatic yaw correction. Resetting
+the origin is not gyro bias calibration and does not guarantee drift bounds.
 
 Replay a MuJoCo observation trace through the exported ONNX actor. This mode
 never opens a CAN interface and checks that runtime inference reproduces the
