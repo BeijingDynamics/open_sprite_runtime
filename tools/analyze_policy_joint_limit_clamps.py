@@ -5,9 +5,34 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
+
+
+def print_readiness_diagnostics(report: dict) -> None:
+    """Keep gate diagnostics visible when callers redirect JSON stdout."""
+    for error in report["errors"]:
+        print(f"STARTUP_GATE_FAILED {error}", file=sys.stderr)
+    gated = set(report["fail_on_violation_joints"])
+    for name, summary in report["joints"].items():
+        low, high = summary["soft_limit_rad"]
+        measured_low = summary["measured_min_rad"]
+        measured_high = summary["measured_max_rad"]
+        if not summary["violation_count"] and low <= measured_low <= measured_high <= high:
+            continue
+        mode = "gated" if name in gated else "advisory-only"
+        print(
+            f"STARTUP_JOINT {name} target_check={mode} "
+            f"soft_limit_rad=[{low:.6f},{high:.6f}] "
+            f"measured_rad=[{measured_low:.6f},{measured_high:.6f}] "
+            f"raw_policy_target_rad=[{summary['raw_target_min_rad']:.6f},"
+            f"{summary['raw_target_max_rad']:.6f}] "
+            f"projected_target_rad=[{summary['projected_target_min_rad']:.6f},"
+            f"{summary['projected_target_max_rad']:.6f}]",
+            file=sys.stderr,
+        )
 
 
 def longest_true_run(mask: np.ndarray) -> int:
@@ -227,6 +252,8 @@ def main() -> None:
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, indent=2))
     if errors:
+        print_readiness_diagnostics(report)
+        print(f"STARTUP_GATE_REPORT {args.output.resolve()}", file=sys.stderr)
         raise SystemExit("policy startup readiness gates failed")
 
 

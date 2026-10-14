@@ -31,10 +31,20 @@ JOINT_LIMITS="$ROOT/artifacts/g60_model3450/reports/sprite0825_urdf_limit_candid
 [[ -f "$JOINT_LIMITS" ]] || JOINT_LIMITS="$ROOT/reports/sprite0825_urdf_limit_candidates.json"
 
 mkdir -p "$ROOT/reports"
+PREPARED_MOTOR_CONFIG="${SPRITE_PREPARED_MOTOR_CONFIG:-}"
+BOUNDED_PREVIEW_ARGS=()
+if [[ -n "$PREPARED_MOTOR_CONFIG" ]]; then
+  [[ -f "$PREPARED_MOTOR_CONFIG" ]] || { echo "Prepared motor config missing" >&2; exit 1; }
+else
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_motor_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
   --output "$ROOT/build/native/motors.tsv"
+fi
+if [[ "${SPRITE_BOUNDED_SHADOW_PREVIEW:-0}" == "1" ]]; then
+  [[ -n "$PREPARED_MOTOR_CONFIG" ]] || { echo "Bounded preview requires explicit motor caps" >&2; exit 1; }
+  BOUNDED_PREVIEW_ARGS=(--bounded-shadow-preview)
+fi
 PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "$ROOT/tools/export_native_kinematics_config.py" \
   --hardware "$ROOT/config/hardware.sprite0825.measurement.json" \
@@ -168,7 +178,7 @@ echo "COMMAND_VX $COMMAND_VX"
 echo "ACTION_TRACE_REPLAY ${REPLAY_ACTION_TRACE:-disabled} amplitude=${REPLAY_AMPLITUDE_SCALE}"
 
 "$ROOT/build/native/sprite_can_shadow" \
-  --config "$ROOT/build/native/motors.tsv" \
+  --config "${PREPARED_MOTOR_CONFIG:-$ROOT/build/native/motors.tsv}" \
   --duration "$DURATION" \
   --cpu 5 \
   --realtime-priority 50 \
@@ -177,6 +187,7 @@ echo "ACTION_TRACE_REPLAY ${REPLAY_ACTION_TRACE:-disabled} amplitude=${REPLAY_AM
   --policy-joint-hash "$JOINT_HASH" \
   --kinematics-config "$ROOT/build/native/kinematics.tsv" \
   "${NATIVE_SAFETY_ARGS[@]}" \
+  "${BOUNDED_PREVIEW_ARGS[@]}" \
   --acknowledge-hardware-tx ZERO_GAIN_NATIVE_SHADOW \
   --all-motors-disabled-confirmed >"$NATIVE_LOG" 2>&1 &
 NATIVE_PID=$!

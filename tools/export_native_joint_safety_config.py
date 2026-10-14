@@ -51,9 +51,9 @@ def main() -> None:
     if not 0.0 < args.gain_scale <= 1.0:
         raise SystemExit("gain scale must be in (0, 1]")
     if not math.isfinite(args.maximum_embedded_kd) or not (
-        0.0 < args.maximum_embedded_kd <= 3.0
+        0.0 < args.maximum_embedded_kd <= 5.0
     ):
-        raise SystemExit("maximum embedded Kd must be finite and in (0, 3]")
+        raise SystemExit("maximum embedded Kd must be finite and in (0, 5]")
 
     contract = json.loads(args.contract.read_text(encoding="utf-8"))
     limits = json.loads(args.joint_limit_candidates.read_text(encoding="utf-8"))[

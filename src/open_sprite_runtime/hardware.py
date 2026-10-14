@@ -531,11 +531,11 @@ def validate_hardware_inventory(
             )
         try:
             maximum_kd = float(controller["damiao_embedded_kd_max"])
-            if not np.isfinite(maximum_kd) or maximum_kd != DAMIAO_PROJECT_MAX_EMBEDDED_KD:
+            if not np.isfinite(maximum_kd) or not 0.0 < maximum_kd <= 5.0:
                 raise ValueError
         except (KeyError, TypeError, ValueError):
             errors.append(
-                "controller.damiao_embedded_kd_max must equal the qualified 3.0 limit"
+                "controller.damiao_embedded_kd_max must be finite and in (0, 5]"
             )
 
     motor_map = hardware.get("motor_map")

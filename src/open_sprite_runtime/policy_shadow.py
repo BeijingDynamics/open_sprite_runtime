@@ -284,6 +284,8 @@ class LivePolicyShadow:
         return joint_pos, joint_vel, pelvis
 
     def _run_policy(self, now_ns: int) -> None:
+        timing_started = time.perf_counter_ns()
+        self.last_stage_timing = {"stage": "observation"}
         joint_pos, joint_vel, pelvis = self._joint_and_imu_state(now_ns)
         self.history.append(
             joint_pos,
@@ -293,9 +295,12 @@ class LivePolicyShadow:
             pelvis.projected_gravity_body,
         )
         observation = self.history.observation(self.command)
+        self.last_stage_timing.update(stage="actor", observation_ms=(time.perf_counter_ns()-timing_started)/1e6)
         started = self.clock_ns()
         raw_action = self.actor.run(observation)
         elapsed_ms = (self.clock_ns() - started) / 1.0e6
+        self.last_stage_timing.update(stage="handoff_and_latch", actor_ms=elapsed_ms)
+        post_started = time.perf_counter_ns()
         if raw_action.shape != (31,):
             raise ValueError(f"policy action has shape {raw_action.shape}, expected (31,)")
         action = self.handoff.blend(raw_action, joint_pos)
@@ -334,6 +339,7 @@ class LivePolicyShadow:
             target_position_rad=target.copy(),
         )
         self._policy_ticks += 1
+        self.last_stage_timing.update(stage="complete", handoff_and_latch_ms=(time.perf_counter_ns()-post_started)/1e6)
 
     def infer_policy_target(self, now_ns: int) -> JointImpedanceTarget:
         """Run exactly one actor tick from the latest complete hardware state."""

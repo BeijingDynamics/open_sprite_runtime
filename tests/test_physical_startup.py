@@ -17,6 +17,19 @@ def target(position: float = 1.0) -> JointImpedanceTarget:
 
 
 class PhysicalStartupRampTests(unittest.TestCase):
+    def test_suspended_walk_startup_takes_six_seconds(self) -> None:
+        ramp = PhysicalStartupRamp(50.0, 1.0, 5.0)
+        measured = np.full(31, -0.25)
+        for tick in range(300):
+            result = ramp.apply(target(), measured)
+            if tick < 50:
+                np.testing.assert_allclose(result.position_rad, measured)
+                np.testing.assert_allclose(result.kp, 0.0)
+            if tick < 299:
+                self.assertFalse(ramp.complete)
+        self.assertTrue(ramp.complete)
+        np.testing.assert_allclose(result.position_rad, 1.0)
+
     def test_holds_captured_pose_then_smoothly_admits_target_and_gains(self) -> None:
         ramp = PhysicalStartupRamp(policy_hz=2.0, hold_seconds=1.0, ramp_seconds=1.0)
         measured = np.full(31, 0.25)

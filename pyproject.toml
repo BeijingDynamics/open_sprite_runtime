@@ -18,6 +18,7 @@ dependencies = [
 [project.optional-dependencies]
 can = ["python-can>=4.4"]
 imu = ["pyserial>=3.5"]
+bno055 = ["smbus2>=0.4.3,<1"]
 viewer = ["mujoco>=3.2,<4"]
 dev = ["pytest>=8", "ruff>=0.6"]
 

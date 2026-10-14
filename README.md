@@ -13,14 +13,32 @@ whole-robot policy loop. Full-weight standing and bounded disturbance recovery
 have been admitted on hardware with an independent power-cut operator. A bounded
 battery-powered 0.10 m/s stand-walk-stop trial completed on 2026-10-10 with fall
 arrest and operator supervision; this is not unrestricted walking qualification.
-Subsequent IMU freshness and heading-telemetry changes require full shadow
-validation before another powered trial. Motor mapping, directions,
+On October 14 the operator reported repeated successful supervised walks with
+the native C++ actor and 200 Hz raw-six-axis software IMU candidate. See the
+[native walk development record](docs/NATIVE_WALK40_READINESS_20261014.md)
+for qualification scope, remaining limitations and the earlier exit-gate fix.
+This remains supervised commissioning, not unrestricted walking approval.
+Motor mapping, directions,
 mechanical limits, IMU convention, four 500 Hz CAN-FD bus tests, differential
 calibrations, watchdogs, and integrated standing gates are recorded as completed
 commissioning milestones. Active scripts remain fail-closed and require their
 exact acknowledgement token; receive-only inspection tools remain available.
 
 ## Timing contract
+
+The current candidate uses native ONNX Runtime CPU inference at 50 Hz,
+an independent native BNO055 raw-six-axis reader/software estimator at 200 Hz,
+and the native CAN controller. Python still prepares and supervises the run.
+The estimator uses actual sample intervals; policy consumes the latest valid
+state. Startup requires 15 seconds of stillness for gyro bias estimation.
+Gyro observations are raw gyro minus bias, rotated into body coordinates;
+projected gravity comes from the software estimator, without magnetometer fusion.
+See [software IMU design](docs/BNO055_SOFTWARE_FUSION.md).
+
+The `*_on_253.sh` entries are site-specific commissioning scripts. Their model,
+contract, calibration and parity-evidence paths are not a portable deployment
+bundle. A fresh installation must provision and validate its own matched inputs;
+do not bypass missing evidence checks to run hardware.
 
 See the [October 10 development update](docs/DEVELOPMENT_UPDATE_20261010.md)
 and [Xbox Bluetooth pairing and walking control](docs/XBOX_BLUETOOTH_CONTROL.md).

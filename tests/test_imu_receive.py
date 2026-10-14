@@ -63,8 +63,39 @@ class ReceiveTests(unittest.TestCase):
         self.assertEqual(len(result),1)
 
     def test_large_backlog_not_retTimestamped(self):
-        with self.assertRaisesRegex(RuntimeError,'backlog'):
+        with self.assertRaisesRegex(RuntimeError,'byte_limit=True.*pending_bytes=257'):
             module.drain_imu(Port(b'x'*257),YahboomStreamDecoder(),lambda *x:self.fail(),clock_ns=lambda:100)
+
+    def test_expired_drain_is_not_committed(self):
+        times = iter([100, 30_000_101])
+        p = Port(frame(4,18))
+        with self.assertRaisesRegex(RuntimeError,'byte_limit=False time_limit=True'):
+            module.drain_imu(p,YahboomStreamDecoder(),lambda *x:self.fail(),clock_ns=lambda:next(times,30_000_101))
+        self.assertEqual(p.reads,0)
+
+    def test_scheduling_delay_is_diagnostic_and_keeps_batch_start(self):
+        for delay in (4_816_000, 8_608_000):
+            times = iter([100])
+            results=[]
+            dec=YahboomStreamDecoder()
+            module.drain_imu(Port(frame(4,18)+frame(0x16,16)),dec,
+                             lambda p,t:results.append(t),
+                             clock_ns=lambda:next(times,100+delay))
+            self.assertEqual(results,[100,100])
+            self.assertTrue(dec.last_drain_timing['over_2ms_diagnostic_only'])
+            with self.assertRaisesRegex(RuntimeError,'stale'):
+                module.require_fresh_imu(*results,30_000_101)
+
+    def test_slow_final_read_cannot_commit_stale_frame(self):
+        now=[100]
+        class SlowPort(Port):
+            def read(self,count):
+                result=super().read(count)
+                now[0]+=31_000_000
+                return result
+        with self.assertRaisesRegex(RuntimeError,'batch stale'):
+            module.drain_imu(SlowPort(frame(4,18)),YahboomStreamDecoder(),
+                             lambda *x:self.fail(),clock_ns=lambda:now[0])
 
     def test_stale_partial_frame_is_not_refreshed(self):
         f=frame(4,18); dec=YahboomStreamDecoder()

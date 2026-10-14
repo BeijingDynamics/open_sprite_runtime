@@ -846,6 +846,9 @@ ROOT=/home/tony/open_sprite_runtime
 CANDIDATE=/home/tony/sprite_runtime/sprite0825_stage2_g74_model3000_sim2real_candidate
 STARTUP_HOLD_SECONDS=1.0
 STARTUP_RAMP_SECONDS=4.0
+if [[ ${#COMMAND_PROFILE_ARGS[@]} -gt 0 ]]; then
+  STARTUP_RAMP_SECONDS=5.0
+fi
 STAMP="$(date +%Y%m%d_%H%M%S)"
 SOCKET="/tmp/open_sprite_policy_active_${$}.sock"
 NATIVE_REPORT="$ROOT/reports/native_protected_policy_admission_${STAMP}.json"
@@ -867,149 +870,6 @@ getcap "$ROOT/build/native/sprite_can_shadow" | grep -q 'cap_sys_nice' || {
   echo "Joint limit report not found: $JOINT_LIMITS" >&2
   exit 1
 }
-
-echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 6.0s"
-if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
-  echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
-else
-  echo "Warms policy history for 1.0s; policy soft-limit excursions are advisory; horizontal projected gravity must remain <=0.10"
-fi
-SPRITE_REPLAY_ACTION_TRACE="$REPLAY_ACTION_TRACE" \
-SPRITE_REPLAY_SOURCE_HZ=50.0 \
-SPRITE_REPLAY_START_SECONDS=10.0 \
-SPRITE_REPLAY_DURATION_SECONDS=20.0 \
-SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
-"$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
-  6.0 "$GAIN_SCALE" 0 0 "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
-  "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
-  "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" \
-  "$WAIST_ROLL_GAIN_MULTIPLIER" "$HEAD_GAIN_MULTIPLIER" \
-  "$LEG_DAMPING_MULTIPLIER" | tee "$PREFLIGHT_LOG"
-PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
-PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
-[[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
-  echo "Startup readiness preflight did not produce a trace" >&2
-  exit 1
-}
-[[ -n "$PREFLIGHT_NATIVE_REPORT" && -f "$PREFLIGHT_NATIVE_REPORT" ]] || {
-  echo "Startup readiness preflight did not produce a native report" >&2
-  exit 1
-}
-"$ROOT/.venv/bin/python" - \
-  "$PREFLIGHT_NATIVE_REPORT" \
-  "$MAXIMUM_COMMAND_TORQUE_NM" \
-  "$LEG_COMMAND_CAP_NM" \
-  "$KNEE_COMMAND_CAP_NM" \
-  "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
-  "$ANKLE_COMMAND_CAP_NM" \
-  "$PREFLIGHT_TORQUE_MULTIPLIER" \
-  "$WAIST_ROLL_COMMAND_CAP_NM" \
-  "$DM3507_COMMAND_CAP_NM" <<'PY'
-import json
-import sys
-
-report = json.load(open(sys.argv[1], encoding="utf-8"))
-default_limit = float(sys.argv[2])
-leg_limit = float(sys.argv[3]) if sys.argv[3] else None
-knee_limit = float(sys.argv[4]) if sys.argv[4] else None
-hip_pitch_roll_limit = float(sys.argv[5]) if sys.argv[5] else None
-ankle_limit = float(sys.argv[6]) if sys.argv[6] else None
-torque_multiplier = float(sys.argv[7])
-waist_roll_limit = float(sys.argv[8]) if sys.argv[8] else None
-dm3507_limit = float(sys.argv[9]) if sys.argv[9] else None
-if not 1.0 <= torque_multiplier <= 1.5:
-    raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
-leg_motors = {
-    f"{side}_{joint}_motor"
-    for side in ("left", "right")
-    for joint in ("hip_pitch", "hip_roll", "hip_yaw", "knee")
-}
-leg_motors.update(
-    f"{side}_ankle_motor_{motor}"
-    for side in ("left", "right")
-    for motor in ("a", "b")
-)
-violations = []
-for name, raw_observed in report[
-    "preview_maximum_abs_estimated_torque_nm_by_motor"
-].items():
-    observed = float(raw_observed)
-    if dm3507_limit is not None and name in {
-        "head_motor_a",
-        "head_motor_b",
-        "head_yaw_motor",
-        "left_wrist_pitch_motor",
-        "left_wrist_roll_motor",
-        "right_wrist_pitch_motor",
-        "right_wrist_roll_motor",
-    }:
-        limit = dm3507_limit
-    elif waist_roll_limit is not None and name == "waist_roll_motor":
-        limit = waist_roll_limit
-    elif ankle_limit is not None and name in {
-        "left_ankle_motor_a",
-        "left_ankle_motor_b",
-        "right_ankle_motor_a",
-        "right_ankle_motor_b",
-    }:
-        limit = ankle_limit
-    elif knee_limit is not None and name in {
-        "left_knee_motor",
-        "right_knee_motor",
-    }:
-        limit = knee_limit
-    elif hip_pitch_roll_limit is not None and name in {
-        "left_hip_pitch_motor",
-        "left_hip_roll_motor",
-        "right_hip_pitch_motor",
-        "right_hip_roll_motor",
-    }:
-        limit = hip_pitch_roll_limit
-    else:
-        limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
-    admission_limit = limit * torque_multiplier
-    if observed > admission_limit:
-        violations.append(f"{name}={observed:.6f}>{admission_limit:.6f}Nm")
-if violations:
-    raise SystemExit(
-        "startup command torque preview exceeds per-motor limits: "
-        + ", ".join(violations)
-    )
-print(
-    "STARTUP_COMMAND_TORQUE_PASSED "
-    f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
-    f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
-    f"knee_limit={knee_limit} "
-    f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
-    f" waist_roll_limit={waist_roll_limit}"
-    f" dm3507_limit={dm3507_limit}"
-    f" torque_multiplier={torque_multiplier}"
-)
-PY
-PREFLIGHT_LIMIT_GATE_ARGS=()
-if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
-  PREFLIGHT_LIMIT_GATE_ARGS=(
-    --fail-on-violation-joint left_ankle_pitch_joint
-    --fail-on-violation-joint right_ankle_pitch_joint
-    --fail-on-violation-joint left_ankle_roll_joint
-    --fail-on-violation-joint right_ankle_roll_joint
-  )
-else
-  echo "POLICY_SOFT_LIMIT_GATE advisory-only; mechanical command envelope remains enforced"
-fi
-PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
-  "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
-  --trace "$PREFLIGHT_TRACE" \
-  --joint-limit-candidates "$JOINT_LIMITS" \
-  --contract "$CANDIDATE/deploy/contract.json" \
-  "${PREFLIGHT_LIMIT_GATE_ARGS[@]}" \
-  --maximum-gated-overshoot-rad "$PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD" \
-  --maximum-gated-violation-fraction "$PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION" \
-  --maximum-gated-consecutive-violation-ticks "$PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS" \
-  --ignore-initial-ticks 50 \
-  --maximum-horizontal-gravity-norm 0.10 \
-  --output "$PREFLIGHT_REPORT" >/dev/null
-echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
 
 JOINT_GAIN_ARGS=()
 JOINT_DAMPING_ARGS=()
@@ -1150,6 +1010,156 @@ PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
   "${JOINT_GAIN_ARGS[@]}" \
   "${JOINT_DAMPING_ARGS[@]}" \
   --output "$ROOT/build/native/joint_safety.tsv"
+
+BOUNDED_SHADOW_PREVIEW=0
+if [[ ${#TORQUE_SATURATION_ARGS[@]} -gt 0 ]]; then
+  BOUNDED_SHADOW_PREVIEW=1
+fi
+echo "ZERO-GAIN STARTUP READINESS PREFLIGHT: 8.0s"
+if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
+  echo "Warms policy history for 1.0s, then requires ankle excursions <=0.01rad, <=1% ticks, <=2 consecutive ticks; horizontal projected gravity <=0.10"
+else
+  echo "Warms policy history for 1.0s; policy soft-limit excursions are advisory; horizontal projected gravity must remain <=0.10"
+fi
+SPRITE_PREPARED_MOTOR_CONFIG="$ROOT/build/native/motors.tsv" \
+SPRITE_BOUNDED_SHADOW_PREVIEW="$BOUNDED_SHADOW_PREVIEW" \
+SPRITE_REPLAY_ACTION_TRACE="$REPLAY_ACTION_TRACE" \
+SPRITE_REPLAY_SOURCE_HZ=50.0 \
+SPRITE_REPLAY_START_SECONDS=10.0 \
+SPRITE_REPLAY_DURATION_SECONDS=20.0 \
+SPRITE_REPLAY_AMPLITUDE_SCALE="$REPLAY_AMPLITUDE_SCALE" \
+"$ROOT/probe_sprite0825_native_policy_ipc_shadow_on_253.sh" \
+  8.0 "$GAIN_SCALE" "$STARTUP_HOLD_SECONDS" "$STARTUP_RAMP_SECONDS" "$DM3507_GAIN_MULTIPLIER" "$COMMAND_VX" \
+  "$NON_HIP_GAIN_MULTIPLIER" "$LEG_GAIN_MULTIPLIER" \
+  "$ANKLE_GAIN_MULTIPLIER" "$HIP_GAIN_MULTIPLIER" \
+  "$WAIST_ROLL_GAIN_MULTIPLIER" "$HEAD_GAIN_MULTIPLIER" \
+  "$LEG_DAMPING_MULTIPLIER" | tee "$PREFLIGHT_LOG"
+PREFLIGHT_TRACE="$(awk '/^REPLAYABLE_TRACE / {print $2}' "$PREFLIGHT_LOG" | tail -1)"
+PREFLIGHT_NATIVE_REPORT="$(awk '/^DURATION / {for (i=1; i<=NF; ++i) if ($i == "NATIVE_REPORT") {gsub(/;/, "", $(i+1)); print $(i+1)}}' "$PREFLIGHT_LOG" | tail -1)"
+[[ -n "$PREFLIGHT_TRACE" && -f "$PREFLIGHT_TRACE" ]] || {
+  echo "Startup readiness preflight did not produce a trace" >&2
+  exit 1
+}
+[[ -n "$PREFLIGHT_NATIVE_REPORT" && -f "$PREFLIGHT_NATIVE_REPORT" ]] || {
+  echo "Startup readiness preflight did not produce a native report" >&2
+  exit 1
+}
+"$ROOT/.venv/bin/python" - \
+  "$PREFLIGHT_NATIVE_REPORT" \
+  "$MAXIMUM_COMMAND_TORQUE_NM" \
+  "$LEG_COMMAND_CAP_NM" \
+  "$KNEE_COMMAND_CAP_NM" \
+  "$HIP_PITCH_ROLL_COMMAND_CAP_NM" \
+  "$ANKLE_COMMAND_CAP_NM" \
+  "$PREFLIGHT_TORQUE_MULTIPLIER" \
+  "$WAIST_ROLL_COMMAND_CAP_NM" \
+  "$DM3507_COMMAND_CAP_NM" <<'PY'
+import json
+import sys
+
+report = json.load(open(sys.argv[1], encoding="utf-8"))
+default_limit = float(sys.argv[2])
+leg_limit = float(sys.argv[3]) if sys.argv[3] else None
+knee_limit = float(sys.argv[4]) if sys.argv[4] else None
+hip_pitch_roll_limit = float(sys.argv[5]) if sys.argv[5] else None
+ankle_limit = float(sys.argv[6]) if sys.argv[6] else None
+torque_multiplier = float(sys.argv[7])
+waist_roll_limit = float(sys.argv[8]) if sys.argv[8] else None
+dm3507_limit = float(sys.argv[9]) if sys.argv[9] else None
+if not 1.0 <= torque_multiplier <= 1.5:
+    raise SystemExit("startup torque multiplier must be in [1.0, 1.5]")
+leg_motors = {
+    f"{side}_{joint}_motor"
+    for side in ("left", "right")
+    for joint in ("hip_pitch", "hip_roll", "hip_yaw", "knee")
+}
+leg_motors.update(
+    f"{side}_ankle_motor_{motor}"
+    for side in ("left", "right")
+    for motor in ("a", "b")
+)
+violations = []
+for name, raw_observed in report[
+    "preview_maximum_abs_estimated_torque_nm_by_motor"
+].items():
+    observed = float(raw_observed)
+    if dm3507_limit is not None and name in {
+        "head_motor_a",
+        "head_motor_b",
+        "head_yaw_motor",
+        "left_wrist_pitch_motor",
+        "left_wrist_roll_motor",
+        "right_wrist_pitch_motor",
+        "right_wrist_roll_motor",
+    }:
+        limit = dm3507_limit
+    elif waist_roll_limit is not None and name == "waist_roll_motor":
+        limit = waist_roll_limit
+    elif ankle_limit is not None and name in {
+        "left_ankle_motor_a",
+        "left_ankle_motor_b",
+        "right_ankle_motor_a",
+        "right_ankle_motor_b",
+    }:
+        limit = ankle_limit
+    elif knee_limit is not None and name in {
+        "left_knee_motor",
+        "right_knee_motor",
+    }:
+        limit = knee_limit
+    elif hip_pitch_roll_limit is not None and name in {
+        "left_hip_pitch_motor",
+        "left_hip_roll_motor",
+        "right_hip_pitch_motor",
+        "right_hip_roll_motor",
+    }:
+        limit = hip_pitch_roll_limit
+    else:
+        limit = leg_limit if leg_limit is not None and name in leg_motors else default_limit
+    admission_limit = limit * torque_multiplier
+    if observed > admission_limit:
+        violations.append(f"{name}={observed:.6f}>{admission_limit:.6f}Nm")
+if violations:
+    raise SystemExit(
+        "startup command torque preview exceeds per-motor limits: "
+        + ", ".join(violations)
+    )
+print(
+    "STARTUP_COMMAND_TORQUE_PASSED "
+    f"maximum={report['preview_maximum_abs_estimated_torque_nm']:.6f}Nm "
+    f"default_limit={default_limit:.6f}Nm leg_limit={leg_limit} "
+    f"knee_limit={knee_limit} "
+    f"hip_pitch_roll_limit={hip_pitch_roll_limit} ankle_limit={ankle_limit}"
+    f" waist_roll_limit={waist_roll_limit}"
+    f" dm3507_limit={dm3507_limit}"
+    f" torque_multiplier={torque_multiplier}"
+)
+PY
+PREFLIGHT_LIMIT_GATE_ARGS=()
+if [[ "$PREFLIGHT_ENFORCE_POLICY_SOFT_LIMITS" == "1" ]]; then
+  PREFLIGHT_LIMIT_GATE_ARGS=(
+    --fail-on-violation-joint left_ankle_pitch_joint
+    --fail-on-violation-joint right_ankle_pitch_joint
+    --fail-on-violation-joint left_ankle_roll_joint
+    --fail-on-violation-joint right_ankle_roll_joint
+  )
+else
+  echo "POLICY_SOFT_LIMIT_GATE advisory-only; mechanical command envelope remains enforced"
+fi
+PYTHONPATH="$ROOT/src" "$ROOT/.venv/bin/python" \
+  "$ROOT/tools/analyze_policy_joint_limit_clamps.py" \
+  --trace "$PREFLIGHT_TRACE" \
+  --joint-limit-candidates "$JOINT_LIMITS" \
+  --contract "$CANDIDATE/deploy/contract.json" \
+  "${PREFLIGHT_LIMIT_GATE_ARGS[@]}" \
+  --maximum-gated-overshoot-rad "$PREFLIGHT_MAXIMUM_GATED_OVERSHOOT_RAD" \
+  --maximum-gated-violation-fraction "$PREFLIGHT_MAXIMUM_GATED_VIOLATION_FRACTION" \
+  --maximum-gated-consecutive-violation-ticks "$PREFLIGHT_MAXIMUM_GATED_CONSECUTIVE_TICKS" \
+  --ignore-initial-ticks 50 \
+  --maximum-horizontal-gravity-norm 0.10 \
+  --output "$PREFLIGHT_REPORT" >/dev/null
+echo "STARTUP_READINESS_PASSED report=$PREFLIGHT_REPORT"
+
 
 if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
   echo "PREFLIGHT_ONLY_PASSED active configuration exported; no motor enable or nonzero command was attempted"

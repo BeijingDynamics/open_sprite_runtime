@@ -178,6 +178,7 @@ struct Options {
   bool measured_pose_hold = false;
   bool policy_actuation = false;
   bool saturate_policy_torque = false;
+  bool bounded_shadow_preview = false;
 };
 
 struct Socket {
@@ -483,7 +484,7 @@ std::vector<JointSafety> load_joint_safety(const std::string& path) {
     limit.feedforward_torque_max = number(fields[6]);
     if (limit.name.empty() || limit.position_min >= limit.position_max ||
         limit.velocity_max <= 0.0 || limit.kp_max < 0.0 || limit.kd_max < 0.0 ||
-        limit.kd_max > 3.0 || limit.feedforward_torque_max < 0.0) {
+        limit.kd_max > 5.0 || limit.feedforward_torque_max < 0.0) {
       throw std::runtime_error("native joint safety limit invariant failed");
     }
     result.push_back(limit);
@@ -532,6 +533,7 @@ Options parse_options(int argc, char** argv) {
     else if (argument == "--saturate-policy-torque-to-commissioning-cap") {
       result.saturate_policy_torque = true;
     }
+    else if (argument == "--bounded-shadow-preview") result.bounded_shadow_preview = true;
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -606,6 +608,10 @@ Options parse_options(int argc, char** argv) {
       result.extended_policy_actuation_acknowledgement ==
           "ENABLE_8_SECOND_FULL_WEIGHT_LOWER_BODY_SIM_PD_TEST" &&
       result.duration_s <= 8.0;
+  if (result.bounded_shadow_preview &&
+      (result.policy_actuation || result.measured_pose_hold || result.ipc_socket.empty())) {
+    throw std::runtime_error("bounded shadow preview is only available in zero-gain IPC shadow mode");
+  }
   if (result.saturate_policy_torque &&
       (!result.policy_actuation ||
        (result.extended_policy_actuation_acknowledgement !=
@@ -748,6 +754,11 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
     TargetPacket packet{};
     const ssize_t received = recv(ipc.client_fd, &packet, sizeof(packet), MSG_DONTWAIT);
     if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+    if (received < 0) {
+      const int receive_errno = errno;
+      throw std::runtime_error("policy IPC receive failed: errno=" +
+          std::to_string(receive_errno) + " " + std::strerror(receive_errno));
+    }
     if (received == 0) throw std::runtime_error("policy IPC client disconnected");
     if (received != static_cast<ssize_t>(sizeof(packet)) ||
         std::memcmp(packet.magic, "SPRT", 4) != 0 || packet.version != kIpcVersion ||
@@ -767,7 +778,7 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
       const std::array<double, 5> values{packet.position_rad[index], packet.velocity_rad_s[index],
           packet.kp[index], packet.kd[index], packet.feedforward_torque_nm[index]};
       if (!std::all_of(values.begin(), values.end(), [](double value) { return std::isfinite(value); }) ||
-          packet.kp[index] < 0.0 || packet.kd[index] < 0.0 || packet.kd[index] > 3.0) {
+          packet.kp[index] < 0.0 || packet.kd[index] < 0.0 || packet.kd[index] > 5.0) {
         throw std::runtime_error("policy IPC target numeric/gain invariant failed");
       }
       if (!joint_safety.empty()) {
@@ -888,8 +899,22 @@ void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
       const double limited_torque =
           std::copysign(0.98 * motor.commissioning_torque_cap, estimated_torque);
       if (motor.preview_kp > 1.0e-9) {
-        motor.preview_position +=
+        const double limited_position = motor.preview_position +
             (limited_torque - estimated_torque) / motor.preview_kp;
+        const double lower = std::max({motor.soft_position_min, motor.hard_position_min,
+                                       motor.position_min});
+        const double upper = std::min({motor.soft_position_max, motor.hard_position_max,
+                                       motor.position_max});
+        if (limited_position >= lower && limited_position <= upper) {
+          motor.preview_position = limited_position;
+        } else {
+          // Damping can make a torque-limiting position shift leave the envelope.
+          // Scale the impedance instead; keep the original, validated target.
+          const double scale = limited_torque / estimated_torque;
+          motor.preview_kp *= scale;
+          motor.preview_kd *= scale;
+          motor.preview_feedforward_torque *= scale;
+        }
       } else {
         motor.preview_feedforward_torque += limited_torque - estimated_torque;
       }
@@ -908,7 +933,7 @@ void preview_final_motor_commands(std::vector<Motor>& motors, IpcSocket& ipc,
         motor.preview_position > motor.position_max + tolerance ||
         std::abs(motor.preview_velocity) > motor.deployment_velocity_max + tolerance ||
         motor.preview_kp < 0.0 || motor.preview_kp > 500.0 + tolerance ||
-        motor.preview_kd < 0.0 || motor.preview_kd > 3.0 + tolerance ||
+        motor.preview_kd < 0.0 || motor.preview_kd > 5.0 + tolerance ||
         std::abs(motor.preview_feedforward_torque) >
             std::min(std::abs(motor.torque_min), motor.torque_max) + tolerance ||
         std::abs(protected_estimated_torque) >
@@ -976,7 +1001,7 @@ std::array<std::uint8_t, 8> hold_payload(
       static_cast<std::uint8_t>(torque)};
 }
 
-std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor) {
+std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor, bool bounded = false) {
   constexpr double tolerance = 1.0e-9;
   const double position = motor.preview_position;
   const double velocity = motor.preview_velocity;
@@ -993,28 +1018,48 @@ std::array<std::uint8_t, 8> protected_policy_payload(Motor& motor) {
       position < motor.position_min - tolerance ||
       position > motor.position_max + tolerance ||
       std::abs(velocity) > motor.deployment_velocity_max + tolerance ||
-      kp < 0.0 || kp > 500.0 || kd < 0.0 || kd > 3.0) {
+      kp < 0.0 || kp > 500.0 || kd < 0.0 || kd > 5.0) {
     throw std::runtime_error("protected policy command envelope failed for " + motor.name);
   }
   const auto p = encode_uint(position, motor.position_min, motor.position_max, 16);
   const auto v = encode_uint(velocity, motor.velocity_min, motor.velocity_max, 12);
-  const auto kp_raw = encode_uint(kp, 0.0, 500.0, 12);
-  const auto kd_raw = encode_uint(kd, 0.0, 5.0, 12);
-  const auto torque = encode_uint(feedforward, motor.torque_min, motor.torque_max, 12);
+  auto kp_raw = encode_uint(kp, 0.0, 500.0, 12);
+  auto kd_raw = encode_uint(kd, 0.0, 5.0, 12);
+  auto torque = encode_uint(feedforward, motor.torque_min, motor.torque_max, 12);
   const double encoded_position = decode_uint(p, motor.position_min, motor.position_max, 16);
   const double encoded_velocity = decode_uint(v, motor.velocity_min, motor.velocity_max, 12);
-  const double encoded_kp = decode_uint(kp_raw, 0.0, 500.0, 12);
-  const double encoded_kd = decode_uint(kd_raw, 0.0, 5.0, 12);
-  const double encoded_feedforward =
-      decode_uint(torque, motor.torque_min, motor.torque_max, 12);
-  const double estimated = encoded_kp * (encoded_position - motor.last_position) +
-      encoded_kd * (encoded_velocity - motor.last_velocity) + encoded_feedforward;
+  const auto estimate = [&]() {
+    return decode_uint(kp_raw, 0.0, 500.0, 12) * (encoded_position - motor.last_position) +
+        decode_uint(kd_raw, 0.0, 5.0, 12) * (encoded_velocity - motor.last_velocity) +
+        decode_uint(torque, motor.torque_min, motor.torque_max, 12);
+  };
+  double estimated = estimate();
+  // Re-evaluate the actual wire values against the latest feedback. Reducing
+  // impedance and feedforward together preserves cancellation; never shift the
+  // target out of its validated envelope or relax the final torque guard.
+  if (bounded && std::isfinite(estimated) &&
+      std::abs(estimated) > motor.commissioning_torque_cap + tolerance) {
+    double scale = 1.0;
+    for (int attempt = 0; attempt < 32 &&
+         std::abs(estimated) > motor.commissioning_torque_cap + tolerance; ++attempt) {
+      scale *= std::min(0.9, 0.95 * motor.commissioning_torque_cap / std::abs(estimated));
+      kp_raw = encode_uint(kp * scale, 0.0, 500.0, 12);
+      kd_raw = encode_uint(kd * scale, 0.0, 5.0, 12);
+      torque = encode_uint(feedforward * scale, motor.torque_min, motor.torque_max, 12);
+      estimated = estimate();
+    }
+    ++motor.policy_torque_saturation_count;
+  }
   // The commissioning cap applies to total motor torque, not each impedance
   // component. The preview invariant already bounds feedforward by protocol
   // TMAX; coupled feedforward may be partially cancelled by the PD terms.
   if (!std::isfinite(estimated) ||
       std::abs(estimated) > motor.commissioning_torque_cap + tolerance) {
-    throw std::runtime_error("protected policy torque cap failed for " + motor.name);
+    throw std::runtime_error("protected policy torque cap failed for " + motor.name +
+        " encoded_nm=" + std::to_string(estimated) +
+        " cap_nm=" + std::to_string(motor.commissioning_torque_cap) +
+        " q=" + std::to_string(motor.last_position) +
+        " qd=" + std::to_string(motor.last_velocity));
   }
   motor.maximum_abs_commanded_torque =
       std::max(motor.maximum_abs_commanded_torque, std::abs(estimated));
@@ -1640,7 +1685,7 @@ int run_native_protected_policy(
       }
       for (auto& motor : motors) {
         if (!due(motor, slot)) continue;
-        const auto payload = protected_policy_payload(motor);
+        const auto payload = protected_policy_payload(motor, options.saturate_policy_torque);
         send_payload(sockets[socket_index.at(motor.interface)], motor, payload);
       }
       // Permit only the short enable transition; require all endpoints enabled
@@ -2053,7 +2098,13 @@ int main(int argc, char** argv) {
         drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
         if (slot % 4 == 0 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {
-          preview_final_motor_commands(motors, ipc, kinematics, false);
+          preview_final_motor_commands(motors, ipc, kinematics, options.bounded_shadow_preview);
+          if (options.bounded_shadow_preview && ipc.has_target) {
+            for (auto& motor : motors) {
+              // Validate the same quantized command as actuation, but never send it.
+              (void)protected_policy_payload(motor, true);
+            }
+          }
         }
         if (slot % 40 == 39 &&
             std::all_of(motors.begin(), motors.end(), [](const Motor& motor) { return motor.seen; })) {

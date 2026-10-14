@@ -214,7 +214,14 @@ class HardwareInventoryTest(unittest.TestCase):
 
         hardware = complete_hardware()
         hardware["controller"]["damiao_embedded_kd_max"] = 5.0
-        with self.assertRaisesRegex(ValueError, "qualified 3.0 limit"):
+        profiles = command_profiles_from_hardware_config(hardware, JOINTS)
+        self.assertTrue(all(p.maximum_embedded_kd == 5.0 for p in profiles))
+        profiles[0].encode(
+            DamiaoMitCommand(0.0, 0.0, 0.0, 5.0, 0.0),
+            DamiaoMitState(0.0, 0.0),
+        )
+        hardware["controller"]["damiao_embedded_kd_max"] = 5.01
+        with self.assertRaisesRegex(ValueError, "finite and in"):
             command_profiles_from_hardware_config(hardware, JOINTS)
 
     def test_generated_template_has_physical_topology_and_known_leg_ratings(self) -> None:

@@ -177,6 +177,7 @@ def run(args: argparse.Namespace) -> dict:
             shadow.update_imu(packet)
 
     inference_ms: list[float] = []
+    last_tick_timing: dict = {}
     errors: list[str] = []
     trace: dict[str, list] | None = None
     if args.trace_output:
@@ -220,34 +221,45 @@ def run(args: argparse.Namespace) -> dict:
             "startup_alpha": [],
         }
 
-    try:
+    imu_source = getattr(args, 'imu_source', 'yahboom')
+    use_bno = imu_source in ('bno055', 'native-bno055')
+    if imu_source == 'native-bno055':
+        from .native_bno_source import NativeBnoSource
+        source_context = NativeBnoSource(getattr(args, 'native_imu_socket', None))
+    elif use_bno:
+        from .bno055_source import Bno055Source
+        source_context = Bno055Source(
+            getattr(args, 'bno_bus', 7), getattr(args, 'bno_address', 0x28),
+            getattr(args, 'bno_initialize', False))
+    else:
         import serial
-    except ImportError as exc:
-        raise RuntimeError("pyserial is required for native policy IPC shadow") from exc
+        source_context = serial.Serial(port=args.imu_device, baudrate=args.imu_baud,
+                                       timeout=0, write_timeout=0, exclusive=True)
 
     with _capture_runtime_errors(errors), socket.socket(
         socket.AF_UNIX, socket.SOCK_SEQPACKET
-    ) as connection, serial.Serial(
-        port=args.imu_device,
-        baudrate=args.imu_baud,
-        timeout=0,
-        write_timeout=0,
-        exclusive=True,
-    ) as imu_port:
+    ) as connection, source_context as imu_port:
         connection.connect(args.socket)
         connection.setblocking(False)
-        imu_port.dtr = False
-        imu_port.rts = False
-        # Discard pre-session serial bytes; policy waits for fresh complete frames.
-        imu_port.reset_input_buffer()
+        if not use_bno:
+            imu_port.dtr = False
+            imu_port.rts = False
+            # Discard pre-session serial bytes; wait for fresh complete frames.
+            imu_port.reset_input_buffer()
+        def update_imu():
+            if use_bno:
+                imu_port.drain(accept_imu)
+            else:
+                drain_imu(imu_port, decoder, accept_imu)
         with selectors.DefaultSelector() as selector:
             selector.register(connection, selectors.EVENT_READ, "state")
-            selector.register(imu_port, selectors.EVENT_READ, "imu")
+            if not use_bno:
+                selector.register(imu_port, selectors.EVENT_READ, "imu")
             running = True
             while running:
                 for key, _mask in selector.select(timeout=0.1):
                     if key.data == "imu":
-                        drain_imu(imu_port, decoder, accept_imu)
+                        update_imu()
                         continue
 
                     try:
@@ -269,6 +281,7 @@ def run(args: argparse.Namespace) -> dict:
                         raise RuntimeError("native state sequence did not increase")
                     last_state_sequence = state.sequence
                     state_count += 1
+                    last_tick_timing = {"state_sequence": state.sequence, "stage": "receive_imu"}
                     shadow.motor_states = {
                         name: DamiaoMitState(position, velocity)
                         for name, position, velocity in zip(
@@ -276,9 +289,16 @@ def run(args: argparse.Namespace) -> dict:
                         )
                     }
                     # A state event may precede a simultaneously readable IMU event.
-                    drain_imu(imu_port, decoder, accept_imu)
+                    update_imu()
                     if not shadow.ready:
                         continue
+                    observed_ns = time.monotonic_ns()
+                    last_tick_timing.update(
+                        stage="pre_inference_freshness",
+                        raw_age_before_ms=(observed_ns-last_raw_imu_monotonic_ns)/1e6,
+                        quaternion_age_before_ms=(observed_ns-last_quaternion_monotonic_ns)/1e6,
+                        source_state_age_before_ms=(observed_ns-state.monotonic_ns)/1e6,
+                    )
                     require_fresh_imu(last_raw_imu_monotonic_ns,
                                       last_quaternion_monotonic_ns, time.monotonic_ns())
                     if command_profile:
@@ -297,12 +317,20 @@ def run(args: argparse.Namespace) -> dict:
                             profile_countdown = remaining
                             print(f"DISABLE_COUNTDOWN approximately {remaining}s; zero velocity command; fall arrest must be ready", flush=True)
                     started_ns = time.perf_counter_ns()
+                    started_cpu_ns = time.thread_time_ns()
+                    last_tick_timing["stage"] = "inference"
                     if not heading_started:
                         heading.reset()
                         heading_started = True
                         print("HEADING_RESET relative gyro yaw=0; telemetry only; no heading compensation", flush=True)
                     target = shadow.infer_policy_target(state.monotonic_ns)
                     inference_ms.append((time.perf_counter_ns() - started_ns) / 1.0e6)
+                    last_tick_timing.update(
+                        stage="target_processing",
+                        inference_wall_ms=inference_ms[-1],
+                        inference_thread_cpu_ms=(time.thread_time_ns()-started_cpu_ns)/1e6,
+                    )
+                    processing_started_ns = time.monotonic_ns()
                     policy_trace = shadow.last_policy_trace
                     if policy_trace is None:
                         raise RuntimeError("policy trace was not captured")
@@ -348,6 +376,14 @@ def run(args: argparse.Namespace) -> dict:
                         feedforward_torque_nm=tuple(map(float, target.feedforward_torque_nm)),
                     )
                     # Do not send a new target if inference consumed the freshness budget.
+                    checked_ns = time.monotonic_ns()
+                    last_tick_timing.update(
+                        stage="post_inference_freshness",
+                        target_processing_ms=(checked_ns-processing_started_ns)/1e6,
+                        raw_age_after_ms=(checked_ns-last_raw_imu_monotonic_ns)/1e6,
+                        quaternion_age_after_ms=(checked_ns-last_quaternion_monotonic_ns)/1e6,
+                        source_state_age_after_ms=(checked_ns-state.monotonic_ns)/1e6,
+                    )
                     require_fresh_imu(last_raw_imu_monotonic_ns,
                                       last_quaternion_monotonic_ns, time.monotonic_ns())
                     if trace is not None:
@@ -438,6 +474,10 @@ def run(args: argparse.Namespace) -> dict:
                             raw_target.position_rad, projected_target.position_rad
                         )
                     try:
+                        last_tick_timing["stage"] = "pre_send_freshness"
+                        checked_ns = time.monotonic_ns()
+                        last_tick_timing["raw_age_send_ms"] = (checked_ns-last_raw_imu_monotonic_ns)/1e6
+                        last_tick_timing["quaternion_age_send_ms"] = (checked_ns-last_quaternion_monotonic_ns)/1e6
                         require_fresh_imu(last_raw_imu_monotonic_ns,
                                           last_quaternion_monotonic_ns, time.monotonic_ns())
                         connection.sendall(packet.pack())
@@ -449,6 +489,7 @@ def run(args: argparse.Namespace) -> dict:
                         running = False
                         break
                     target_count += 1
+                    last_tick_timing["stage"] = "sent"
 
     coverage = target_count / state_count if state_count else 0.0
     trace_sha256 = None
@@ -464,6 +505,7 @@ def run(args: argparse.Namespace) -> dict:
         trace_sha256 = hashlib.sha256(trace_path.read_bytes()).hexdigest()
 
     report = {
+        "imu_source": source_context.report() if use_bno else {"source": "yahboom"},
         "mode": "python_onnx_native_ipc_policy_shadow_no_actuation",
         "state_count": state_count,
         "target_count": target_count,
@@ -475,6 +517,10 @@ def run(args: argparse.Namespace) -> dict:
         "inference_mean_ms": float(np.mean(inference_ms)) if inference_ms else None,
         "inference_p99_ms": _percentile(inference_ms, 0.99),
         "inference_max_ms": max(inference_ms) if inference_ms else None,
+        "last_tick_timing": last_tick_timing,
+        "last_imu_drain_timing": getattr(decoder, "last_drain_timing", None),
+        "imu_drain_timing_summary": getattr(decoder, "drain_timing_summary", None),
+        "last_policy_stage_timing": getattr(shadow, "last_stage_timing", None),
         "nonzero_can_tx_attempts": 0,
         "protected_target_projection": (
             projector.report() if projector is not None else {"enabled": False}
@@ -520,6 +566,12 @@ def main() -> None:
     parser.add_argument("--contract", required=True)
     parser.add_argument("--imu-device", default="/dev/ttyCH341USB0")
     parser.add_argument("--imu-baud", type=int, default=115200)
+    parser.add_argument("--imu-source", choices=('yahboom', 'bno055', 'native-bno055'), default='yahboom')
+    parser.add_argument("--native-imu-socket", help='Existing native BNO producer Unix socket; no auto-start')
+    parser.add_argument("--bno-bus", type=int, default=7)
+    parser.add_argument("--bno-address", type=lambda value: int(value, 0), default=0x28)
+    parser.add_argument("--bno-initialize", action='store_true',
+                        help='Allow startup IMUPLUS/P0 configuration before IPC connection')
     parser.add_argument("--vx", type=float, default=0.0)
     parser.add_argument("--command-profile", choices=list(PROFILE_SPEEDS))
     parser.add_argument("--vy", type=float, default=0.0)
