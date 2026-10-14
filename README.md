@@ -26,9 +26,12 @@ exact acknowledgement token; receive-only inspection tools remain available.
 
 ## Timing contract
 
-The current candidate uses native ONNX Runtime CPU inference at 50 Hz,
-an independent native BNO055 raw-six-axis reader/software estimator at 200 Hz,
-and the native CAN controller. Python still prepares and supervises the run.
+The current candidate uses native ONNX Runtime CPU inference at **50 Hz**,
+an independent native BNO055 raw-six-axis reader/software estimator at **200 Hz**,
+and a native CAN controller with a **2 kHz scheduling loop**. That scheduler
+transmits to **each ankle motor at 500 Hz** and **each other motor at 50 Hz**;
+it does **not** update every motor at 2 kHz. Python still prepares and supervises
+the run.
 The estimator uses actual sample intervals; policy consumes the latest valid
 state. Startup requires 15 seconds of stillness for gyro bias estimation.
 Gyro observations are raw gyro minus bias, rotated into body coordinates;
@@ -44,14 +47,38 @@ See the [October 10 development update](docs/DEVELOPMENT_UPDATE_20261010.md)
 and [Xbox Bluetooth pairing and walking control](docs/XBOX_BLUETOOTH_CONTROL.md).
 The gamepad interface is an agreed design, not yet connected to motor control.
 
-- Deployment policy inference: **50 Hz** (`dt=0.02 s`)
-- SBC feedback, safety, ankle coupling, and held-target refresh: **500 Hz**
-- Damiao internal MIT/current loop: **1 kHz**
+| Layer | Configured rate | What runs at this rate |
+|---|---|---|
+| Native policy inference | **50 Hz**, 20 ms | Produces joint targets; receives a latest-state motor snapshot via IPC at 50 Hz. |
+| Native software IMU | **200 Hz**, 5 ms | Independently reads raw six-axis data and estimates gravity; policy consumes the latest valid state. |
+| Native CAN scheduler | **2 kHz**, 0.5 ms | Services due transmit slots across four buses, drains received feedback and checks the policy target watchdog. Not a per-motor update rate. |
+| Host ankle PD / parallel linkage calculation | **500 Hz**, 2 ms | Recomputes ankle motor feed-forward torques from held policy targets and latest joint feedback. |
+| Four ankle motors: command and feedback polling | **500 Hz per motor**, 2 ms | Sends MIT feed-forward torque commands with motor-side Kp/Kd zero. The two motors in each pair occupy staggered CAN slots. |
+| Other 27 motors: command and feedback polling | **50 Hz per motor**, 20 ms | Sends MIT position/Kp/Kd commands; PD runs inside the motor. Includes hips, knees, waist, arms and head. |
+| Damiao drive internal control | **1 kHz**, as specified for this hardware | Runs inside the drive, independently of the host CAN transmit rate. |
+
+All rates above are configured nominal rates, not latency guarantees. Feedback
+arrives in response to motor commands and is drained on scheduler iterations;
+a 2 kHz receive loop does not make a 50 Hz motor's measurements 2 kHz fresh.
+Runtime freshness checks and timing reports remain necessary.
+
+With this 31-motor mapping, nominal command traffic is 1,300 frames/s on each
+leg bus (2 x 500 + 6 x 50), 400 frames/s on the left-arm bus, and 350 frames/s
+on the right-arm bus: **3,350 transmitted command frames/s in total**, plus
+motor replies. CAN-FD uses **1 Mbit/s arbitration and 5 Mbit/s data with BRS**;
+these bit rates are distinct from control/update rates. The earlier 500 Hz
+per-motor full-bus stress tests are not the normal walking schedule.
 
 The 50 Hz policy target uses a 20 ms zero-order hold, matching both the Isaac
-Lab decimation loop and the qualified MuJoCo runtime. The 500 Hz layer must not
-invent intermediate policy targets. It may refresh the held target and add the
-measured differential cross-coupling feed-forward terms.
+Lab decimation loop and the qualified MuJoCo runtime. The 500 Hz ankle controller
+reuses that target with new feedback; it does not invent intermediate policy
+targets. Its parallel-linkage torque mapping is computed on the host, not by
+raising the policy inference rate.
+
+Implementation: scheduling and slot selection are in
+[`sprite_can_shadow.cpp`](native/src/sprite_can_shadow.cpp); the per-motor
+500/50 Hz assignment is in
+[`export_native_motor_config.py`](tools/export_native_motor_config.py).
 
 The qualified `model1050` actor remains a 100 Hz teacher/baseline and is not the
 hardware deployment policy. G74 `model3000` is trained natively at 50 Hz with
