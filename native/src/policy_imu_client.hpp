@@ -27,8 +27,9 @@ inline std::uint64_t read_u64(const std::uint8_t* p) {
 }
 inline ImuSnapshot validate_imu_packet(const std::uint8_t* p,std::size_t size,
                                      std::uint64_t now,std::uint64_t previous,
-                                     bool software_fusion=false) {
-    if (size!=192 || std::memcmp(p,software_fusion?"SPIMU002":"SPIMU001",8))
+                                     bool software_fusion=false,bool icm=false) {
+    software_fusion=software_fusion||icm;
+    if (size!=192 || std::memcmp(p,icm?"SPIMU003":software_fusion?"SPIMU002":"SPIMU001",8))
         throw std::runtime_error("IMU packet size/version");
     if ((!software_fusion && (p[78] || p[79])) || read_u64(p+184)) throw std::runtime_error("IMU reserved bytes");
     ImuSnapshot s;
@@ -45,14 +46,16 @@ inline ImuSnapshot validate_imu_packet(const std::uint8_t* p,std::size_t size,
         if(software_fusion)s.values[i]=value;
     }
     if(software_fusion) {
-        for(int i=50;i<56;++i)if(p[i])throw std::runtime_error("software IMU reserved bytes");
+        for(int i=icm?44:50;i<56;++i)if(p[i])throw std::runtime_error("software IMU reserved bytes");
         double bias_norm=0;
         for(int i=0;i<3;++i) {
             auto bits=read_u64(p+56+8*i);double bias;std::memcpy(&bias,&bits,8);
             if(!std::isfinite(bias))throw std::runtime_error("nonfinite gyro bias");
             bias_norm+=bias*bias;
-            if(std::abs(s.values[i]-sprite_imu::signed16(raw,2*i)/100.)>1e-12 ||
-               std::abs(s.values[3+i]-(sprite_imu::signed16(raw,12+2*i)/900.-bias))>1e-12)
+            const double accel=icm?sprite_imu::signed16(raw,2*i)*(4.0*9.80665/32768.0):sprite_imu::signed16(raw,2*i)/100.;
+            const double gyro=icm?sprite_imu::signed16(raw,6+2*i)*(2000.0*std::acos(-1.0)/180.0/32768.0):sprite_imu::signed16(raw,12+2*i)/900.;
+            if(std::abs(s.values[i]-accel)>1e-12 ||
+               std::abs(s.values[3+i]-(gyro-bias))>1e-12)
                 throw std::runtime_error("software IMU raw/bias disagreement");
         }
         if(bias_norm>.01)throw std::runtime_error("software IMU excessive gyro bias");
@@ -72,6 +75,7 @@ class NativeImuClient {
     std::mutex mutex_;
     ImuSnapshot latest_;
     bool software_fusion_=false;
+    bool icm_=false;
     void cleanup() noexcept {
         if (fd_>=0) { ::close(fd_);fd_=-1; }
         if (!path_.empty()) ::unlink(path_.c_str());
@@ -94,7 +98,7 @@ class NativeImuClient {
                 std::array<std::uint8_t,193> packet{};
                 const auto n=::recv(fd_,packet.data(),packet.size(),MSG_DONTWAIT);
                 if (n<0) throw std::runtime_error("IMU receive failed");
-                auto s=validate_imu_packet(packet.data(),static_cast<std::size_t>(n),monotonic_ns(),previous,software_fusion_);
+                auto s=validate_imu_packet(packet.data(),static_cast<std::size_t>(n),monotonic_ns(),previous,software_fusion_,icm_);
                 previous=s.sequence;
                 { std::lock_guard<std::mutex> lock(mutex_);latest_=s; }
                 std::this_thread::sleep_until(begin+std::chrono::milliseconds(5));
@@ -104,7 +108,7 @@ class NativeImuClient {
         }
     }
 public:
-    explicit NativeImuClient(const std::string& server,bool software_fusion=false):software_fusion_(software_fusion) {
+    explicit NativeImuClient(const std::string& server,bool software_fusion=false,bool icm=false):software_fusion_(software_fusion),icm_(icm) {
         try {
             auto peer=address(server);
             char pattern[]="/tmp/sprite_policy_imu_XXXXXX";

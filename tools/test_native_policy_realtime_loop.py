@@ -19,6 +19,7 @@ def main():
     p.add_argument('--fault',choices=('none','imu_freeze','state_disconnect'),default='none')
     p.add_argument('--command-profile', choices=('stand-walk-stop-40s','stand-walk010-stop-40s'))
     p.add_argument('--powered-candidate', action='store_true', help='Fake peers only, software V2 IMU')
+    p.add_argument('--icm-input', action='store_true', help='Fake ICM V3 packets; no sensor access')
     args=p.parse_args();out=Path(args.output_dir);out.mkdir(parents=True,exist_ok=False)
     data=Path(args.fixture).read_bytes();count=struct.unpack_from('<I',data,8)[0]
     header_size=len(data)-count*72*8
@@ -79,6 +80,12 @@ def main():
                             gyro=tuple(struct.unpack_from('<h',raw,12+2*j)[0]/900 for j in range(3))
                             values=(0.,0.,0.,*gyro,*q,*(9.80665*v for v in up))
                             packet=b'SPIMU002'+struct.pack('<QQQ',seq,now-1000000,now)+raw[:18]+b'\0'*6+struct.pack('<3d',0,0,0)+struct.pack('<13d',*values)+b'\0'*8
+                            if args.icm_input:
+                                scale=2000*np.pi/180/32768
+                                counts=tuple(int(round(row[62+j]/scale)) for j in range(3))
+                                gyro=tuple(v*scale for v in counts)
+                                values=(0.,0.,0.,*gyro,*q,*(9.80665*v for v in up))
+                                packet=b'SPIMU003'+struct.pack('<QQQ',seq,now-1000000,now)+struct.pack('<6h',0,0,0,*counts)+bytes(12)+struct.pack('<3d',0,0,0)+struct.pack('<13d',*values)+bytes(8)
                         else:
                             packet=b'SPIMU001'+struct.pack('<QQQ',seq,now-1000000,now)+raw+b'\0\0'+struct.pack('<13d',*values)+b'\0'*8
                     try:imu.sendto(packet,peer)

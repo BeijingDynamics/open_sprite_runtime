@@ -17,6 +17,12 @@ On October 14 the operator reported repeated successful supervised walks with
 the native C++ actor and 200 Hz raw-six-axis software IMU candidate. See the
 [native walk development record](docs/NATIVE_WALK40_READINESS_20261014.md)
 for qualification scope, remaining limitations and the earlier exit-gate fix.
+On October 16, three consecutive supervised 40-second ICM45686 walks completed.
+The operator reported disappearance of the previous left-leg straightening
+pattern, much straighter travel, and stable starts/stops. Controller reports
+confirmed successful completion and all 31 motors disabled after each run.
+See the [ICM walking milestone](docs/ICM45686_WALKING_20261016.md) for evidence,
+fixed gains, commands, and limitations. BNO055 remains the rollback path.
 This remains supervised commissioning, not unrestricted walking approval.
 Motor mapping, directions,
 mechanical limits, IMU convention, four 500 Hz CAN-FD bus tests, differential
@@ -27,7 +33,8 @@ exact acknowledgement token; receive-only inspection tools remain available.
 ## Timing contract
 
 The current candidate uses native ONNX Runtime CPU inference at **50 Hz**,
-an independent native BNO055 raw-six-axis reader/software estimator at **200 Hz**,
+an independent native ICM45686 raw-six-axis reader/software estimator at nominal
+**800 Hz** over **1 MHz SPI** (about 792 Hz measured),
 and a native CAN controller with a **2 kHz scheduling loop**. That scheduler
 transmits to **each ankle motor at 500 Hz** and **each other motor at 50 Hz**;
 it does **not** update every motor at 2 kHz. Python still prepares and supervises
@@ -37,6 +44,8 @@ state. Startup requires 15 seconds of stillness for gyro bias estimation.
 Gyro observations are raw gyro minus bias, rotated into body coordinates;
 projected gravity comes from the software estimator, without magnetometer fusion.
 See [software IMU design](docs/BNO055_SOFTWARE_FUSION.md).
+The BNO055 rollback uses the same estimator architecture at 200 Hz over I2C.
+ICM data has its own validated IPC format; it is not decoded as BNO register data.
 
 The `*_on_253.sh` entries are site-specific commissioning scripts. Their model,
 contract, calibration and parity-evidence paths are not a portable deployment
@@ -50,7 +59,7 @@ The gamepad interface is an agreed design, not yet connected to motor control.
 | Layer | Configured rate | What runs at this rate |
 |---|---|---|
 | Native policy inference | **50 Hz**, 20 ms | Produces joint targets; receives a latest-state motor snapshot via IPC at 50 Hz. |
-| Native software IMU | **200 Hz**, 5 ms | Independently reads raw six-axis data and estimates gravity; policy consumes the latest valid state. |
+| Native software IMU | ICM **800 Hz**, nominal 1.25 ms; BNO rollback **200 Hz**, 5 ms | Independently reads raw six-axis data and estimates gravity; policy consumes the latest valid state. SPI bitrate and sensor ODR are different quantities. |
 | Native CAN scheduler | **2 kHz**, 0.5 ms | Services due transmit slots across four buses, drains received feedback and checks the policy target watchdog. Not a per-motor update rate. |
 | Host ankle PD / parallel linkage calculation | **500 Hz**, 2 ms | Recomputes ankle motor feed-forward torques from held policy targets and latest joint feedback. |
 | Four ankle motors: command and feedback polling | **500 Hz per motor**, 2 ms | Sends MIT feed-forward torque commands with motor-side Kp/Kd zero. The two motors in each pair occupy staggered CAN slots. |

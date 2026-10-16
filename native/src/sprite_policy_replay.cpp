@@ -125,7 +125,9 @@ int main(int argc,char** argv) {
 #else
     for(int j=0;j<31;++j){motors[j]="motor_"+std::to_string(j);joints[j]="joint_"+std::to_string(j);}
 #endif
-#ifdef SPRITE_SOFTWARE_IMU_INPUT
+#ifdef SPRITE_ICM_IMU_INPUT
+    sprite_policy::NativeImuClient imu(argv[5],false,true);
+#elif defined(SPRITE_SOFTWARE_IMU_INPUT)
     sprite_policy::NativeImuClient imu(argv[5],true);
 #else
     sprite_policy::NativeImuClient imu(argv[5]);
