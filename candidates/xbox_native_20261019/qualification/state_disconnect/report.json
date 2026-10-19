@@ -1,0 +1,21 @@
+{
+  "mode": "paced_native_policy_fake_peers_no_hardware",
+  "hardware_tx": 0,
+  "fault": "state_disconnect",
+  "frames": 25,
+  "expected_frames": 2001,
+  "elapsed_s": 0.5932491599999707,
+  "returncode": 1,
+  "offline_byte_exact": null,
+  "ipc_matches_computed_target": null,
+  "roundtrip_over_20ms": 0,
+  "errors": [],
+  "stderr": "\u001b[0;93m2026-10-19 14:06:14.054890136 [W:onnxruntime:sprite-offline-policy, device_discovery.cc:164 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:89 ReadFileContents Failed to open file: \"/sys/class/drm/card1/device/vendor\"\u001b[m\nstate disconnected/receive failed\n",
+  "state_roundtrip_ms": {
+    "median": 1.243,
+    "p99": 1.7423853200000001,
+    "max": 1.747853
+  },
+  "fault_exit_delay_s": 0.035109562999991795,
+  "passed": true
+}

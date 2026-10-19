@@ -1,5 +1,6 @@
 """Paced recorded-state / fake-IMU integration test. Never opens CAN or I2C."""
 import argparse
+import os
 import json
 from pathlib import Path
 import socket
@@ -16,8 +17,8 @@ from open_sprite_runtime.bno055 import decode_sample
 def main():
     p=argparse.ArgumentParser()
     for name in ('binary','offline-binary','model','fixture','output-dir'):p.add_argument('--'+name,required=True)
-    p.add_argument('--fault',choices=('none','imu_freeze','state_disconnect'),default='none')
-    p.add_argument('--command-profile', choices=('stand-walk-stop-40s','stand-walk010-stop-40s'))
+    p.add_argument('--fault',choices=('none','imu_freeze','state_disconnect','operator_disable'),default='none')
+    p.add_argument('--command-profile', choices=('stand-walk-stop-40s','stand-walk010-stop-40s','xbox-forward40','xbox-forward120','xbox-turn120'))
     p.add_argument('--powered-candidate', action='store_true', help='Fake peers only, software V2 IMU')
     p.add_argument('--icm-input', action='store_true', help='Fake ICM V3 packets; no sensor access')
     args=p.parse_args();out=Path(args.output_dir);out.mkdir(parents=True,exist_ok=False)
@@ -42,6 +43,7 @@ def main():
                     for i,row in enumerate(rows):
                         if stop.wait(max(0,start+i*.02-time.monotonic())):return
                         shared['index']=i
+                        if args.fault=='operator_disable' and i==80:fault_time[0]=time.monotonic()
                         if args.fault=='state_disconnect' and i==25:
                             fault_time[0]=time.monotonic();return
                         stamp=time.monotonic_ns()
@@ -97,13 +99,15 @@ def main():
         try:
             profile_args=[args.command_profile] if args.command_profile else []
             if args.powered_candidate:
-                assert args.command_profile == 'stand-walk010-stop-40s'
+                assert args.command_profile in ('stand-walk010-stop-40s','xbox-forward40','xbox-forward120','xbox-turn120')
                 names=out/'fake_names.txt'
                 names.write_text('SPRITE_POWERED_WALK40_V1\n'+'\n'.join(
                     [f'motor_{i}' for i in range(31)]+[f'joint_{i}' for i in range(31)])+'\n')
-                profile_args=[str(names),args.command_profile,'ENABLE_NATIVE_ACTOR_WALK40']
+                ack={'xbox-forward40':'ENABLE_XBOX_FORWARD40','xbox-forward120':'ENABLE_XBOX_FORWARD120','xbox-turn120':'ENABLE_XBOX_TURN120'}.get(args.command_profile,'ENABLE_NATIVE_ACTOR_WALK40')
+                profile_args=[str(names),args.command_profile,ack]
             proc=subprocess.run([args.binary,args.model,args.fixture,str(out/'live.bin'),state_path,imu_path]+profile_args,
-                                capture_output=True,text=True,timeout=count*.02+20)
+                                capture_output=True,text=True,timeout=count*.02+20,
+                                env=dict(os.environ,SPRITE_FAKE_DISABLE='1') if args.fault=='operator_disable' else None)
             ended=time.monotonic()
         finally:
             stop.set()
@@ -126,6 +130,7 @@ def main():
             transmitted=np.array([packet.position_rad,packet.velocity_rad_s,packet.kp,packet.kd,packet.feedforward_torque_nm])
             ipc_matches=ipc_matches and np.array_equal(row['protected'],transmitted)
     expected_error='stale' if args.fault=='imu_freeze' else 'disconnected'
+    if args.fault=='operator_disable':expected_error='OPERATOR_DISABLE_REQUEST'
     passed=not errors and not any(t.is_alive() for t in threads) and (
         proc.returncode==0 and len(targets)==count and parity and ipc_matches and max(latencies)<20 if args.fault=='none' else
         proc.returncode!=0 and expected_error in proc.stderr and fault_time[0] is not None and ended-fault_time[0]<1)

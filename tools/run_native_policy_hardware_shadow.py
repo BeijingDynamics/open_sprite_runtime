@@ -21,11 +21,22 @@ def main():
     p.add_argument('--software-imu-candidate',type=Path)
     p.add_argument('--icm-candidate',type=Path)
     p.add_argument('--runtime-root',type=Path)
-    p.add_argument('--command-profile',choices=['stand-walk010-stop-40s'])
+    p.add_argument('--command-profile',choices=['stand-walk010-stop-40s','xbox-shadow40'])
+    p.add_argument('--xbox-candidate',type=Path)
     args=p.parse_args()
     if args.icm_candidate and args.software_imu_candidate:
         p.error('select exactly one IMU candidate')
     icm=args.icm_candidate.resolve() if args.icm_candidate else None
+    xbox=args.xbox_candidate.resolve() if args.xbox_candidate else None
+    if bool(xbox) != (args.command_profile=='xbox-shadow40') or (xbox and not icm):
+        p.error('Xbox shadow requires an ICM candidate and xbox-shadow40 profile')
+    xbox_mapping=None
+    if xbox:
+        xbox_mapping=json.loads((xbox/'mapping_verified.json').read_text())
+        if not xbox_mapping.get('mapping_verified') or xbox_mapping.get('forward_axis')!=1 or xbox_mapping.get('turn_axis')!=2 or xbox_mapping.get('permission_axis')!=5:
+            raise RuntimeError('verified Xbox mapping missing or unsupported')
+        checked=subprocess.run(['ldd',str(xbox/'sprite_policy_xbox_shadow')],capture_output=True,text=True,check=True)
+        if 'not found' in checked.stdout:raise RuntimeError('Xbox native dependencies missing')
     if args.command_profile and args.duration != 40:
         p.error('walk40 shadow profile requires duration=40')
     frames=args.duration*50
@@ -51,7 +62,7 @@ def main():
         if not entry.name.isdigit():continue
         try:exe=os.readlink(entry/'exe')
         except OSError:continue
-        if Path(exe).name in ('sprite_can_shadow','sprite_can_shadow_quantized_v1','sprite_imu_bno','sprite_policy_native_shadow','sprite_imu_software','sprite_policy_native_software_shadow','sprite_icm45686','sprite_policy_native_icm_shadow'):
+        if Path(exe).name in ('sprite_policy_xbox_shadow','sprite_policy_powered_icm_candidate','sprite_can_shadow','sprite_can_shadow_quantized_v1','sprite_imu_bno','sprite_policy_native_shadow','sprite_imu_software','sprite_policy_native_software_shadow','sprite_icm45686','sprite_policy_native_icm_shadow'):
             raise RuntimeError('existing hardware process: '+entry.name)
     out=Path(tempfile.mkdtemp(prefix='native_actor_hardware_shadow_',dir=root/'reports'))
     print('REPORT_DIRECTORY',out,flush=True)
@@ -103,6 +114,11 @@ def main():
     finally:
         if io is not None:io.close()
     env=dict(os.environ,PYTHONPATH=str(root/'src'),OMP_NUM_THREADS='1',OPENBLAS_NUM_THREADS='1')
+    if xbox_mapping:
+        env.update(SPRITE_GAMEPAD_DEVICE=xbox_mapping['device'],
+                   SPRITE_GAMEPAD_FORWARD_SIGN=str(xbox_mapping['forward_sign']),
+                   SPRITE_GAMEPAD_TURN_SIGN=str(xbox_mapping['turn_sign']))
+        (out/'gamepad_mapping.json').write_text(json.dumps(xbox_mapping,indent=2))
     python=str(root/'.venv/bin/python')
     for tool,extra,dest in [
         ('export_native_motor_config.py',[],out/'motors.tsv'),
@@ -164,11 +180,19 @@ def main():
             wait_socket(state_socket,can)
             actor_binary=str(candidate/'build/imu_software_candidate/sprite_policy_native_software_shadow') if candidate else 'build/policy_native_stage2/sprite_policy_native_shadow'
             if icm:actor_binary=str(icm/'build/sprite_policy_native_icm_shadow')
+            if xbox:actor_binary=str(xbox/'sprite_policy_xbox_shadow')
             actor=launch(['taskset','-c','4',actor_binary,str(model),
                 str(fixture),str(out/'live.bin'),state_socket,imu_socket,str(names)]
                 +([args.command_profile] if args.command_profile else []),'actor')
             deadline=time.monotonic()+args.duration+10
+            actor_log_offset=0
             while actor.poll() is None or can.poll() is None:
+                if xbox:
+                    with (out/'actor.log').open() as relay:
+                        relay.seek(actor_log_offset)
+                        for line in relay:
+                            if line.startswith('GAMEPAD_STAGE '):print(line.strip(),flush=True)
+                        actor_log_offset=relay.tell()
                 for name,proc in [('actor',actor),('can',can),('imu',imu)]:
                     rc=proc.poll()
                     if rc is not None and rc!=0:raise RuntimeError(f'{name} exited with code {rc}; see {name}.log')

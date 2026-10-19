@@ -1,0 +1,18 @@
+{
+  "schema": "sprite_xbox_axis_mapping_v1",
+  "device": "/dev/input/js0",
+  "source_report": "xbox_mapping_20261019_131850.json",
+  "axis_numbering": "linux_joystick_zero_based",
+  "mapping_verified": true,
+  "powered_control_qualified": false,
+  "forward_axis": 1,
+  "forward_sign": -1,
+  "turn_axis": 2,
+  "turn_sign": -1,
+  "permission_axis": 5,
+  "permission_released_raw": -32767,
+  "permission_pressed_raw": 32767,
+  "deadzone": 0.12,
+  "permission_press_threshold": 0.9,
+  "permission_release_threshold": 0.6
+}

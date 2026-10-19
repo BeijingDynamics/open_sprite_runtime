@@ -54,7 +54,16 @@ do not bypass missing evidence checks to run hardware.
 
 See the [October 10 development update](docs/DEVELOPMENT_UPDATE_20261010.md)
 and [Xbox Bluetooth pairing and walking control](docs/XBOX_BLUETOOTH_CONTROL.md).
-The gamepad interface is an agreed design, not yet connected to motor control.
+On October 19, supervised Xbox One control was exercised on hardware. The operator
+reported normal forward motion, stopping, LB+RB motor disable, and subsequently
+low-speed turning. The isolated120-second turning entry limits forward velocity
+to0.10m/s and yaw rate to+/-0.10rad/s; reverse remains blocked. LT is required for
+motion. LB+RB held3s requests disable, bypassing the final standing interval;
+fall arrest and independent power cutoff remain required.
+The native gamepad reader uses a separate thread and a bounded latest-state
+snapshot; it does not perform joystick I/O inside policy inference or CAN control.
+See the [Xbox deployment snapshot](docs/XBOX_DEPLOYMENT_20261019.md) for entries,
+test scope and site-specific provisioning requirements.
 
 | Layer | Configured rate | What runs at this rate |
 |---|---|---|

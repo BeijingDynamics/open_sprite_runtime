@@ -14,6 +14,9 @@ target_compile_options(sprite_can_shadow PRIVATE -Wall -Wextra -Wpedantic -Werro
 target_link_libraries(sprite_can_shadow PRIVATE pthread)
 
 enable_testing()
+add_executable(test_gamepad src/gamepad_test.cpp)
+target_compile_options(test_gamepad PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
+add_test(NAME gamepad COMMAND test_gamepad)
 add_executable(test_policy_core tests/test_policy_core.cpp)
 target_compile_options(test_policy_core PRIVATE -Wall -Wextra -Wpedantic -Werror -ffp-contract=off)
 add_test(NAME policy_core COMMAND test_policy_core)

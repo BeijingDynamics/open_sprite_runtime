@@ -7,6 +7,16 @@
 #include "policy_imu_client.hpp"
 #include "policy_command_schedule.hpp"
 #include "policy_evidence_buffer.hpp"
+#ifdef SPRITE_GAMEPAD_INPUT
+#if !defined(SPRITE_SHADOW_LOOP) && !defined(SPRITE_POWERED_LOOP)
+#error Gamepad requires an explicit shadow or powered build
+#endif
+#ifdef SPRITE_GAMEPAD_FAKE_PEERS
+#include "policy_gamepad_fake.hpp"
+#else
+#include "policy_gamepad_linux.hpp"
+#endif
+#endif
 #endif
 #include "policy_core.hpp"
 #include "policy_feedback.hpp"
@@ -28,15 +38,54 @@ template<class T> void write(std::ostream& out,const T& value) {
 int main(int argc,char** argv) {
   try {
 #if defined(SPRITE_POWERED_LOOP)
+#ifdef SPRITE_GAMEPAD_INPUT
+#ifdef SPRITE_XBOX_120
+#ifdef SPRITE_XBOX_TURN
+    if(argc!=9 || std::string(argv[8])!="ENABLE_XBOX_TURN120" || std::string(argv[7])!="xbox-turn120")
+      throw std::runtime_error("powered Xbox requires explicit turn120 admission");
+#else
+    if(argc!=9 || std::string(argv[8])!="ENABLE_XBOX_FORWARD120" || std::string(argv[7])!="xbox-forward120")
+      throw std::runtime_error("powered Xbox requires explicit forward120 admission");
+#endif
+#else
+    if(argc!=9 || std::string(argv[8])!="ENABLE_XBOX_FORWARD40" ||
+       std::string(argv[7])!="xbox-forward40")
+      throw std::runtime_error("powered Xbox requires explicit forward40 admission");
+#endif
+#else
     if(argc!=9 || std::string(argv[8])!="ENABLE_NATIVE_ACTOR_WALK40" ||
        std::string(argv[7])!="stand-walk010-stop-40s")
       throw std::runtime_error("powered actor requires explicit walk40 admission");
+#endif
 #elif defined(SPRITE_SHADOW_LOOP)
+#ifdef SPRITE_GAMEPAD_INPUT
+    if(argc!=8 || std::string(argv[7])!="xbox-shadow40")throw std::runtime_error("gamepad requires xbox-shadow40");
+#else
     if(argc!=7 && argc!=8)throw std::runtime_error("Usage: shadow MODEL INPUT OUTPUT STATE_SOCKET IMU_SOCKET NAMES [PROFILE]");
+#endif
 #elif defined(SPRITE_LOOP_TEST)
     if(argc!=6 && argc!=7) throw std::runtime_error("Usage: loop_test MODEL INPUT OUTPUT FAKE_STATE_SOCKET FAKE_IMU_SOCKET [PROFILE]");
 #else
     if(argc!=4) throw std::runtime_error("Usage: sprite_policy_replay MODEL INPUT OUTPUT");
+#endif
+#ifdef SPRITE_GAMEPAD_INPUT
+    const char* device=std::getenv("SPRITE_GAMEPAD_DEVICE");
+    const char* forward=std::getenv("SPRITE_GAMEPAD_FORWARD_SIGN");
+    const char* turn=std::getenv("SPRITE_GAMEPAD_TURN_SIGN");
+    if(!device || !forward || !turn)throw std::runtime_error("explicit gamepad device and polarity required");
+    sprite_policy::GamepadConfig pad_config;
+#ifdef SPRITE_POWERED_LOOP
+#ifdef SPRITE_XBOX_TURN
+    pad_config.no_reverse=true;
+    pad_config.turn=.10;
+#else
+    pad_config.forward_only=true;
+#endif
+#endif
+    pad_config.forward_sign=std::stoi(forward);pad_config.turn_sign=std::stoi(turn);
+    sprite_policy::GamepadCommand pad_command(pad_config);
+    sprite_policy::LinuxGamepad pad(device);
+    std::uint64_t pad_first=0,pad_release_epoch=0;bool pad_window=false;
 #endif
     const std::uint32_t endian=1;
     if(*reinterpret_cast<const char*>(&endian)!=1) throw std::runtime_error("little endian required");
@@ -52,7 +101,11 @@ int main(int argc,char** argv) {
     std::uint32_t count=0; read(in,count);
     if(!count || count>1000000) throw std::runtime_error("invalid frame count");
 #ifdef SPRITE_POWERED_LOOP
+#ifdef SPRITE_XBOX_120
+    if(count!=6001)throw std::runtime_error("powered Xbox120 requires 6001 states");
+#else
     if(count!=2001)throw std::runtime_error("powered walk40 requires preparation state plus 2000 active states");
+#endif
 #endif
 #ifdef SPRITE_LOOP_TEST
     if(count>6001)throw std::runtime_error("live evidence capacity exceeds 120 seconds");
@@ -102,9 +155,13 @@ int main(int argc,char** argv) {
 #ifdef SPRITE_LOOP_TEST
     std::unique_ptr<sprite_policy::CommandSchedule> schedule;
 #if defined(SPRITE_POWERED_LOOP)
+#ifndef SPRITE_GAMEPAD_INPUT
     schedule=std::make_unique<sprite_policy::CommandSchedule>(argv[7]);
+#endif
 #elif defined(SPRITE_SHADOW_LOOP)
+#ifndef SPRITE_GAMEPAD_INPUT
     if(argc==8) schedule=std::make_unique<sprite_policy::CommandSchedule>(argv[7]);
+#endif
 #else
     if(argc==7) schedule=std::make_unique<sprite_policy::CommandSchedule>(argv[6]);
 #endif
@@ -121,6 +178,9 @@ int main(int argc,char** argv) {
 #endif
     for(auto& n:motors)if(!(names>>n))throw std::runtime_error("missing motor name");
     for(auto& n:joints)if(!(names>>n))throw std::runtime_error("missing joint name");
+#ifdef SPRITE_GAMEPAD_FAKE_PEERS
+    if(motors[0]!="motor_0" || joints[0]!="joint_0")throw std::runtime_error("fake gamepad requires fake peers");
+#endif
     names>>std::ws;if(!names.eof())throw std::runtime_error("trailing names");
 #else
     for(int j=0;j<31;++j){motors[j]="motor_"+std::to_string(j);joints[j]="joint_"+std::to_string(j);}
@@ -150,9 +210,21 @@ int main(int argc,char** argv) {
     std::ofstream timing_file(std::string(argv[3])+".timing");
     if(!used_file || !timing_file)throw std::runtime_error("test evidence file open failed");
     std::ostream used(&input_buffer),timings(&timing_buffer);
+#ifdef SPRITE_GAMEPAD_INPUT
+    sprite_policy::EvidenceBuffer pad_buffer(static_cast<std::size_t>(count)*512+512);
+    std::ostream pad_trace(&pad_buffer);
+    std::ofstream pad_file(std::string(argv[3])+".gamepad.csv");
+    if(!pad_file)throw std::runtime_error("gamepad evidence open failed");
+    pad_trace<<"elapsed_s,axis1,axis2,lt,connected,permitted,revocations,window,healthy,allowed,target_vx,target_wz,vx,wz\n";
+    int pad_stage=-1;
+#endif
     timings<<"compute_ms,source_age_ms,imu_age_ms\n";
     auto save_evidence=[&]() {
       output_buffer.save(output_file);input_buffer.save(used_file);timing_buffer.save(timing_file);
+#ifdef SPRITE_GAMEPAD_INPUT
+      pad_buffer.save(pad_file);pad_file.flush();
+      if(!pad_file)throw std::runtime_error("gamepad evidence flush failed");
+#endif
       output_file.flush();used_file.flush();timing_file.flush();
       if(!output_file || !used_file || !timing_file)throw std::runtime_error("evidence flush failed");
     };
@@ -176,6 +248,53 @@ int main(int argc,char** argv) {
         std::copy(state.velocity.begin(),state.velocity.end(),sensors.begin()+31);
         std::copy_n(sample.values.begin()+3,3,sensors.begin()+62);
         std::copy_n(sample.values.begin()+6,4,sensors.begin()+65);
+#ifdef SPRITE_GAMEPAD_INPUT
+        if(!pad_first)pad_first=state.stamp;
+        const double pad_elapsed=(state.stamp-pad_first)*1e-9;
+        const auto pad_state=pad.snapshot();
+#ifdef SPRITE_GAMEPAD_STOP_COMBO
+        if(pad_state.disable_requested)throw std::runtime_error("OPERATOR_DISABLE_REQUEST LB_RB_HELD_3_SECONDS; controller must verify all motors disabled");
+#endif
+#ifdef SPRITE_XBOX_120
+        constexpr double pad_end=110.;
+#else
+        constexpr double pad_end=30.;
+#endif
+        if(pad_elapsed>=10 && !pad_window){pad_window=true;pad_release_epoch=pad_state.revocations;}
+        command=pad_command.sample(pad_state,sprite_policy::gamepad_now(),
+          pad_window && pad_elapsed<pad_end && pad_state.revocations!=pad_release_epoch);
+        pad_trace<<pad_elapsed<<','<<pad_state.forward<<','<<pad_state.turn<<','<<pad_state.lt<<','
+          <<pad_state.connected<<','<<pad_state.permitted<<','<<pad_state.revocations<<','
+          <<(pad_window && pad_elapsed<pad_end && pad_state.revocations!=pad_release_epoch)<<','
+          <<pad_command.last_healthy<<','<<pad_command.last_allowed<<','<<pad_command.target_vx<<','
+          <<pad_command.target_wz<<','<<command[0]<<','<<command[2]<<'\n';
+        const int stage=pad_elapsed<10?0:pad_elapsed<14?1:pad_elapsed<20?2:pad_elapsed<25?3:pad_elapsed<pad_end?4:5;
+        if(stage!=pad_stage){
+          pad_stage=stage;
+#ifdef SPRITE_POWERED_LOOP
+#ifdef SPRITE_XBOX_120
+#ifdef SPRITE_XBOX_TURN
+          const char* prompts[]={"STAND: release LT; fall arrest ready", "ARM: center sticks; squeeze/release LT then hold LT",
+            "FORWARD/TURN: vx<=0.10m/s, abs(wz)<=0.10rad/s; no reverse", "FORWARD/TURN: LB+RB held3s requests immediate disable",
+            "FORWARD/TURN: window ends110s; release LT to stop", "STOP: stand then disable at120s; fall arrest required"};
+#else
+          const char* prompts[]={"STAND: release LT; fall arrest ready", "ARM: center sticks; squeeze/release LT then hold LT",
+            "FORWARD ONLY: hold LT and push forward; release LT to stand", "FORWARD ONLY: LB+RB held3s requests immediate disable",
+            "FORWARD ONLY: window ends110s; LB+RB3s disables", "STOP: stand then disable at120s; fall arrest required"};
+#endif
+#else
+          const char* prompts[]={"STAND: release LT, center sticks; fall arrest ready", "ARM: center sticks; squeeze/release LT, then hold LT",
+            "FORWARD ONLY: hold LT and gently push forward; release LT to stop", "FORWARD ONLY: release LT to verify stopping",
+            "FORWARD ONLY: final input window", "STOP: release LT; stand then disable at 40s; fall arrest required"};
+#endif
+#else
+          const char* prompts[]={"WAIT: leave sticks centered", "ARM: center sticks; squeeze/release LT, then hold LT",
+            "REVERSE: keep LT held; pull axis1 fully backward and HOLD", "LEFT: keep LT held; center forward stick, turn left",
+            "RIGHT: keep LT held; turn right", "STOP: release LT; commands ramp to zero"};
+#endif
+          std::cout<<"GAMEPAD_STAGE "<<prompts[stage]<<std::endl;
+        }
+#endif
         if(schedule) {
           const auto scheduled=schedule->sample(state.stamp);
           command={scheduled.vx,0,0};

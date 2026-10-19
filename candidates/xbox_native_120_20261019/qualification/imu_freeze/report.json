@@ -1,0 +1,21 @@
+{
+  "mode": "paced_native_policy_fake_peers_no_hardware",
+  "hardware_tx": 0,
+  "fault": "imu_freeze",
+  "frames": 27,
+  "expected_frames": 6001,
+  "elapsed_s": 0.6326774890001161,
+  "returncode": 1,
+  "offline_byte_exact": null,
+  "ipc_matches_computed_target": null,
+  "roundtrip_over_20ms": 0,
+  "errors": [],
+  "stderr": "\u001b[0;93m2026-10-19 14:22:07.966197814 [W:onnxruntime:sprite-offline-policy, device_discovery.cc:164 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:89 ReadFileContents Failed to open file: \"/sys/class/drm/card1/device/vendor\"\u001b[m\nIMU stale/future timestamp\n",
+  "state_roundtrip_ms": {
+    "median": 1.178919,
+    "p99": 2.6882305199999976,
+    "max": 3.063384
+  },
+  "fault_exit_delay_s": 0.06316528300021673,
+  "passed": true
+}
