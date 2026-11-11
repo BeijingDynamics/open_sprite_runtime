@@ -179,6 +179,7 @@ struct Options {
   bool policy_actuation = false;
   bool saturate_policy_torque = false;
   bool bounded_shadow_preview = false;
+  bool xbox_500hz_shadow = false;
 };
 
 struct Socket {
@@ -278,6 +279,41 @@ std::uint64_t ordered_joint_name_hash(
     result *= 0x100000001B3ULL;
   }
   return result;
+}
+
+void configure_xbox_500hz_schedule(std::vector<Motor>& motors) {
+  std::map<std::string, std::array<int, 4>> slots_by_bus;
+  std::map<std::pair<std::string, int>, bool> endpoints;
+  for (const auto& motor : motors) {
+    if (!endpoints.emplace(std::make_pair(motor.interface, motor.can_id), true).second) {
+      throw std::runtime_error("duplicate CAN command endpoint");
+    }
+    auto& slots = slots_by_bus[motor.interface];
+    if (motor.poll_rate_hz == 500) {
+      ++slots.at(static_cast<std::size_t>(motor.poll_phase));
+    }
+  }
+  if (slots_by_bus.size() != 4 || motors.size() != kJointCount) {
+    throw std::runtime_error("500 Hz schedule requires 31 motors on four CAN buses");
+  }
+  for (auto& motor : motors) {
+    if (motor.poll_rate_hz == 500) continue;
+    auto& slots = slots_by_bus.at(motor.interface);
+    const auto phase = std::min_element(slots.begin(), slots.end());
+    motor.poll_rate_hz = 500;
+    motor.poll_phase = static_cast<int>(phase - slots.begin());
+    ++*phase;
+  }
+  for (const auto& bus : slots_by_bus) {
+    if (*std::max_element(bus.second.begin(), bus.second.end()) > 2) {
+      throw std::runtime_error("500 Hz schedule exceeds two frames per bus per slot");
+    }
+  }
+}
+
+bool poll_due(const Motor& motor, std::size_t slot) {
+  const std::size_t period = motor.poll_rate_hz == 500 ? 4 : 40;
+  return static_cast<int>(slot % period) == motor.poll_phase;
 }
 
 std::vector<Motor> load_motors(const std::string& path) {
@@ -534,6 +570,7 @@ Options parse_options(int argc, char** argv) {
       result.saturate_policy_torque = true;
     }
     else if (argument == "--bounded-shadow-preview") result.bounded_shadow_preview = true;
+    else if (argument == "--xbox-500hz-shadow") result.xbox_500hz_shadow = true;
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -541,6 +578,15 @@ Options parse_options(int argc, char** argv) {
   }
   if (!(result.duration_s > 0.0 && result.duration_s <= 120.0)) {
     throw std::runtime_error("duration must be in (0, 120]");
+  }
+  if (result.xbox_500hz_shadow && (result.policy_actuation || result.measured_pose_hold)) {
+    throw std::runtime_error("xbox_500hz is zero-gain shadow only; no actuation or hold");
+  }
+  if (result.xbox_500hz_shadow) {
+    const double cycles = result.duration_s * 500.0;
+    if (cycles < 1.0 || std::abs(cycles - std::round(cycles)) > 1e-8) {
+      throw std::runtime_error("xbox_500hz duration must be a whole number of 2 ms cycles");
+    }
   }
   if (result.measured_pose_hold && result.policy_actuation) {
     throw std::runtime_error("measured-pose hold and policy actuation are mutually exclusive");
@@ -1853,7 +1899,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
                         double elapsed_s, std::size_t deadline_misses, bool memory_locked,
                         int cpu, int realtime_priority, const IpcSocket* ipc,
                         bool protected_target_envelope_enabled,
-                        std::int64_t finished_ns) {
+                        std::int64_t finished_ns, bool xbox_500hz_shadow,
+                        std::size_t slot_overruns, double max_slot_wall_ms) {
   const double p99 = percentile(lateness, 0.99);
   const double maximum = *std::max_element(lateness.begin(), lateness.end());
   bool coverage_passed = true;
@@ -1874,7 +1921,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
     const double coverage = motor.tx_count > 0
         ? static_cast<double>(motor.rx_count) / static_cast<double>(motor.tx_count)
         : 0.0;
-    coverage_passed = coverage_passed && motor.seen && coverage >= 0.95;
+    coverage_passed = coverage_passed && motor.seen &&
+        coverage >= (xbox_500hz_shadow ? 0.99 : 0.95);
     const char* suffix = i + 1 == motors.size() ? "\n" : ",\n";
     tx_counts << "    \"" << motor.name << "\": " << motor.tx_count << suffix;
     rx_counts << "    \"" << motor.name << "\": " << motor.rx_count << suffix;
@@ -1920,15 +1968,20 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
        ipc->last_target_ns > 0 && final_target_age_ms <= 100.0 &&
        ipc->motor_preview_count > 0);
   const bool passed = deadline_misses == 0 && p99 <= 0.5 && maximum <= 2.0 &&
-      coverage_passed && ipc_passed;
+      coverage_passed && ipc_passed && (!xbox_500hz_shadow || slot_overruns == 0);
   std::ostringstream out;
   out << std::fixed << std::setprecision(6)
-      << "{\n  \"mode\": \"native_mixed_rate_zero_gain_can_shadow\",\n"
+      << "{\n  \"mode\": \""
+      << (xbox_500hz_shadow ? "native_xbox_500hz_zero_gain_can_shadow"
+                           : "native_mixed_rate_zero_gain_can_shadow") << "\",\n"
       << "  \"elapsed_s\": " << elapsed_s << ",\n"
       << "  \"state_ticks\": " << lateness.size() << ",\n"
       << "  \"deadline_misses\": " << deadline_misses << ",\n"
       << "  \"lateness_p99_ms\": " << p99 << ",\n"
       << "  \"lateness_max_ms\": " << maximum << ",\n"
+      << "  \"all_motors_requested_hz\": " << (xbox_500hz_shadow ? "500" : "null") << ",\n"
+      << "  \"transport_slot_overruns\": " << slot_overruns << ",\n"
+      << "  \"transport_slot_max_wall_ms\": " << max_slot_wall_ms << ",\n"
       << "  \"cpu\": " << cpu << ",\n"
       << "  \"scheduler\": \"" << (realtime_priority > 0 ? "SCHED_FIFO" : "SCHED_OTHER")
       << "\",\n"
@@ -1978,6 +2031,7 @@ int main(int argc, char** argv) {
   try {
     const Options options = parse_options(argc, argv);
     auto motors = load_motors(options.config);
+    if (options.xbox_500hz_shadow) configure_xbox_500hz_schedule(motors);
     const auto joint_safety = options.joint_safety_config.empty()
         ? std::vector<JointSafety>{}
         : load_joint_safety(options.joint_safety_config);
@@ -2038,6 +2092,8 @@ int main(int argc, char** argv) {
     }
     const std::int64_t start_ns = monotonic_ns() + 100'000'000LL;
     std::size_t deadline_misses = 0;
+    std::size_t slot_overruns = 0;
+    double max_slot_wall_ms = 0.0;
     std::size_t state_tick = 0;
     for (std::size_t slot = 0; slot < transport_slots; ++slot) {
       const std::int64_t deadline_ns =
@@ -2053,11 +2109,10 @@ int main(int argc, char** argv) {
             std::max(0.0, static_cast<double>(woke_ns - deadline_ns) / 1.0e6);
         deadline_misses += static_cast<std::size_t>(woke_ns - deadline_ns >= 2'000'000LL);
       }
-      for (auto& motor : motors) {
-        const bool due = motor.poll_rate_hz == 500
-            ? static_cast<int>(slot % 4) == motor.poll_phase
-            : static_cast<int>(slot % 40) == motor.poll_phase;
-        if (due) {
+      // Skip an already expired experimental slot; never send a catch-up burst.
+      if (!options.xbox_500hz_shadow || woke_ns - deadline_ns < kTransportPeriodNs) {
+        for (auto& motor : motors) {
+          if (!poll_due(motor, slot)) continue;
           send_poll(sockets[socket_index.at(motor.interface)], motor);
         }
       }
@@ -2093,6 +2148,11 @@ int main(int argc, char** argv) {
           ++motor.rx_count;
           motor.seen = true;
         }
+      }
+      if (options.xbox_500hz_shadow) {
+        const auto wall_ns = monotonic_ns() - deadline_ns;
+        slot_overruns += static_cast<std::size_t>(wall_ns >= kTransportPeriodNs);
+        max_slot_wall_ms = std::max(max_slot_wall_ms, static_cast<double>(wall_ns) / 1.0e6);
       }
       if (ipc.client_fd >= 0) {
         drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
@@ -2161,7 +2221,8 @@ int main(int argc, char** argv) {
     const std::string report = json_report(
         motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu,
         options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr,
-        !joint_safety.empty(), finished_ns);
+        !joint_safety.empty(), finished_ns, options.xbox_500hz_shadow,
+        slot_overruns, max_slot_wall_ms);
     std::cout << report;
     std::ofstream output(options.output);
     if (!output) throw std::runtime_error("cannot open report output");
