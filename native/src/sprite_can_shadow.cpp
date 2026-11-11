@@ -29,6 +29,7 @@
 #include <sys/socket.h>
 #include <time.h>
 #include <unistd.h>
+#include "transport_slot_timing.hpp"
 
 namespace {
 
@@ -1900,7 +1901,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
                         int cpu, int realtime_priority, const IpcSocket* ipc,
                         bool protected_target_envelope_enabled,
                         std::int64_t finished_ns, bool xbox_500hz_shadow,
-                        std::size_t slot_overruns, double max_slot_wall_ms) {
+                        std::size_t slot_overruns, double max_slot_wall_ms,
+                        const TransportSlotTiming* slot_timing = nullptr) {
   const double p99 = percentile(lateness, 0.99);
   const double maximum = *std::max_element(lateness.begin(), lateness.end());
   bool coverage_passed = true;
@@ -1969,6 +1971,9 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
        ipc->motor_preview_count > 0);
   const bool passed = deadline_misses == 0 && p99 <= 0.5 && maximum <= 2.0 &&
       coverage_passed && ipc_passed && (!xbox_500hz_shadow || slot_overruns == 0);
+  std::ostringstream timing_fields;
+  timing_fields << std::fixed << std::setprecision(6);
+  if (slot_timing) slot_timing->json_fields(timing_fields);
   std::ostringstream out;
   out << std::fixed << std::setprecision(6)
       << "{\n  \"mode\": \""
@@ -1982,6 +1987,7 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
       << "  \"all_motors_requested_hz\": " << (xbox_500hz_shadow ? "500" : "null") << ",\n"
       << "  \"transport_slot_overruns\": " << slot_overruns << ",\n"
       << "  \"transport_slot_max_wall_ms\": " << max_slot_wall_ms << ",\n"
+      << timing_fields.str()
       << "  \"cpu\": " << cpu << ",\n"
       << "  \"scheduler\": \"" << (realtime_priority > 0 ? "SCHED_FIFO" : "SCHED_OTHER")
       << "\",\n"
@@ -2094,6 +2100,7 @@ int main(int argc, char** argv) {
     std::size_t deadline_misses = 0;
     std::size_t slot_overruns = 0;
     double max_slot_wall_ms = 0.0;
+    TransportSlotTiming slot_timing;
     std::size_t state_tick = 0;
     for (std::size_t slot = 0; slot < transport_slots; ++slot) {
       const std::int64_t deadline_ns =
@@ -2116,6 +2123,7 @@ int main(int argc, char** argv) {
           send_poll(sockets[socket_index.at(motor.interface)], motor);
         }
       }
+      const auto tx_end_ns = options.xbox_500hz_shadow ? monotonic_ns() : 0;
       for (auto& can_socket : sockets) {
         while (true) {
           canfd_frame frame{};
@@ -2149,11 +2157,7 @@ int main(int argc, char** argv) {
           motor.seen = true;
         }
       }
-      if (options.xbox_500hz_shadow) {
-        const auto wall_ns = monotonic_ns() - deadline_ns;
-        slot_overruns += static_cast<std::size_t>(wall_ns >= kTransportPeriodNs);
-        max_slot_wall_ms = std::max(max_slot_wall_ms, static_cast<double>(wall_ns) / 1.0e6);
-      }
+      const auto rx_end_ns = options.xbox_500hz_shadow ? monotonic_ns() : 0;
       if (ipc.client_fd >= 0) {
         drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
         if (slot % 4 == 0 &&
@@ -2176,6 +2180,11 @@ int main(int argc, char** argv) {
             throw std::runtime_error("policy IPC target watchdog expired");
           }
         }
+      }
+      if (options.xbox_500hz_shadow) {
+        slot_timing.record(slot, deadline_ns, woke_ns, tx_end_ns, rx_end_ns, monotonic_ns());
+        slot_overruns = slot_timing.count;
+        max_slot_wall_ms = slot_timing.maximum.total_ns / 1.0e6;
       }
     }
     // Account for responses to the final scheduled slot before reporting coverage.
@@ -2222,7 +2231,7 @@ int main(int argc, char** argv) {
         motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu,
         options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr,
         !joint_safety.empty(), finished_ns, options.xbox_500hz_shadow,
-        slot_overruns, max_slot_wall_ms);
+        slot_overruns, max_slot_wall_ms, options.xbox_500hz_shadow ? &slot_timing : nullptr);
     std::cout << report;
     std::ofstream output(options.output);
     if (!output) throw std::runtime_error("cannot open report output");

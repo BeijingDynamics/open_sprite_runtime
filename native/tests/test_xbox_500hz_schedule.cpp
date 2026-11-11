@@ -33,6 +33,22 @@ Options options(std::vector<std::string> extra) {
 }
 
 int main() {
+  TransportSlotTiming timing;
+  // CAN work fits, but IPC/preview overruns: the old measurement missed this.
+  timing.record(0, 0, 10'000, 40'000, 80'000, 510'000);
+  require(timing.count == 1 && timing.maximum.ipc_ns == 430'000,
+          "IPC/preview omitted from slot timing");
+  require(timing.skipped_slots == 0, "work overrun is not a skipped wakeup");
+  timing.record(1, 500'000, 1'010'000, 1'020'000, 1'030'000, 1'040'000);
+  require(timing.skipped_slots == 1 && timing.max_wake_ns == 510'000,
+          "late wakeup not recorded");
+  for (std::size_t i=0; i<100; ++i) timing.record(i+2, 0, 1, 2, 3, 500'000);
+  require(timing.count == 102 && timing.maximum.total_ns == 540'000,
+          "bounded overrun storage lost count or maximum");
+  std::ostringstream timing_json;
+  timing.json_fields(timing_json);
+  require(timing_json.str().find("\"transport_overrun_samples_truncated\": true") != std::string::npos,
+          "truncated evidence not disclosed");
   const auto baseline = fixture();
   auto candidate = baseline;
   configure_xbox_500hz_schedule(candidate);

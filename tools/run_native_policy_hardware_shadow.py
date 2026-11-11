@@ -12,6 +12,7 @@ import subprocess
 import tempfile
 import time
 import numpy as np
+from xbox_shadow_completion import completed_rejected_shadow, can_diagnostics
 from open_sprite_runtime.native_ipc import ordered_name_hash
 from open_sprite_runtime.native_policy_client import _native_motor_order
 
@@ -135,6 +136,18 @@ def main():
                   motor_order=list(motors),joint_order=list(joints),duration_s=args.duration,
                   software_imu_candidate=str(candidate) if candidate else None,
                   icm_candidate=str(icm) if icm else None)
+    if experiment:
+        manifest['experiment_sha256'] = {
+            name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for name, path in {
+                'can_binary': Path(can_binary),
+                'runner': Path(__file__),
+                'completion_helper': Path(__file__).with_name('xbox_shadow_completion.py'),
+                'actor_binary': icm/'build/sprite_policy_native_icm_shadow',
+                'imu_binary': icm/'build/sprite_icm45686',
+                'motors': CONFIG,
+            }.items()
+        }
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     # Fixed, user-approved boot configuration. Never reconfigure during control.
     from open_sprite_runtime.bno055 import BNO055, I2CRegisters, CONFIRM
@@ -252,11 +265,19 @@ def main():
                         actor_log_offset=relay.tell()
                 for name,proc in [('actor',actor),('can',can),('imu',imu)]:
                     rc=proc.poll()
-                    if rc is not None and rc!=0:raise RuntimeError(f'{name} exited with code {rc}; see {name}.log')
+                    if rc is not None and rc!=0:
+                        if (experiment and name == 'can'
+                                and completed_rejected_shadow(out/'can.json', rc, args.duration)):
+                            continue
+                        raise RuntimeError(f'{name} exited with code {rc}; see {name}.log')
                 if time.monotonic()>deadline:raise RuntimeError('actor/CAN completion timeout')
                 time.sleep(.05)
             actor_rc=actor.returncode;can_rc=can.returncode
-            if actor_rc or can_rc:raise RuntimeError(f'actor={actor_rc}, can={can_rc}')
+            can_rejected = bool(experiment) and completed_rejected_shadow(
+                out/'can.json', can_rc, args.duration)
+            if actor_rc or (can_rc and not can_rejected):raise RuntimeError(f'actor={actor_rc}, can={can_rc}')
+            if can_rejected:
+                print('CAN_QUALIFICATION_REJECTED; preserving actor and IMU evidence; result remains FAILED', flush=True)
             imu_rc=imu.wait(timeout=35)
         except Exception as exc:
             failure=f'{type(exc).__name__}: {exc}'
@@ -284,14 +305,19 @@ def main():
         if failure:
             result=dict(passed=False,error=failure,
                         **can_transport,
+                        **can_diagnostics(out/'can.json'),
+                        process_exit_by_name={name:proc.returncode for name,proc in
+                                              zip(('imu','can','actor'),processes)},
                         process_exit_codes=[proc.returncode for proc in processes],
                         logs={n:(out/(n+'.log')).read_text()[-4000:] for n in ('actor','can','imu') if (out/(n+'.log')).exists()})
             (out/'report.json').write_text(json.dumps(result,indent=2)+'\n')
             print(json.dumps(result,indent=2),flush=True)
             raise SystemExit('native shadow failed; primary error and logs preserved')
     imu_report_path=out/('imu.csv.json' if icm else 'imu.json')
-    if actor_rc or can_rc or imu_rc or not (out/'can.json').exists() or not imu_report_path.exists():
+    can_rejected = bool(experiment) and completed_rejected_shadow(out/'can.json', can_rc, args.duration)
+    if actor_rc or (can_rc and not can_rejected) or imu_rc or not (out/'can.json').exists() or not imu_report_path.exists():
         result=dict(passed=False,actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,**can_transport,
+                    **can_diagnostics(out/'can.json'),
                     logs={n:(out/(n+'.log')).read_text()[-4000:] for n in ('actor','can','imu')})
         (out/'report.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps(result,indent=2),flush=True)
@@ -308,6 +334,7 @@ def main():
         parity=check.returncode==0 and (out/'offline.bin').read_bytes()==(out/'live.bin').read_bytes()
     passed=actor_rc==can_rc==imu_rc==0 and can_report['passed'] and imu_passed and parity
     result=dict(mode='native_policy_real_feedback_zero_gain_shadow',passed=bool(passed),frames=int(n),
+        **can_diagnostics(out/'can.json'),
         command_profile=args.command_profile,
         actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,offline_byte_exact=parity,
         nonzero_can_tx_attempts=can_report['nonzero_gain_or_torque_tx_attempts'],

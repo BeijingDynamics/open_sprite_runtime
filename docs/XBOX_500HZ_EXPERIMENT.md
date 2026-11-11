@@ -108,3 +108,52 @@ Do not copy
 the original Xbox powered seal to this experiment. A powered A/B should
 keep the model, gains, caps, command schedule and floor fixed, and compare
 tracking and stop behavior as well as timing.
+
+## 2026-11-11 full-chain review
+
+The first 120 s report, `xbox_500hz_full_shadow_120s_e6tr9ylf`, is **not
+qualified**. It reached 60000 state ticks and every motor had exactly
+60000 TX / 60000 RX (1860000 in each direction overall). All four CAN
+error/drop counter deltas were zero; no enable or nonzero-gain transmission
+was attempted. All 6000 policy targets reached CAN.
+
+The rejection was two 0.5 ms transport-slot overruns, maximum 0.915008 ms.
+The separate 2 ms state-tick deadline counter was zero. Those two counters
+measure different budgets, so these results are not contradictory.
+
+Two software issues were identified and repaired in this branch:
+
+1. The old slot measurement ended after CAN receive, **before** IPC/preview.
+   It therefore under-reported the complete host work. The corrected
+   measurement includes IPC, preview and publishing. It retains a bounded
+   list of the first 32 overrun slots, the worst slot, and separate wake,
+   TX, RX and IPC/preview durations. No per-slot allocation or disk I/O
+   is added. The original 0.5 ms qualification budget is unchanged.
+2. The supervisor treated the final CAN qualification exit code 2 as an
+   immediate crash. It terminated the actor while flushing buffered
+   evidence (`live.bin.inputs` and `.timing` were empty), and stopped the
+   IMU before its 150 s capture completed. A completed rejected zero-gain
+   CAN report now permits bounded evidence collection, **not a pass**.
+   Early exits, missing reports, nonzero-control evidence and other faults
+   still stop the test. The summary names failing gates explicitly.
+
+There is insufficient evidence in this old report to attribute the two
+overruns to CPU wakeup, socket calls, USB delivery or preview computation.
+The recorded IMU maximum sample gap was 2.520670 ms, but that is **not**
+policy-consumption age. Policy timing and byte-exact replay must be checked
+on a new run after orderly evidence completion. The ONNX GPU discovery
+warning is not the reported failure; this actor uses CPU inference.
+
+The diagnostic rebuild invalidates file capabilities on the experimental
+binary. After deploying/building this branch, reinstall the capability on
+this binary only, then run the same 120 s command with supported disabled
+motors. Neither the stable walking binary nor its seals are rebuilt.
+
+This is still a transport/zero-gain qualification, not a powered controller.
+The 31-channel 500 Hz poll schedule does not automatically qualify the
+separate powered loop. Non-ankle preview targets retain the existing 50 Hz
+refresh; repeating them is not 500 Hz policy inference or interpolation.
+Receive-count equality also does not prove uniform wire intervals or fresh
+individual motor feedback. Before powered deployment, qualify actual
+feedback freshness, bounded receive/IPC work, unchanged ankle torque
+mapping, target hold, fault shutdown and the separate powered entry/seal.
