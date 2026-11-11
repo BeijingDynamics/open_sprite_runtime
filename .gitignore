@@ -10,6 +10,7 @@ captures/
 /reports/
 *.bin
 config/hardware.local.json
+config/xbox_500hz.motors.local.tsv
 artifacts/*.bundle
 
 # Live hardware traces stay on the commissioning host/local backup by default.

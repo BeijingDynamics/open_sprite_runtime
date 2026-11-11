@@ -68,6 +68,20 @@ transmit errors/drops, and zero `transport_slot_overruns`. An expired slot
 is skipped instead of sending catch-up bursts. The slot timer measures
 scheduled deadline through completion of host work, not wire latency.
 
+For the isolated Jetson checkout, put a copy of the verified TSV at
+`config/xbox_500hz.motors.local.tsv` (git-ignored). The helper validates the
+four links and captures both counter snapshots and the native report:
+
+```bash
+python3 tools/run_xbox_500hz_shadow_10s.py --check
+sudo setcap cap_sys_nice+ep build/xbox_500hz/sprite_can_shadow
+python3 tools/run_xbox_500hz_shadow_10s.py --confirm ZERO_GAIN_XBOX_500HZ_31_DISABLED
+```
+
+`--check` does not transmit. The confirmation is only for the supported,
+disabled-motor setup above. The helper rejects another active controller,
+missing real-time capability, lost requests, and new CAN errors or drops.
+
 After transport passes, qualify full ICM/actor shadow under the same load.
 Measure feedback and policy-state age, IPC timing, USB/CAN errors, and
 shutdown behavior before adding a separate powered admission. Do not copy
