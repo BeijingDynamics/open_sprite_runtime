@@ -27,7 +27,7 @@ int main() {
     }
   }
   configure_xbox_500hz_schedule(motors);
-  std::atomic<bool> done{false}, enabled{false};
+  std::atomic<bool> done{false}, enabled{false}, io_failed{false};
   std::thread hardware([&] {
     while(!done.load()) {
       for(int b=0;b<4;++b) {
@@ -40,7 +40,8 @@ int main() {
           f.can_id=static_cast<canid_t>(id+16);f.len=8;f.flags=CANFD_BRS;
           f.data[0]=static_cast<unsigned char>(id);f.data[1]=0x7f;f.data[2]=0xff;
           f.data[3]=0x7f;f.data[4]=0xf7;f.data[5]=0xff;f.data[6]=30;f.data[7]=30;
-          (void)write(peers[b],&f,sizeof(f));
+          const auto sent=write(peers[b],&f,sizeof(f));
+          if(sent!=sizeof(f))io_failed=true;
         }
       }
       std::this_thread::sleep_for(std::chrono::microseconds(50));
@@ -55,7 +56,7 @@ int main() {
   const int rc=run_native_protected_policy(options,sockets,motors,indices,feedback,k,{},ipc,0,false);
   std::cout.rdbuf(previous);
   done=true;hardware.join();g_shutdown_requested=0;
-  bool ok=rc==2 && !enabled.load();
+  bool ok=rc==2 && !enabled.load() && !io_failed.load();
   for(std::size_t i=0;i<motors.size();++i) {
     const auto& m=motors[i];
     ok=ok && m.final_disabled && disables[indices[m.interface]][m.can_id]>=3;
