@@ -5,13 +5,12 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import select
 import shutil
 import signal
 import struct
 import subprocess
+import sys
 import tempfile
-import threading
 import time
 
 from analyze_xbox500_cpu_trace import analyze
@@ -21,8 +20,10 @@ STABLE = Path('/home/tony/open_sprite_runtime')
 EVENTS = ('sched/sched_switch', 'sched/sched_wakeup', 'power/cpu_idle',
           'irq/irq_handler_entry', 'irq/irq_handler_exit',
           'irq/softirq_entry', 'irq/softirq_exit',
-          'timer/hrtimer_start', 'timer/hrtimer_expire_entry', 'timer/hrtimer_expire_exit')
-OPTIONAL_EVENTS = ('ipi/ipi_entry', 'ipi/ipi_exit', 'power/cpu_frequency', 'sched/sched_waking')
+          'timer/hrtimer_start', 'timer/hrtimer_expire_entry')
+OPTIONAL_EVENTS = ('ipi/ipi_entry', 'ipi/ipi_exit')
+TRACE_SECONDS = 20
+TRACE_BYTES = 64*1024*1024
 CONFIRM = 'ZERO_GAIN_CPU_AUDIT_31_DISABLED'
 
 
@@ -50,18 +51,23 @@ class Trace:
     def __init__(self, out):
         self.out = out
         self.path = Path('/sys/kernel/tracing/instances')/('xbox500_'+str(os.getpid()))
-        self.stop = threading.Event()
-        self.thread = None
         self.errors = []
         self.bytes = 0
+        self.started_ns = None
+        self.stopped_ns = None
+        self.pid = None
+        self.stats = ''
 
     def __enter__(self):
         self.path.mkdir()  # Never modify an existing trace instance.
         try:
             (self.path/'tracing_on').write_text('0')
+            (self.path/'current_tracer').write_text('nop')
+            (self.path/'events/enable').write_text('0')
             (self.path/'trace_clock').write_text('mono')
             (self.path/'tracing_cpumask').write_text('20')  # CPU5 only.
-            (self.path/'buffer_size_kb').write_text('8192')
+            (self.path/'buffer_size_kb').write_text('1')
+            (self.path/'per_cpu/cpu5/buffer_size_kb').write_text('32768')
             formats = {}
             for event in EVENTS:
                 directory = self.path/'events'/event
@@ -73,51 +79,69 @@ class Trace:
                     formats[event] = (directory/'format').read_text()
                     (directory/'enable').write_text('1')
             save(self.out/'event_formats.json', formats)
-            self.thread = threading.Thread(target=self.pump, daemon=True)
-            self.thread.start()
-            (self.path/'tracing_on').write_text('1')
             return self
         except BaseException:
             self.__exit__(None, None, None)
             raise
 
-    def pump(self):
-        fd = None
-        try:
-            fd = os.open(self.path/'trace_pipe', os.O_RDONLY | os.O_NONBLOCK)
-            with (self.out/'cpu5.trace').open('wb') as output:
-                while not self.stop.is_set():
-                    if not select.select([fd], [], [], 0.1)[0]:
-                        continue
-                    try:
-                        data = os.read(fd, 65536)
-                    except BlockingIOError:
-                        continue
-                    if not data:
-                        continue
-                    if self.bytes+len(data) > 256*1024*1024:
-                        raise RuntimeError('Trace size cap reached; trace incomplete')
-                    output.write(data)
-                    self.bytes += len(data)
-        except BaseException as error:
-            self.errors.append(repr(error))
-        finally:
-            if fd is not None:
-                os.close(fd)
+    def start_for_pid(self, pid):
+        if self.pid is not None:
+            if self.pid != pid:
+                raise RuntimeError('Trace target changed')
+            return
+        self.pid = int(pid)
+        filters = {'sched/sched_switch': f'prev_pid == {pid} || next_pid == {pid}',
+                   'sched/sched_wakeup': f'pid == {pid}',
+                   'timer/hrtimer_start': f'common_pid == {pid}'}
+        for event, value in filters.items():
+            (self.path/'events'/event/'filter').write_text(value)
+        save(self.out/'target_filters.json', filters)
+        self.started_ns = time.monotonic_ns()
+        (self.path/'tracing_on').write_text('1')
+
+    def stop_capture(self):
+        if self.started_ns is not None and self.stopped_ns is None:
+            (self.path/'tracing_on').write_text('0')
+            self.stopped_ns = time.monotonic_ns()
+
+    def update_window(self):
+        if self.started_ns is not None and time.monotonic_ns()-self.started_ns >= TRACE_SECONDS*1_000_000_000:
+            self.stop_capture()
+
+    def collect_stopped(self):
+        # Reading trace_pipe while tracing IRQ/scheduler activity can trace the
+        # reader's own wakeups recursively. Never consume a live trace here.
+        if (self.path/'tracing_on').read_text().strip() != '0':
+            raise RuntimeError('Refuse to read an active trace')
+        self.stats = (self.path/'per_cpu/cpu5/stats').read_text()
+        counters = dict(line.split(':', 1) for line in self.stats.splitlines() if ':' in line)
+        for key in ('overrun', 'commit overrun', 'dropped events'):
+            if key not in counters or int(counters[key].strip()) != 0:
+                self.errors.append('Trace counter missing or nonzero: '+key)
+        with (self.path/'per_cpu/cpu5/trace').open('rb') as source, (self.out/'cpu5.trace').open('wb') as output:
+            while data := source.read(65536):
+                if self.bytes+len(data) > TRACE_BYTES:
+                    raise RuntimeError('Trace size cap reached; trace incomplete')
+                output.write(data)
+                self.bytes += len(data)
 
     def __exit__(self, *unused):
-        if self.path.exists():
+        if not self.path.exists():
+            return
+        try:
+            self.stop_capture()
             (self.path/'tracing_on').write_text('0')
-            time.sleep(0.2)
-            self.stop.set()
-            if self.thread:
-                self.thread.join(timeout=3)
-                if self.thread.is_alive():
-                    self.errors.append('Trace reader failed to stop')
-            stats = read(self.path/'per_cpu/cpu5/stats')
-            save(self.out/'trace_status.json', dict(bytes=self.bytes, errors=self.errors, stats=stats))
+            self.collect_stopped()
+        except Exception as error:
+            self.errors.append(repr(error))
+        finally:
             (self.path/'events/enable').write_text('0')
             self.path.rmdir()
+            save(self.out/'trace_status.json', dict(bytes=self.bytes, errors=self.errors, stats=self.stats,
+                 pid=self.pid, capture_start_ns=self.started_ns, capture_end_ns=self.stopped_ns,
+                 requested_capture_seconds=TRACE_SECONDS, maximum_bytes=TRACE_BYTES,
+                 read_only_after_tracing_stopped=True,
+                 coverage='first20s after target detected; remaining zero-gain run is untraced'))
 
 
 def can_processes():
@@ -158,6 +182,11 @@ def phase(name, out, qos):
             while proc.poll() is None:
                 observed = can_processes()
                 pids.update(observed)
+                if len(observed) > 1:
+                    raise RuntimeError('Multiple CAN candidates detected')
+                if observed:
+                    trace.start_for_pid(next(iter(observed)))
+                trace.update_window()
                 samples.write(json.dumps(dict(monotonic_ns=time.monotonic_ns(), processes=observed))+'\n')
                 if time.monotonic() > deadline:
                     raise RuntimeError('Zero-gain test timed out')
@@ -165,7 +194,12 @@ def phase(name, out, qos):
                     raise RuntimeError('Trace acquisition failed: '+str(trace.errors))
                 time.sleep(0.5)
             rc = proc.returncode
-        save(out/'trace_analysis.json', analyze(out/'cpu5.trace', pids))
+        if trace.errors or trace.pid is None:
+            raise RuntimeError('Invalid trace; no next phase: '+str(trace.errors))
+        analysis = analyze(out/'cpu5.trace', pids)
+        save(out/'trace_analysis.json', analysis)
+        if analysis['matched_cycles'] < 100:
+            raise RuntimeError('Insufficient CAN timer cycles; no next phase')
         created = set((ROOT/'reports').glob('xbox_500hz_full_shadow_120s_*'))-before
         if len(created) != 1:
             raise RuntimeError('Expected exactly one new zero-gain report directory')
@@ -199,6 +233,34 @@ def phase(name, out, qos):
         save(out/'after.json', snapshot())
 
 
+def trace_smoke(out):
+    """Exercise actual kernel event format/volume before any CAN/SPI is launched."""
+    out.mkdir()
+    print('TRACE_SMOKE: 5s CPU5 timer only; no CAN/SPI',flush=True)
+    proc = None
+    timer_code = ('import time; time.sleep(0.2); end=time.monotonic()+5; '
+                  '\nwhile time.monotonic()<end: time.sleep(0.0005)')
+    try:
+        with Trace(out) as trace:
+            proc = subprocess.Popen(['taskset','-c','5',sys.executable,'-c',timer_code])
+            trace.start_for_pid(proc.pid)
+            proc.wait(timeout=10)
+            if proc.returncode or trace.errors:
+                raise RuntimeError('No-hardware trace smoke failed: '+str(trace.errors))
+        result = analyze(out/'cpu5.trace',{proc.pid})
+        save(out/'trace_analysis.json',result)
+        if trace.errors:
+            raise RuntimeError('No-hardware trace smoke incomplete: '+str(trace.errors))
+        if result['matched_cycles'] < 100:
+            raise RuntimeError('Insufficient matching timer events; do not start hardware tests')
+        print('TRACE_SMOKE_OK no CAN/SPI; bytes=',trace.bytes,flush=True)
+    finally:
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+            try: proc.wait(timeout=3)
+            except subprocess.TimeoutExpired: proc.kill(); proc.wait()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('confirm', choices=[CONFIRM])
@@ -223,6 +285,7 @@ def main():
         raise KeyboardInterrupt('signal '+str(signum))
     signal.signal(signal.SIGTERM, interrupted)
     try:
+        trace_smoke(out/'trace_smoke_no_hardware')
         phase('A_current',out/'A_current',False)
         phase('B_qos0',out/'B_qos0',True)
     finally:

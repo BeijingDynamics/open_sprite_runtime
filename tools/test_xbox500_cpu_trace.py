@@ -8,6 +8,55 @@ import run_xbox500_cpu_audit as audit
 
 
 class TraceTest(unittest.TestCase):
+    def test_target_filter_and_bounded_window(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trace = audit.Trace(root)
+            trace.path = root/'instance'
+            trace.path.mkdir()
+            (trace.path/'tracing_on').write_text('0')
+            for event in ('sched/sched_switch', 'sched/sched_wakeup', 'timer/hrtimer_start'):
+                (trace.path/'events'/event).mkdir(parents=True)
+            with patch.object(audit.time,'monotonic_ns',return_value=1_000_000_000):
+                trace.start_for_pid(123)
+            self.assertEqual((trace.path/'events/sched/sched_switch/filter').read_text(),
+                             'prev_pid == 123 || next_pid == 123')
+            self.assertEqual((trace.path/'events/timer/hrtimer_start/filter').read_text(),'common_pid == 123')
+            with self.assertRaisesRegex(RuntimeError,'target changed'):
+                trace.start_for_pid(124)
+            with patch.object(audit.time,'monotonic_ns',return_value=20_999_999_999):
+                trace.update_window()
+            self.assertEqual((trace.path/'tracing_on').read_text(),'1')
+            with patch.object(audit.time,'monotonic_ns',return_value=21_000_000_000):
+                trace.update_window()
+            self.assertEqual((trace.path/'tracing_on').read_text(),'0')
+            trace.start_for_pid(123)
+            self.assertEqual((trace.path/'tracing_on').read_text(),'0')
+
+    def test_stopped_snapshot_and_loss_detection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            trace = audit.Trace(root)
+            trace.path = root/'instance'
+            cpu = trace.path/'per_cpu/cpu5'
+            cpu.mkdir(parents=True)
+            (cpu/'trace').write_bytes(b'trace data\n')
+            (cpu/'stats').write_text('overrun: 0\ncommit overrun: 0\ndropped events: 0\n')
+            (trace.path/'tracing_on').write_text('1')
+            with self.assertRaisesRegex(RuntimeError,'active trace'):
+                trace.collect_stopped()
+            self.assertFalse((root/'cpu5.trace').exists())
+            (trace.path/'tracing_on').write_text('0')
+            trace.collect_stopped()
+            self.assertEqual(trace.errors,[])
+            self.assertEqual((root/'cpu5.trace').read_bytes(),b'trace data\n')
+            (cpu/'stats').write_text('overrun: 9\ncommit overrun: 0\ndropped events: 0\n')
+            trace.collect_stopped()
+            self.assertIn('Trace counter missing or nonzero: overrun',trace.errors)
+            with patch.object(audit,'TRACE_BYTES',1):
+                with self.assertRaisesRegex(RuntimeError,'size cap'):
+                    trace.collect_stopped()
+
     def test_qos_released_when_trace_setup_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

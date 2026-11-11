@@ -40,13 +40,40 @@ removes only this request; no sysctl, governor, CPU-idle disable file, IRQ
 affinity, boot setting, or stable-runtime file is changed. This is a diagnostic
 condition, not yet a recommended production configuration.
 
-Both runs use a dedicated ftrace instance limited to CPU5, streamed to bounded
-files (256MiB cap per run). Scheduler, timer, idle, IRQ and softirq events are
-recorded; the global tracer is untouched and the instance is removed on exit.
+Before either phase, a five-second, ordinary-priority CPU5 timer test checks
+actual kernel trace formats and volume, without CAN or SPI access. At least
+100 complete timer/wakeup/switch cycles and loss-free capture are required.
+
+Both runs use a dedicated ftrace instance limited to CPU5. Recording starts
+only after the CAN PID is detected, and stops after a requested20s (up to one
+0.5s supervisor polling interval later). The kernel buffer is32MiB on CPU5;
+other CPU buffers are minimal. Files have a64MiB text cap. No trace reader runs
+while recording: the stopped buffer is read only after the120s phase finishes.
+Scheduler switches/wakeups and timer starts are filtered to the target PID;
+timer expiry, idle, IRQ and softirq context remains visible on CPU5.
+The global tracer is untouched and the instance is removed on exit.
 Trace overhead is real and included in the unchanged runtime gates. Check
-trace_status for losses/errors before interpreting attribution. An A run that
+trace_status for losses/errors before interpreting attribution. Missing or
+nonzero loss counters invalidate the trace and stop the next phase. An A run that
 finishes with a timing rejection is retained as FAILED and can proceed to B;
 early hardware/status or incomplete-run faults stop the sequence.
+
+Only the initial window is traced, not the complete120s. A late failure outside
+this window cannot be attributed using this trace. Wakeup events emitted on
+another CPU are also outside this capture; missing wakeups must not be treated
+as zero scheduler delay. The native timing report still covers the full run.
+
+## Failed collector and correction
+
+`xbox500_cpu_ab_d3ectxis/A_current` hit the old256MiB cap in about13s,
+before CAN started (still in IMU calibration). In its first100000 trace lines,
+78365 were emitted in the collector's `python-12744` context. Repeated IRQ-work
+wakeups and scheduler events show the live reader tracing its own activity.
+The failure is a collector defect, not evidence that CAN or CPU-idle latency
+exceeded a gate. Phase B never started. The original evidence is retained.
+The revised collector removes the live trace_pipe reader entirely, filters
+the target and records a bounded window before reading anything out. No CAN
+code, PD, safety threshold, or stable-runtime file is changed.
 
 `analyze_xbox500_cpu_trace.py` matches the CAN PID's hrtimer deadlines,
 expiry timestamps, scheduler wakeup and switch-in. It reports callback lateness
