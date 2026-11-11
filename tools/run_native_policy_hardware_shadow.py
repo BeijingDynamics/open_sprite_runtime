@@ -27,8 +27,11 @@ def main():
     p.add_argument('--command-profile',choices=['stand-walk010-stop-40s','xbox-shadow40'])
     p.add_argument('--xbox-candidate',type=Path)
     p.add_argument('--xbox-500hz', action='store_true')
+    p.add_argument('--feedback-candidate', action='store_true')
     p.add_argument('--check-only', action='store_true')
     args=p.parse_args()
+    if args.feedback_candidate and not args.xbox_500hz:
+        p.error('--feedback-candidate requires isolated 500 Hz zero-gain mode')
     if args.check_only and not args.xbox_500hz:
         p.error('--check-only is supported for the isolated 500 Hz experiment')
     experiment = Path(__file__).resolve().parents[1] if args.xbox_500hz else None
@@ -59,6 +62,11 @@ def main():
             require_ready, unready_links,
         )
 
+        if args.feedback_candidate:
+            subprocess.run([str(root/'.venv/bin/python'),
+                            str(experiment/'tools/check_xbox500_powered.py')], check=True)
+            BINARY = experiment/'candidates/xbox_500hz_powered_20261111/sprite_can_xbox500'
+            CONFIG = experiment/'candidates/xbox_500hz_powered_20261111/parameters/motors.tsv'
         can_binary = str(BINARY)
         if not BINARY.is_file() or not subprocess.check_output(
             ['getcap', can_binary], text=True
@@ -87,7 +95,7 @@ def main():
         if not entry.name.isdigit():continue
         try:exe=os.readlink(entry/'exe')
         except OSError:continue
-        if experiment and Path(exe).name in ('sprite_can_xbox120', 'sprite_policy_xbox_powered'):
+        if experiment and Path(exe).name in ('sprite_can_xbox120', 'sprite_can_xbox500', 'sprite_policy_xbox_powered'):
             raise RuntimeError('existing Xbox control process: '+entry.name)
         if Path(exe).name in ('sprite_policy_xbox_shadow','sprite_policy_powered_icm_candidate','sprite_can_shadow','sprite_can_shadow_quantized_v1','sprite_imu_bno','sprite_policy_native_shadow','sprite_imu_software','sprite_policy_native_software_shadow','sprite_icm45686','sprite_policy_native_icm_shadow'):
             raise RuntimeError('existing hardware process: '+entry.name)
@@ -148,6 +156,7 @@ def main():
                 'motors': CONFIG,
             }.items()
         }
+        manifest['feedback_candidate'] = args.feedback_candidate
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     # Fixed, user-approved boot configuration. Never reconfigure during control.
     from open_sprite_runtime.bno055 import BNO055, I2CRegisters, CONFIRM
@@ -333,7 +342,13 @@ def main():
             check=subprocess.run(['build/policy_native_stage2/sprite_policy_replay',str(model),str(consumed),str(out/'offline.bin')],stdout=log,stderr=subprocess.STDOUT)
         parity=check.returncode==0 and (out/'offline.bin').read_bytes()==(out/'live.bin').read_bytes()
     passed=actor_rc==can_rc==imu_rc==0 and can_report['passed'] and imu_passed and parity
+    feedback_workload_passed = not args.feedback_candidate or (
+        can_report.get('shadow_feedback_processing') == 'shared_powered_guards_fixed_rms_disabled_status'
+        and can_report.get('receive_diagnostics', {}).get('total_rms_updates', 0)
+            >= args.duration * 500 * 31 * 0.99)
+    passed = passed and feedback_workload_passed
     result=dict(mode='native_policy_real_feedback_zero_gain_shadow',passed=bool(passed),frames=int(n),
+        feedback_workload_passed=feedback_workload_passed,
         **can_diagnostics(out/'can.json'),
         command_profile=args.command_profile,
         actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,offline_byte_exact=parity,

@@ -31,6 +31,8 @@
 #include <unistd.h>
 #include "transport_slot_timing.hpp"
 #include "first_slot_wait.hpp"
+#include "fixed_rms_window.hpp"
+#include "receive_timing.hpp"
 
 namespace {
 
@@ -139,6 +141,8 @@ struct Motor {
   double maximum_abs_feedback_torque = 0.0;
   std::deque<double> short_torque_squared_samples;
   std::deque<double> long_torque_squared_samples;
+  bool fixed_rms_enabled = false;
+  FixedRmsWindow fixed_short_rms, fixed_long_rms;
   double short_torque_squared_sum = 0.0;
   double long_torque_squared_sum = 0.0;
   double maximum_short_torque_rms = 0.0;
@@ -313,6 +317,11 @@ void configure_xbox_500hz_schedule(std::vector<Motor>& motors) {
     if (*std::max_element(bus.second.begin(), bus.second.end()) > 2) {
       throw std::runtime_error("500 Hz schedule exceeds two frames per bus per slot");
     }
+  }
+  for (auto& motor : motors) {
+    motor.fixed_short_rms.prepare(500);
+    motor.fixed_long_rms.prepare(5000);
+    motor.fixed_rms_enabled = true;
   }
 }
 
@@ -1242,6 +1251,10 @@ void drain_hold_feedback(
 }
 
 void reset_torque_rms_monitor(Motor& motor) {
+  if (motor.fixed_rms_enabled) {
+    motor.fixed_short_rms.reset();
+    motor.fixed_long_rms.reset();
+  }
   motor.short_torque_squared_samples.clear();
   motor.long_torque_squared_samples.clear();
   motor.short_torque_squared_sum = 0.0;
@@ -1252,6 +1265,15 @@ void reset_torque_rms_monitor(Motor& motor) {
 
 void update_torque_rms_monitor(Motor& motor, double torque_nm) {
   const double squared = torque_nm * torque_nm;
+  if (motor.fixed_rms_enabled) {
+    const double short_rms = motor.fixed_short_rms.update(squared);
+    const double long_rms = motor.fixed_long_rms.update(squared);
+    if (motor.fixed_short_rms.full()) motor.maximum_short_torque_rms =
+        std::max(motor.maximum_short_torque_rms, short_rms);
+    if (motor.fixed_long_rms.full()) motor.maximum_long_torque_rms =
+        std::max(motor.maximum_long_torque_rms, long_rms);
+    return;
+  }
   const auto update_window = [&](std::deque<double>& samples, double& sum,
                                  std::size_t maximum_samples) {
     samples.push_back(squared);
@@ -1300,7 +1322,13 @@ void update_temperature_filter(Motor& motor, double mos_c, double rotor_c) {
 void drain_policy_feedback(
     std::vector<Socket>& sockets, std::vector<Motor>& motors,
     const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
-    int expected_status, bool enforce_dynamic_guards, std::size_t frame_budget = 0) {
+    int expected_status, bool enforce_dynamic_guards, std::size_t frame_budget = 0,
+    bool shadow_monitor = false, ReceiveTiming* timing = nullptr, std::size_t slot = 0) {
+  if (shadow_monitor && (expected_status != 0 || !enforce_dynamic_guards)) {
+    throw std::runtime_error("monitor shadow requires disabled feedback and full guards");
+  }
+  if (timing) timing->begin(slot);
+  std::size_t bus_index = 0;
   for (auto& can_socket : sockets) {
     std::size_t frames = 0;
     while (true) {
@@ -1309,9 +1337,12 @@ void drain_policy_feedback(
         break;
       }
       canfd_frame frame{};
+      const auto read_start = timing ? monotonic_ns() : 0;
       const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
+      if (timing) timing->current.read_ns += monotonic_ns()-read_start;
       if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
       ++frames;
+      if (timing) ++timing->current.frames.at(bus_index);
       if (received != CANFD_MTU || frame.len != 8 || (frame.flags & CANFD_BRS) == 0) {
         // A bus fault can leave stale or malformed frames queued while shutting
         // down. Keep polling for a valid disabled reply from every endpoint.
@@ -1357,8 +1388,10 @@ void drain_policy_feedback(
           std::max(motor.maximum_abs_speed, std::abs(motor.last_velocity));
       motor.maximum_abs_feedback_torque = std::max(
           motor.maximum_abs_feedback_torque, std::abs(feedback_torque));
-      if (enforce_dynamic_guards && status_code == 1) {
+      const auto monitor_start = timing ? monotonic_ns() : 0;
+      if (enforce_dynamic_guards && (status_code == 1 || shadow_monitor)) {
         update_torque_rms_monitor(motor, feedback_torque);
+        if (timing) ++timing->current.rms_updates;
       }
       motor.maximum_mos_temperature =
           std::max(motor.maximum_mos_temperature, static_cast<int>(frame.data[6]));
@@ -1366,6 +1399,7 @@ void drain_policy_feedback(
           std::max(motor.maximum_rotor_temperature, static_cast<int>(frame.data[7]));
       update_temperature_filter(
           motor, static_cast<double>(frame.data[6]), static_cast<double>(frame.data[7]));
+      if (timing) timing->current.monitor_ns += monotonic_ns()-monitor_start;
       if (frame.data[6] >= motor.mos_temperature_limit ||
           frame.data[7] >= motor.rotor_temperature_limit) {
         throw std::runtime_error("protected-policy temperature failed for " + motor.name);
@@ -1391,7 +1425,9 @@ void drain_policy_feedback(
         motor.final_disabled = status_code == 0;
       }
     }
+    ++bus_index;
   }
+  if (timing) timing->finish();
 }
 
 int run_native_measured_pose_hold(
@@ -1634,6 +1670,7 @@ int run_native_protected_policy(
     IpcSocket& ipc, std::uint64_t motor_hash, bool memory_locked) {
   std::string failure;
   TransportSlotTiming powered_timing;
+  ReceiveTiming receive_timing;
   std::size_t deadline_misses = 0;
   double maximum_lateness_ms = 0.0;
   std::vector<std::size_t> active_tx(kJointCount, 0);
@@ -1792,7 +1829,8 @@ int run_native_protected_policy(
       // after 100 ms and throughout the remaining active interval.
       drain_policy_feedback(
           sockets, motors, feedback_map, slot < 200 ? -1 : 1, true,
-          options.xbox_500hz_actuation ? 64 : 0);
+          options.xbox_500hz_actuation ? 64 : 0, false,
+          options.xbox_500hz_actuation ? &receive_timing : nullptr, slot);
       const auto rx_end_ns = options.xbox_500hz_actuation ? monotonic_ns() : 0;
       if (slot == 200) {
         for (const auto& motor : motors) {
@@ -1878,6 +1916,7 @@ int run_native_protected_policy(
   if (options.xbox_500hz_actuation) {
     powered_timing_fields << std::fixed << std::setprecision(6);
     powered_timing.json_fields(powered_timing_fields);
+    receive_timing.json_fields(powered_timing_fields);
   }
   report << std::fixed << std::setprecision(6)
       << "{\n  \"mode\": \"native_suspended_protected_policy_actuation\",\n"
@@ -1979,7 +2018,8 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
                         bool protected_target_envelope_enabled,
                         std::int64_t finished_ns, bool xbox_500hz_shadow,
                         std::size_t slot_overruns, double max_slot_wall_ms,
-                        const TransportSlotTiming* slot_timing = nullptr) {
+                        const TransportSlotTiming* slot_timing = nullptr,
+                        const ReceiveTiming* receive_timing = nullptr) {
   const double p99 = percentile(lateness, 0.99);
   const double maximum = *std::max_element(lateness.begin(), lateness.end());
   bool coverage_passed = true;
@@ -2051,6 +2091,10 @@ std::string json_report(const std::vector<Motor>& motors, const std::vector<doub
   std::ostringstream timing_fields;
   timing_fields << std::fixed << std::setprecision(6);
   if (slot_timing) slot_timing->json_fields(timing_fields);
+  if (receive_timing) {
+    receive_timing->json_fields(timing_fields);
+    timing_fields << "  \"shadow_feedback_processing\": \"shared_powered_guards_fixed_rms_disabled_status\",\n";
+  }
   std::ostringstream out;
   out << std::fixed << std::setprecision(6)
       << "{\n  \"mode\": \""
@@ -2178,6 +2222,7 @@ int main(int argc, char** argv) {
     std::size_t slot_overruns = 0;
     double max_slot_wall_ms = 0.0;
     TransportSlotTiming slot_timing;
+    ReceiveTiming receive_timing;
     std::size_t state_tick = 0;
     auto sleep_until = [](std::int64_t ns) {
       const timespec deadline = from_ns(ns);
@@ -2208,7 +2253,11 @@ int main(int argc, char** argv) {
         }
       }
       const auto tx_end_ns = options.xbox_500hz_shadow ? monotonic_ns() : 0;
-      for (auto& can_socket : sockets) {
+      if (options.xbox_500hz_shadow) {
+        // Exercise the powered feedback workload, but insist on disabled drives.
+        drain_policy_feedback(sockets, motors, feedback_map, 0, true, 64,
+                              true, &receive_timing, slot);
+      } else for (auto& can_socket : sockets) {
         while (true) {
           canfd_frame frame{};
           const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
@@ -2315,7 +2364,8 @@ int main(int argc, char** argv) {
         motors, lateness, elapsed_s, deadline_misses, memory_locked, options.cpu,
         options.realtime_priority, ipc.client_fd >= 0 ? &ipc : nullptr,
         !joint_safety.empty(), finished_ns, options.xbox_500hz_shadow,
-        slot_overruns, max_slot_wall_ms, options.xbox_500hz_shadow ? &slot_timing : nullptr);
+        slot_overruns, max_slot_wall_ms, options.xbox_500hz_shadow ? &slot_timing : nullptr,
+        options.xbox_500hz_shadow ? &receive_timing : nullptr);
     std::cout << report;
     std::ofstream output(options.output);
     if (!output) throw std::runtime_error("cannot open report output");

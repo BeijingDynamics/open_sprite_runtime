@@ -105,10 +105,16 @@ def main():
     subprocess.run(['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
                     str(E/'native/tests/test_first_slot_wait.cpp'), '-o', str(C/'test_first_slot_wait')], check=True)
     subprocess.run([str(C/'test_first_slot_wait')], check=True)
+    subprocess.run(['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror', '-pthread',
+                    str(E/'native/tests/test_xbox_500hz_feedback.cpp'), '-o', str(C/'test_feedback')], check=True)
+    subprocess.run([str(C/'test_feedback')], check=True)
     files = [*source_paths, CAN, C/'test_powered', C/'test_shutdown', evidence,
              E/'native/src/sprite_can_shadow.cpp', E/'native/src/transport_slot_timing.hpp',
              E/'native/src/first_slot_wait.hpp', E/'native/tests/test_first_slot_wait.cpp', C/'test_first_slot_wait',
+             E/'native/src/fixed_rms_window.hpp', E/'native/src/receive_timing.hpp',
+             E/'native/tests/test_xbox_500hz_feedback.cpp', C/'test_feedback',
              E/'tools/prepare_xbox500_powered.py', E/'tools/check_xbox500_powered.py',
+             E/'tools/run_native_policy_hardware_shadow.py', E/'run_xbox_500hz_full_shadow_120s_on_253.sh',
              E/'run_xbox_500hz_powered_120s_on_253.sh']
     files += [C/name for name in ('admission.sh','shadow.sh','inner.sh','powered_adapter.py','check_completion.py')]
     files += list((NEW_PARAM/'deploy').rglob('*'))

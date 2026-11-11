@@ -4,9 +4,14 @@ set -euo pipefail
 experiment="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 runner="$experiment/tools/run_native_policy_hardware_shadow.py"
 mode="${1:-}"
-if [[ $# != 1 ]]; then
-  echo "Usage: $0 --check | ZERO_GAIN_XBOX_500HZ_FULL_31_DISABLED" >&2
+if [[ $# != 1 && $# != 2 ]]; then
+  echo "Usage: $0 (--check | ZERO_GAIN_XBOX_500HZ_FULL_31_DISABLED) [--feedback-candidate]" >&2
   exit 2
+fi
+extra=()
+if [[ $# == 2 ]]; then
+  [[ "$2" == --feedback-candidate ]] || { echo 'Unknown optional flag'; exit 2; }
+  extra=(--feedback-candidate)
 fi
 
 case "$mode" in
@@ -15,7 +20,7 @@ case "$mode" in
     stable="$HOME/open_sprite_runtime"
     exec env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$stable/src" "$stable/.venv/bin/python" \
       "$runner" --runtime-root "$stable" --icm-candidate "$stable/candidates/icm_native_20261016" \
-      --xbox-500hz --duration 120 --check-only --confirm ZERO_GAIN_ALL_DISABLED_SUPPORTED
+      --xbox-500hz --duration 120 --check-only --confirm ZERO_GAIN_ALL_DISABLED_SUPPORTED "${extra[@]}"
     ;;
   ZERO_GAIN_XBOX_500HZ_FULL_31_DISABLED)
     [[ "$EUID" == 0 && -n "${SUDO_USER:-}" && "$SUDO_USER" != root ]] || {
@@ -43,4 +48,4 @@ runuser -u "$SUDO_USER" -- flock -n "$experiment/reports/.xbox_500hz.lock" \
   env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="$stable/src" \
   "$stable/.venv/bin/python" "$runner" \
   --runtime-root "$stable" --icm-candidate "$stable/candidates/icm_native_20261016" \
-  --xbox-500hz --duration 120 --confirm ZERO_GAIN_ALL_DISABLED_SUPPORTED
+  --xbox-500hz --duration 120 --confirm ZERO_GAIN_ALL_DISABLED_SUPPORTED "${extra[@]}"
