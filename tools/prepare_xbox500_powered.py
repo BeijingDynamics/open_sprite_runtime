@@ -102,8 +102,12 @@ def main():
     subprocess.run(['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror', '-pthread',
                     str(E/'native/tests/test_xbox_500hz_shutdown.cpp'), '-o', str(C/'test_shutdown')], check=True)
     subprocess.run([str(C/'test_shutdown')], check=True)
+    subprocess.run(['g++', '-std=c++17', '-O2', '-Wall', '-Wextra', '-Werror',
+                    str(E/'native/tests/test_first_slot_wait.cpp'), '-o', str(C/'test_first_slot_wait')], check=True)
+    subprocess.run([str(C/'test_first_slot_wait')], check=True)
     files = [*source_paths, CAN, C/'test_powered', C/'test_shutdown', evidence,
              E/'native/src/sprite_can_shadow.cpp', E/'native/src/transport_slot_timing.hpp',
+             E/'native/src/first_slot_wait.hpp', E/'native/tests/test_first_slot_wait.cpp', C/'test_first_slot_wait',
              E/'tools/prepare_xbox500_powered.py', E/'tools/check_xbox500_powered.py',
              E/'run_xbox_500hz_powered_120s_on_253.sh']
     files += [C/name for name in ('admission.sh','shadow.sh','inner.sh','powered_adapter.py','check_completion.py')]

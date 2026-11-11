@@ -30,6 +30,7 @@
 #include <time.h>
 #include <unistd.h>
 #include "transport_slot_timing.hpp"
+#include "first_slot_wait.hpp"
 
 namespace {
 
@@ -1746,7 +1747,12 @@ int run_native_protected_policy(
       }
       const std::int64_t deadline_ns =
           start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
-      sleep_until(deadline_ns);
+      if (options.xbox_500hz_actuation && slot == 0) {
+        wait_first_slot(deadline_ns, monotonic_ns, sleep_until,
+                        [] { return g_shutdown_requested != 0; });
+      } else {
+        sleep_until(deadline_ns);
+      }
       const std::int64_t woke_ns = monotonic_ns();
       if (options.xbox_500hz_actuation && woke_ns - deadline_ns >= kTransportPeriodNs) {
         powered_timing.record(slot, deadline_ns, woke_ns, woke_ns, woke_ns, woke_ns);
@@ -2173,14 +2179,21 @@ int main(int argc, char** argv) {
     double max_slot_wall_ms = 0.0;
     TransportSlotTiming slot_timing;
     std::size_t state_tick = 0;
-    for (std::size_t slot = 0; slot < transport_slots; ++slot) {
-      const std::int64_t deadline_ns =
-          start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
-      const timespec deadline = from_ns(deadline_ns);
+    auto sleep_until = [](std::int64_t ns) {
+      const timespec deadline = from_ns(ns);
       int status = 0;
       do status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, nullptr);
       while (status == EINTR);
       if (status != 0) throw std::runtime_error("clock_nanosleep failed");
+    };
+    for (std::size_t slot = 0; slot < transport_slots; ++slot) {
+      const std::int64_t deadline_ns =
+          start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
+      if (options.xbox_500hz_shadow && slot == 0) {
+        wait_first_slot(deadline_ns, monotonic_ns, sleep_until, [] { return false; });
+      } else {
+        sleep_until(deadline_ns);
+      }
       const std::int64_t woke_ns = monotonic_ns();
       if (slot % 4 == 0) {
         lateness[state_tick++] =

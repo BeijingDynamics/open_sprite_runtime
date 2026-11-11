@@ -14,6 +14,9 @@ target_compile_options(sprite_can_shadow PRIVATE -Wall -Wextra -Wpedantic -Werro
 target_link_libraries(sprite_can_shadow PRIVATE pthread)
 
 enable_testing()
+add_executable(test_first_slot_wait tests/test_first_slot_wait.cpp)
+target_compile_options(test_first_slot_wait PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME first_slot_wait COMMAND test_first_slot_wait)
 add_executable(test_gamepad src/gamepad_test.cpp)
 target_compile_options(test_gamepad PRIVATE -Wall -Wextra -Wpedantic -Werror -UNDEBUG)
 add_test(NAME gamepad COMMAND test_gamepad)

@@ -45,6 +45,8 @@ int main() {
   for (std::size_t i=0; i<100; ++i) timing.record(i+2, 0, 1, 2, 3, 500'000);
   require(timing.count == 102 && timing.maximum.total_ns == 540'000,
           "bounded overrun storage lost count or maximum");
+  require(timing.first_slot.total_ns == 510'000 && timing.first_slot.ipc_ns == 430'000,
+          "first-slot evidence was overwritten by later slots");
   std::ostringstream timing_json;
   timing.json_fields(timing_json);
   require(timing_json.str().find("\"transport_overrun_samples_truncated\": true") != std::string::npos,

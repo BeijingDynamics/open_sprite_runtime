@@ -16,6 +16,7 @@ struct TransportSlotTiming {
   std::array<Sample, 32> overruns{};
   std::size_t count = 0, skipped_slots = 0;
   Sample maximum{};
+  Sample first_slot{};
   std::int64_t max_wake_ns = 0, max_tx_ns = 0, max_rx_ns = 0, max_ipc_ns = 0;
 
   void record(std::size_t slot, std::int64_t deadline, std::int64_t wake,
@@ -26,6 +27,7 @@ struct TransportSlotTiming {
   }
 
   void record_sample(const Sample& value) {
+    if (value.slot == 0) first_slot = value;
     max_wake_ns = std::max(max_wake_ns, value.wake_ns);
     max_tx_ns = std::max(max_tx_ns, value.tx_ns);
     max_rx_ns = std::max(max_rx_ns, value.rx_ns);
@@ -51,7 +53,9 @@ struct TransportSlotTiming {
         << "  \"transport_stage_max_ms\": {\"wake\":" << max_wake_ns/1e6
         << ",\"tx\":" << max_tx_ns/1e6 << ",\"rx\":" << max_rx_ns/1e6
         << ",\"ipc_preview\":" << max_ipc_ns/1e6 << "},\n"
-        << "  \"transport_worst_slot\": ";
+        << "  \"transport_first_slot\": ";
+    sample_json(out, first_slot);
+    out << ",\n  \"transport_worst_slot\": ";
     sample_json(out, maximum);
     out << ",\n  \"transport_overrun_samples\": [";
     for (std::size_t i=0; i<std::min(count, overruns.size()); ++i) {
