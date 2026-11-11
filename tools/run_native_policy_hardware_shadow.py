@@ -1,8 +1,10 @@
 """Bounded real-feedback native actor test; zero-gain CAN and zero-gain IPC only."""
 import argparse
+import csv
 import hashlib
 import json
 import os
+import shutil
 import socket
 from pathlib import Path
 import struct
@@ -23,7 +25,15 @@ def main():
     p.add_argument('--runtime-root',type=Path)
     p.add_argument('--command-profile',choices=['stand-walk010-stop-40s','xbox-shadow40'])
     p.add_argument('--xbox-candidate',type=Path)
+    p.add_argument('--xbox-500hz', action='store_true')
+    p.add_argument('--check-only', action='store_true')
     args=p.parse_args()
+    if args.check_only and not args.xbox_500hz:
+        p.error('--check-only is supported for the isolated 500 Hz experiment')
+    experiment = Path(__file__).resolve().parents[1] if args.xbox_500hz else None
+    if experiment and (not args.icm_candidate or args.command_profile or args.duration != 120
+                       or not args.runtime_root or args.runtime_root.resolve() == experiment):
+        p.error('500 Hz experiment requires a separate stable runtime root and a 120 s ICM stand-only shadow')
     if args.icm_candidate and args.software_imu_candidate:
         p.error('select exactly one IMU candidate')
     icm=args.icm_candidate.resolve() if args.icm_candidate else None
@@ -41,6 +51,20 @@ def main():
         p.error('walk40 shadow profile requires duration=40')
     frames=args.duration*50
     root=(args.runtime_root or Path(__file__).resolve().parents[1]).resolve();os.chdir(root)
+    can_binary = 'build/native/sprite_can_shadow_quantized_v1'
+    if experiment:
+        from run_xbox_500hz_shadow_10s import (
+            BINARY, CONFIG, can_links, link_errors, motor_names, record,
+            require_ready, unready_links,
+        )
+
+        can_binary = str(BINARY)
+        if not BINARY.is_file() or not subprocess.check_output(
+            ['getcap', can_binary], text=True
+        ).strip().endswith(' cap_sys_nice=ep'):
+            raise RuntimeError('500 Hz experimental binary requires CAP_SYS_NICE')
+        require_ready(can_links())
+        motor_names()
     links=json.loads(subprocess.check_output(['ip','-json','-details','link','show','type','can'],text=True))
     by_name={link['ifname']:link for link in links}
     for name in ('kcan1','kcan2','kcan3','kcan4'):
@@ -62,10 +86,10 @@ def main():
         if not entry.name.isdigit():continue
         try:exe=os.readlink(entry/'exe')
         except OSError:continue
+        if experiment and Path(exe).name in ('sprite_can_xbox120', 'sprite_policy_xbox_powered'):
+            raise RuntimeError('existing Xbox control process: '+entry.name)
         if Path(exe).name in ('sprite_policy_xbox_shadow','sprite_policy_powered_icm_candidate','sprite_can_shadow','sprite_can_shadow_quantized_v1','sprite_imu_bno','sprite_policy_native_shadow','sprite_imu_software','sprite_policy_native_software_shadow','sprite_icm45686','sprite_policy_native_icm_shadow'):
             raise RuntimeError('existing hardware process: '+entry.name)
-    out=Path(tempfile.mkdtemp(prefix='native_actor_hardware_shadow_',dir=root/'reports'))
-    print('REPORT_DIRECTORY',out,flush=True)
     verified=root/'reports/native_policy_chain_155525_v2'
     proof=json.loads((verified/'report.json').read_text())
     hardware=root/'config/hardware.sprite0825.kp110_kd5.json'
@@ -79,6 +103,28 @@ def main():
     motors=_native_motor_order(hw);joints=tuple(c['joint_names'])
     if tuple(trace['motor_names'])!=motors or tuple(trace['joint_names'])!=joints:raise ValueError('fixture order differs from live CAN')
     data=(verified/'input.bin').read_bytes();count=struct.unpack_from('<I',data,8)[0]
+    if experiment:
+        if proof.get('passed') is not True or proof['model_sha256'] != (
+            '05f7ea02b6020ec44f4d5fa71e579294a73dc8c87d4b54f11198a7e83cb96d5d'
+        ):
+            raise RuntimeError('500 Hz experiment requires the frozen G74 model3000')
+        with CONFIG.open(newline='') as table:
+            experiment_order = tuple(row['motor_name'] for row in csv.DictReader(table, delimiter='\t'))
+        if experiment_order != motors:
+            raise RuntimeError('experimental motor table order differs from qualified fixture')
+        if data[:8] != b'SPCHN001' or count <= 0 or len(data) <= count*72*8:
+            raise RuntimeError('invalid native replay fixture')
+        for binary in (icm/'build/sprite_icm45686', root/'build/policy_native_stage2/sprite_policy_replay'):
+            if not os.access(binary, os.X_OK):
+                raise RuntimeError(f'missing or non-executable dependency: {binary.name}')
+        if args.check_only:
+            print('FULL_SHADOW_CHECK_OK G74 model3000, 31 motors, four CAN FD links; no SPI or CAN TX')
+            return
+    reports = (experiment or root)/'reports'
+    reports.mkdir(exist_ok=True)
+    prefix = 'xbox_500hz_full_shadow_120s_' if experiment else 'native_actor_hardware_shadow_'
+    out=Path(tempfile.mkdtemp(prefix=prefix,dir=reports))
+    print('REPORT_DIRECTORY',out,flush=True)
     header=bytearray(data[:-count*72*8]);struct.pack_into('<I',header,8,frames)
     # Recorded sensor slots are never consumed by the live path; commands are stand-only.
     rows=np.zeros((frames,72),dtype='<f8')
@@ -123,7 +169,12 @@ def main():
     for tool,extra,dest in [
         ('export_native_motor_config.py',[],out/'motors.tsv'),
         ('export_native_kinematics_config.py',['--contract',str(contract)],out/'kinematics.tsv')]:
+        if experiment and tool == 'export_native_motor_config.py':
+            shutil.copyfile(CONFIG, dest)
+            continue
         subprocess.run([python,'tools/'+tool,'--hardware',str(hardware),*extra,'--output',str(dest)],env=env,check=True)
+    can_before = None
+    can_transport = {}
     with tempfile.TemporaryDirectory(prefix='sprite_native_shadow_') as sockets:
         imu_socket=str(Path(sockets)/'imu.sock');state_socket=str(Path(sockets)/'state.sock')
         processes=[];handles=[]
@@ -172,11 +223,17 @@ def main():
                     while not packets and time.monotonic()<deadline:
                         source.drain(lambda *v:packets.append(v));time.sleep(.005)
                     if not packets:raise RuntimeError('no validated IMU sample')
-            can=launch(['build/native/sprite_can_shadow_quantized_v1','--config',str(out/'motors.tsv'),
+            if experiment:
+                before = can_links()
+                require_ready(before)
+                can_before = link_errors(before)
+                record(out/'can_before.json', before)
+            can=launch([can_binary,'--config',str(out/'motors.tsv'),
                 '--duration',str(args.duration),'--cpu','5','--realtime-priority','50','--output',str(out/'can.json'),
                 '--ipc-socket',state_socket,'--policy-joint-hash',hex(ordered_name_hash(joints)),
                 '--kinematics-config',str(out/'kinematics.tsv'),'--bounded-shadow-preview',
-                '--acknowledge-hardware-tx','ZERO_GAIN_NATIVE_SHADOW','--all-motors-disabled-confirmed'],'can')
+                '--acknowledge-hardware-tx','ZERO_GAIN_NATIVE_SHADOW','--all-motors-disabled-confirmed']
+                + (['--xbox-500hz-shadow'] if experiment else []),'can')
             wait_socket(state_socket,can)
             actor_binary=str(candidate/'build/imu_software_candidate/sprite_policy_native_software_shadow') if candidate else 'build/policy_native_stage2/sprite_policy_native_shadow'
             if icm:actor_binary=str(icm/'build/sprite_policy_native_icm_shadow')
@@ -210,8 +267,23 @@ def main():
                 try:proc.wait(timeout=3)
                 except subprocess.TimeoutExpired:proc.kill();proc.wait()
             for handle in handles:handle.close()
+            if can_before is not None:
+                try:
+                    after = can_links()
+                    record(out/'can_after.json', after)
+                    delta = {
+                        bus: {key: value - can_before[bus][key] for key, value in counters.items()}
+                        for bus, counters in link_errors(after).items()
+                    }
+                    can_transport = {
+                        'unready_links_after': unready_links(after),
+                        'can_error_counter_delta': delta,
+                    }
+                except Exception as exc:
+                    failure = failure or f'CAN counter snapshot: {exc}'
         if failure:
             result=dict(passed=False,error=failure,
+                        **can_transport,
                         process_exit_codes=[proc.returncode for proc in processes],
                         logs={n:(out/(n+'.log')).read_text()[-4000:] for n in ('actor','can','imu') if (out/(n+'.log')).exists()})
             (out/'report.json').write_text(json.dumps(result,indent=2)+'\n')
@@ -219,7 +291,7 @@ def main():
             raise SystemExit('native shadow failed; primary error and logs preserved')
     imu_report_path=out/('imu.csv.json' if icm else 'imu.json')
     if actor_rc or can_rc or imu_rc or not (out/'can.json').exists() or not imu_report_path.exists():
-        result=dict(passed=False,actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,
+        result=dict(passed=False,actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,**can_transport,
                     logs={n:(out/(n+'.log')).read_text()[-4000:] for n in ('actor','can','imu')})
         (out/'report.json').write_text(json.dumps(result,indent=2)+'\n')
         print(json.dumps(result,indent=2),flush=True)
@@ -241,6 +313,28 @@ def main():
         nonzero_can_tx_attempts=can_report['nonzero_gain_or_torque_tx_attempts'],
         enable_attempts=can_report['automatic_enable_attempts'],
         maximum_ms={key:float(np.max(timing[key])) for key in timing.dtype.names})
+    if experiment:
+        tx = can_report['tx_count_by_motor']
+        expected_tx = args.duration * 500
+        min_coverage = min(can_report['sample_coverage_by_motor'].values())
+        counters_ok = bool(can_transport) and not can_transport['unready_links_after'] and all(
+            value == 0 for counters in can_transport['can_error_counter_delta'].values()
+            for value in counters.values()
+        )
+        full_rate = tx.keys() == set(motors) and all(count == expected_tx for count in tx.values())
+        result.update(
+            mode='native_icm800_policy50_can500_full_body_zero_gain',
+            **can_transport,
+            exactly_60000_tx_per_motor=full_rate,
+            minimum_motor_rx_coverage=min_coverage,
+            transport_slot_overruns=can_report['transport_slot_overruns'],
+            transport_slot_max_wall_ms=can_report['transport_slot_max_wall_ms'],
+            p99_ms={key:float(np.percentile(timing[key], 99)) for key in timing.dtype.names},
+        )
+        result['passed'] = (
+            result['passed'] and counters_ok and full_rate and can_report['policy_ipc_enabled']
+            and can_report['policy_ipc_target_coverage'] >= 0.99
+        )
     if result['nonzero_can_tx_attempts'] or result['enable_attempts']:result['passed']=False
     (out/'report.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result,indent=2),flush=True)
     if not result['passed']:raise SystemExit('native hardware shadow not qualified')

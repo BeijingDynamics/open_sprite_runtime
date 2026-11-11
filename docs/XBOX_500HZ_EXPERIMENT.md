@@ -82,9 +82,29 @@ python3 tools/run_xbox_500hz_shadow_10s.py --confirm ZERO_GAIN_XBOX_500HZ_31_DIS
 disabled-motor setup above. The helper rejects another active controller,
 missing real-time capability, lost requests, and new CAN errors or drops.
 
-After transport passes, qualify full ICM/actor shadow under the same load.
-Measure feedback and policy-state age, IPC timing, USB/CAN errors, and
-shutdown behavior before adding a separate powered admission. Do not copy
+## Second onsite test: full-chain shadow
+
+After transport passes, with the same mechanical support and all 31 motors
+still disabled, stop the transport test and all other IMU/control scripts:
+
+```bash
+bash run_xbox_500hz_full_shadow_120s_on_253.sh --check
+sudo bash run_xbox_500hz_full_shadow_120s_on_253.sh ZERO_GAIN_XBOX_500HZ_FULL_31_DISABLED
+```
+
+This reuses the provisioned stable ICM reader, G74 model3000 and native
+zero-gain actor read-only. It uses the experimental CAN binary and writes
+reports only under the experimental checkout. The first 15 seconds are
+stationary gyro-bias calibration, without CAN transmission. Then 120 s
+of ICM 800 Hz, actor 50 Hz and 31-motor 500 Hz echo run together. The complete
+command takes about 150 s including IMU capture and offline replay. No
+gamepad input or powered operation is exercised.
+
+Qualification checks 6000 policy frames, byte-exact offline replay, exact
+60000 CAN requests per motor, coverage, deadline/slot overruns, and CAN
+error counter deltas. Inspect the reported maximum and P99 compute time,
+policy-state age and IMU age, rather than inferring latency from frame counts.
+Do not copy
 the original Xbox powered seal to this experiment. A powered A/B should
 keep the model, gains, caps, command schedule and floor fixed, and compare
 tracking and stop behavior as well as timing.
