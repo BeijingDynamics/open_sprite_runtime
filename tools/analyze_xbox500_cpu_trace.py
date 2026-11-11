@@ -1,5 +1,6 @@
 """Offline ftrace attribution. No hardware or configuration access."""
 import argparse
+import gzip
 import json
 import re
 from pathlib import Path
@@ -13,7 +14,8 @@ def field(text, name):
 
 
 def analyze(path, pids):
-    with path.open(errors='replace') as lines:
+    opener = gzip.open if path.suffix == '.gz' else open
+    with opener(path, 'rt', errors='replace') as lines:
         return analyze_lines(lines, pids)
 
 

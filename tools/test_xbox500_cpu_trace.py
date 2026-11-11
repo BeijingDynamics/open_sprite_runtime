@@ -1,5 +1,10 @@
 """No hardware: test timer-vs-runqueue attribution and unmatched trace handling."""
 from pathlib import Path
+import gzip
+import hashlib
+import io
+import json
+import random
 import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
@@ -45,17 +50,31 @@ class TraceTest(unittest.TestCase):
             (trace.path/'tracing_on').write_text('1')
             with self.assertRaisesRegex(RuntimeError,'active trace'):
                 trace.collect_stopped()
-            self.assertFalse((root/'cpu5.trace').exists())
+            self.assertFalse((root/'cpu5.trace.gz').exists())
             (trace.path/'tracing_on').write_text('0')
             trace.collect_stopped()
             self.assertEqual(trace.errors,[])
-            self.assertEqual((root/'cpu5.trace').read_bytes(),b'trace data\n')
+            self.assertEqual(gzip.decompress((root/'cpu5.trace.gz').read_bytes()),b'trace data\n')
             (cpu/'stats').write_text('overrun: 9\ncommit overrun: 0\ndropped events: 0\n')
             trace.collect_stopped()
             self.assertIn('Trace counter missing or nonzero: overrun',trace.errors)
             with patch.object(audit,'TRACE_BYTES',1):
                 with self.assertRaisesRegex(RuntimeError,'size cap'):
                     trace.collect_stopped()
+
+    def test_compression_round_trip_and_stored_byte_cap(self):
+        data = (b'sprite_can_xbox-2569 [005] ...s1.. 526.426544: softirq_entry: vec=3 [action=NET_RX]\n')*100000
+        output = io.BytesIO()
+        stored, expanded, digest = audit.compress_trace(io.BytesIO(data),output,1024*1024)
+        self.assertEqual(stored,len(output.getvalue()))
+        self.assertEqual(expanded,len(data))
+        self.assertEqual(digest,hashlib.sha256(data).hexdigest())
+        self.assertEqual(gzip.decompress(output.getvalue()),data)
+        output = io.BytesIO()
+        noise = random.Random(100).randbytes(200000)
+        with self.assertRaisesRegex(RuntimeError,'size cap'):
+            audit.compress_trace(io.BytesIO(noise),output,4096)
+        self.assertLessEqual(len(output.getvalue()),4096)
 
     def test_qos_released_when_trace_setup_fails(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -74,6 +93,35 @@ class TraceTest(unittest.TestCase):
                 opened.assert_called_once()
                 closed.assert_called_once_with(123)
                 launch.assert_not_called()
+
+    def test_run_report_preserved_when_export_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root/'reports').mkdir()
+            trace = MagicMock()
+            trace.__enter__.return_value = trace
+            trace.errors = ['export failed']
+            trace.pid = 123
+
+            def completed_run(*args, **kwargs):
+                report = root/'reports/xbox_500hz_full_shadow_120s_fake'
+                report.mkdir()
+                (report/'report.json').write_text(json.dumps({'passed':False,'frames':6000}))
+                (report/'can.json').write_text(json.dumps({'transport_slot_overruns':1}))
+                proc = MagicMock()
+                proc.poll.return_value = 2
+                proc.returncode = 2
+                return proc
+
+            with patch.object(audit,'ROOT',root), patch.object(audit,'snapshot',return_value={}), \
+                 patch.object(audit,'Trace',return_value=trace), \
+                 patch.object(audit.subprocess,'Popen',side_effect=completed_run):
+                with self.assertRaisesRegex(RuntimeError,'Invalid trace'):
+                    audit.phase('A',root/'phase',False)
+            result = json.loads((root/'phase/result.json').read_text())
+            self.assertFalse(result['report']['passed'])
+            self.assertEqual(result['report']['frames'],6000)
+            self.assertEqual(result['can']['transport_slot_overruns'],1)
 
     def test_timer_and_scheduler_delays(self):
         lines = [
@@ -96,6 +144,9 @@ class TraceTest(unittest.TestCase):
             self.assertEqual(result['worst_cycles'][1]['timer_lateness_us'],0)
             self.assertEqual(result['worst_cycles'][1]['wake_to_run_us'],200)
             self.assertFalse(analyze(path,{999})['attribution_available'])
+            compressed = Path(directory)/'trace.gz'
+            compressed.write_bytes(gzip.compress(path.read_bytes()))
+            self.assertEqual(analyze(compressed,{100}),result)
 
 
 if __name__ == '__main__':

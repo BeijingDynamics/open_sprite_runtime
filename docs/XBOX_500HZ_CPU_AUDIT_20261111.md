@@ -47,7 +47,7 @@ actual kernel trace formats and volume, without CAN or SPI access. At least
 Both runs use a dedicated ftrace instance limited to CPU5. Recording starts
 only after the CAN PID is detected, and stops after a requested20s (up to one
 0.5s supervisor polling interval later). The kernel buffer is32MiB on CPU5;
-other CPU buffers are minimal. Files have a64MiB text cap. No trace reader runs
+other CPU buffers are minimal. Files have a64MiB compressed-file cap. No trace reader runs
 while recording: the stopped buffer is read only after the120s phase finishes.
 Scheduler switches/wakeups and timer starts are filtered to the target PID;
 timer expiry, idle, IRQ and softirq context remains visible on CPU5.
@@ -63,6 +63,14 @@ this window cannot be attributed using this trace. Wakeup events emitted on
 another CPU are also outside this capture; missing wakeups must not be treated
 as zero scheduler delay. The native timing report still covers the full run.
 
+Export is streaming gzip (`cpu5.trace.gz`), after the test and tracing have
+stopped. Compression never runs alongside CAN in this wrapper. It retains
+every recorded event, uses64KiB input chunks, and records compressed bytes,
+expanded bytes and the SHA256 of the original text. The analyzer accepts both
+plain and gzip traces. Compression does not waive kernel buffer loss checks.
+Completed native/actor reports are saved independently before trace validation;
+an invalid trace still prevents phase B and cannot qualify the runtime.
+
 ## Failed collector and correction
 
 `xbox500_cpu_ab_d3ectxis/A_current` hit the old256MiB cap in about13s,
@@ -74,6 +82,18 @@ exceeded a gate. Phase B never started. The original evidence is retained.
 The revised collector removes the live trace_pipe reader entirely, filters
 the target and records a bounded window before reading anything out. No CAN
 code, PD, safety threshold, or stable-runtime file is changed.
+
+The next run, `xbox500_cpu_ab_o3g4eaa5`, completed its120s zero-gain phase A:
+6000 actor frames,60000 TX/RX per motor, no CAN errors, no enable or nonzero
+gain/torque attempts. It still FAILED: slot0 used0.505419ms, including
+0.467689ms TX and only0.000162ms wake delay. Do not label this a wakeup fault.
+The stopped kernel trace had1041078 events,30689776 binary bytes, and zero
+overruns/drops. Exporting expanded text hit64MiB after roughly12.5s of the
+20s capture. Softirq entries/exits dominated the exported portion, consistent
+with real network/CAN work rather than the previous self-tracing defect.
+The tail was not exported and cannot be recovered from the removed instance.
+Phase B did not start. Streaming compression addresses export size without
+dropping those events or changing the control budget or kernel buffer size.
 
 `analyze_xbox500_cpu_trace.py` matches the CAN PID's hrtimer deadlines,
 expiry timestamps, scheduler wakeup and switch-in. It reports callback lateness

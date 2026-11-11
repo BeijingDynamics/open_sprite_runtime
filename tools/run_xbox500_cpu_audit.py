@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import zlib
 
 from analyze_xbox500_cpu_trace import analyze
 
@@ -25,6 +26,27 @@ OPTIONAL_EVENTS = ('ipi/ipi_entry', 'ipi/ipi_exit')
 TRACE_SECONDS = 20
 TRACE_BYTES = 64*1024*1024
 CONFIRM = 'ZERO_GAIN_CPU_AUDIT_31_DISABLED'
+
+
+def compress_trace(source, output, limit):
+    """Export a stopped kernel buffer without discarding events or buffering text."""
+    compressor = zlib.compressobj(level=1, wbits=31)
+    digest = hashlib.sha256()
+    stored = expanded = 0
+
+    def emit(data):
+        nonlocal stored
+        if stored+len(data) > limit:
+            raise RuntimeError('Trace size cap reached; trace incomplete')
+        output.write(data)
+        stored += len(data)
+
+    while data := source.read(65536):
+        digest.update(data)
+        expanded += len(data)
+        emit(compressor.compress(data))
+    emit(compressor.flush())
+    return stored, expanded, digest.hexdigest()
 
 
 def save(path, data):
@@ -53,6 +75,8 @@ class Trace:
         self.path = Path('/sys/kernel/tracing/instances')/('xbox500_'+str(os.getpid()))
         self.errors = []
         self.bytes = 0
+        self.expanded_bytes = 0
+        self.text_sha256 = None
         self.started_ns = None
         self.stopped_ns = None
         self.pid = None
@@ -118,12 +142,11 @@ class Trace:
         for key in ('overrun', 'commit overrun', 'dropped events'):
             if key not in counters or int(counters[key].strip()) != 0:
                 self.errors.append('Trace counter missing or nonzero: '+key)
-        with (self.path/'per_cpu/cpu5/trace').open('rb') as source, (self.out/'cpu5.trace').open('wb') as output:
-            while data := source.read(65536):
-                if self.bytes+len(data) > TRACE_BYTES:
-                    raise RuntimeError('Trace size cap reached; trace incomplete')
-                output.write(data)
-                self.bytes += len(data)
+        with (self.path/'per_cpu/cpu5/trace').open('rb') as source, (self.out/'cpu5.trace.gz').open('wb') as output:
+            try:
+                self.bytes, self.expanded_bytes, self.text_sha256 = compress_trace(source, output, TRACE_BYTES)
+            finally:
+                self.bytes = output.tell()
 
     def __exit__(self, *unused):
         if not self.path.exists():
@@ -140,6 +163,7 @@ class Trace:
             save(self.out/'trace_status.json', dict(bytes=self.bytes, errors=self.errors, stats=self.stats,
                  pid=self.pid, capture_start_ns=self.started_ns, capture_end_ns=self.stopped_ns,
                  requested_capture_seconds=TRACE_SECONDS, maximum_bytes=TRACE_BYTES,
+                 encoding='gzip', expanded_bytes=self.expanded_bytes, text_sha256=self.text_sha256,
                  read_only_after_tracing_stopped=True,
                  coverage='first20s after target detected; remaining zero-gain run is untraced'))
 
@@ -194,12 +218,6 @@ def phase(name, out, qos):
                     raise RuntimeError('Trace acquisition failed: '+str(trace.errors))
                 time.sleep(0.5)
             rc = proc.returncode
-        if trace.errors or trace.pid is None:
-            raise RuntimeError('Invalid trace; no next phase: '+str(trace.errors))
-        analysis = analyze(out/'cpu5.trace', pids)
-        save(out/'trace_analysis.json', analysis)
-        if analysis['matched_cycles'] < 100:
-            raise RuntimeError('Insufficient CAN timer cycles; no next phase')
         created = set((ROOT/'reports').glob('xbox_500hz_full_shadow_120s_*'))-before
         if len(created) != 1:
             raise RuntimeError('Expected exactly one new zero-gain report directory')
@@ -208,6 +226,13 @@ def phase(name, out, qos):
         can = json.loads((report_dir/'can.json').read_text())
         save(out/'result.json', dict(returncode=rc, report_directory=str(report_dir),
              report=report, can=can, can_pids=sorted(pids), duration_wall_s=time.monotonic()-started))
+        print(name, 'zero-gain report passed=',report['passed'], 'trace_errors=',trace.errors,flush=True)
+        if trace.errors or trace.pid is None:
+            raise RuntimeError('Invalid trace; no next phase: '+str(trace.errors))
+        analysis = analyze(out/'cpu5.trace.gz', pids)
+        save(out/'trace_analysis.json', analysis)
+        if analysis['matched_cycles'] < 100:
+            raise RuntimeError('Insufficient CAN timer cycles; no next phase')
         # A completed timing rejection remains FAILED, but may be compared with B.
         if (can.get('automatic_enable_attempts') != 0 or can.get('nonzero_gain_or_torque_tx_attempts') != 0
                 or report.get('frames') != 6000 or not report.get('feedback_workload_passed')
@@ -247,10 +272,10 @@ def trace_smoke(out):
             proc.wait(timeout=10)
             if proc.returncode or trace.errors:
                 raise RuntimeError('No-hardware trace smoke failed: '+str(trace.errors))
-        result = analyze(out/'cpu5.trace',{proc.pid})
-        save(out/'trace_analysis.json',result)
         if trace.errors:
             raise RuntimeError('No-hardware trace smoke incomplete: '+str(trace.errors))
+        result = analyze(out/'cpu5.trace.gz',{proc.pid})
+        save(out/'trace_analysis.json',result)
         if result['matched_cycles'] < 100:
             raise RuntimeError('Insufficient matching timer events; do not start hardware tests')
         print('TRACE_SMOKE_OK no CAN/SPI; bytes=',trace.bytes,flush=True)
