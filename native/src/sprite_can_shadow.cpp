@@ -116,6 +116,7 @@ struct Motor {
   std::size_t tx_count = 0;
   std::size_t rx_count = 0;
   bool seen = false;
+  std::int64_t last_feedback_read_ns = 0;
   double preview_maximum_abs_position = 0.0;
   double preview_maximum_abs_velocity = 0.0;
   double preview_maximum_kp = 0.0;
@@ -181,6 +182,8 @@ struct Options {
   bool saturate_policy_torque = false;
   bool bounded_shadow_preview = false;
   bool xbox_500hz_shadow = false;
+  bool xbox_500hz_actuation = false;
+  std::string xbox_500hz_acknowledgement;
 };
 
 struct Socket {
@@ -572,6 +575,10 @@ Options parse_options(int argc, char** argv) {
     }
     else if (argument == "--bounded-shadow-preview") result.bounded_shadow_preview = true;
     else if (argument == "--xbox-500hz-shadow") result.xbox_500hz_shadow = true;
+    else if (argument == "--xbox-500hz-actuation") result.xbox_500hz_actuation = true;
+    else if (argument == "--xbox-500hz-actuation-acknowledgement") {
+      result.xbox_500hz_acknowledgement = value();
+    }
     else throw std::runtime_error("unknown argument: " + argument);
   }
   if (result.config.empty() || result.output.empty()) {
@@ -582,6 +589,16 @@ Options parse_options(int argc, char** argv) {
   }
   if (result.xbox_500hz_shadow && (result.policy_actuation || result.measured_pose_hold)) {
     throw std::runtime_error("xbox_500hz is zero-gain shadow only; no actuation or hold");
+  }
+  if (result.xbox_500hz_actuation &&
+      (!result.policy_actuation || result.measured_pose_hold || result.xbox_500hz_shadow ||
+       result.duration_s != 120.0 || !result.saturate_policy_torque ||
+       result.xbox_500hz_acknowledgement != "ENABLE_XBOX_500HZ_TURN120" ||
+       result.extended_policy_actuation_acknowledgement != "ENABLE_120_SECOND_XBOX_FORWARD_TEST")) {
+    throw std::runtime_error("500 Hz actuation requires exact independent 120s acknowledgement and protection");
+  }
+  if (!result.xbox_500hz_actuation && !result.xbox_500hz_acknowledgement.empty()) {
+    throw std::runtime_error("500 Hz acknowledgement without actuation flag");
   }
   if (result.xbox_500hz_shadow) {
     const double cycles = result.duration_s * 500.0;
@@ -623,6 +640,8 @@ Options parse_options(int argc, char** argv) {
       throw std::runtime_error(
           "policy actuation requires IPC, kinematics, joint safety, and joint hash");
     }
+    const bool acknowledged_120_seconds = result.xbox_500hz_actuation &&
+        result.extended_policy_actuation_acknowledgement == "ENABLE_120_SECOND_XBOX_FORWARD_TEST";
     const bool acknowledged_20_seconds =
         result.extended_policy_actuation_acknowledgement ==
         "ENABLE_20_SECOND_SUSPENDED_BALANCE_TEST";
@@ -634,20 +653,20 @@ Options parse_options(int argc, char** argv) {
         "ENABLE_60_SECOND_GROUNDED_LOWER_BODY_SIM_PD_TEST";
     if (result.duration_s > 10.0 &&
         !acknowledged_20_seconds && !acknowledged_40_seconds &&
-        !acknowledged_60_seconds) {
+        !acknowledged_60_seconds && !acknowledged_120_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 10 seconds requires the exact extended-test acknowledgement");
     }
     if (result.duration_s > 20.0 &&
-        !acknowledged_40_seconds && !acknowledged_60_seconds) {
+        !acknowledged_40_seconds && !acknowledged_60_seconds && !acknowledged_120_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 20 seconds requires the exact 40-second acknowledgement");
     }
-    if (result.duration_s > 40.0 && !acknowledged_60_seconds) {
+    if (result.duration_s > 40.0 && !acknowledged_60_seconds && !acknowledged_120_seconds) {
       throw std::runtime_error(
           "protected policy actuation over 40 seconds requires the exact 60-second lower-body sim-PD acknowledgement");
     }
-    if (result.duration_s > 60.0) {
+    if (result.duration_s > 60.0 && !acknowledged_120_seconds) {
       throw std::runtime_error("extended protected policy actuation must not exceed 60 seconds");
     }
   }
@@ -665,7 +684,7 @@ Options parse_options(int argc, char** argv) {
             "ENABLE_40_SECOND_GROUNDED_BALANCE_TEST" &&
         result.extended_policy_actuation_acknowledgement !=
             "ENABLE_60_SECOND_GROUNDED_LOWER_BODY_SIM_PD_TEST" &&
-        !acknowledged_short_sim_pd_saturation))) {
+        !result.xbox_500hz_actuation && !acknowledged_short_sim_pd_saturation))) {
     throw std::runtime_error(
         "policy torque saturation requires the exact 40-second grounded-test acknowledgement or the duration-limited 8-second lower-body sim-PD acknowledgement");
   }
@@ -796,7 +815,8 @@ void send_state_packet(IpcSocket& ipc, const std::vector<Motor>& motors,
 
 void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
                           const std::vector<JointSafety>& joint_safety,
-                          std::int64_t now_ns) {
+                          std::int64_t now_ns, std::size_t packet_budget = 0) {
+  std::size_t packets = 0;
   while (true) {
     TargetPacket packet{};
     const ssize_t received = recv(ipc.client_fd, &packet, sizeof(packet), MSG_DONTWAIT);
@@ -807,6 +827,9 @@ void drain_target_packets(IpcSocket& ipc, std::uint64_t policy_joint_hash,
           std::to_string(receive_errno) + " " + std::strerror(receive_errno));
     }
     if (received == 0) throw std::runtime_error("policy IPC client disconnected");
+    if (packet_budget && ++packets > packet_budget) {
+      throw std::runtime_error("policy IPC receive work budget exceeded");
+    }
     if (received != static_cast<ssize_t>(sizeof(packet)) ||
         std::memcmp(packet.magic, "SPRT", 4) != 0 || packet.version != kIpcVersion ||
         packet.kind != kTargetKind || packet.joint_order_hash != policy_joint_hash) {
@@ -1276,12 +1299,18 @@ void update_temperature_filter(Motor& motor, double mos_c, double rotor_c) {
 void drain_policy_feedback(
     std::vector<Socket>& sockets, std::vector<Motor>& motors,
     const std::map<std::pair<std::string, int>, std::size_t>& feedback_map,
-    int expected_status, bool enforce_dynamic_guards) {
+    int expected_status, bool enforce_dynamic_guards, std::size_t frame_budget = 0) {
   for (auto& can_socket : sockets) {
+    std::size_t frames = 0;
     while (true) {
+      if (frame_budget && frames >= frame_budget) {
+        if (enforce_dynamic_guards) throw std::runtime_error("CAN receive work budget exceeded");
+        break;
+      }
       canfd_frame frame{};
       const ssize_t received = read(can_socket.fd, &frame, CANFD_MTU);
       if (received < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+      ++frames;
       if (received != CANFD_MTU || frame.len != 8 || (frame.flags & CANFD_BRS) == 0) {
         // A bus fault can leave stale or malformed frames queued while shutting
         // down. Keep polling for a valid disabled reply from every endpoint.
@@ -1322,6 +1351,7 @@ void drain_policy_feedback(
       const double feedback_torque =
           decode_uint(raw_torque, motor.torque_min, motor.torque_max, 12);
       motor.last_status_code = status_code;
+      motor.last_feedback_read_ns = monotonic_ns();
       motor.maximum_abs_speed =
           std::max(motor.maximum_abs_speed, std::abs(motor.last_velocity));
       motor.maximum_abs_feedback_torque = std::max(
@@ -1602,6 +1632,7 @@ int run_native_protected_policy(
     const NativeKinematics& kinematics, const std::vector<JointSafety>& joint_safety,
     IpcSocket& ipc, std::uint64_t motor_hash, bool memory_locked) {
   std::string failure;
+  TransportSlotTiming powered_timing;
   std::size_t deadline_misses = 0;
   double maximum_lateness_ms = 0.0;
   std::vector<std::size_t> active_tx(kJointCount, 0);
@@ -1638,8 +1669,10 @@ int run_native_protected_policy(
       for (auto& motor : motors) {
         if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
       }
-      drain_policy_feedback(sockets, motors, feedback_map, 0, false);
-      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns());
+      drain_policy_feedback(sockets, motors, feedback_map, 0, false,
+                            options.xbox_500hz_actuation ? 64 : 0);
+      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, monotonic_ns(),
+                           options.xbox_500hz_actuation ? 32 : 0);
       if (slot % 40 == 39 && all_seen()) {
         send_state_packet(ipc, motors, motor_hash, monotonic_ns());
       }
@@ -1715,6 +1748,10 @@ int run_native_protected_policy(
           start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
       sleep_until(deadline_ns);
       const std::int64_t woke_ns = monotonic_ns();
+      if (options.xbox_500hz_actuation && woke_ns - deadline_ns >= kTransportPeriodNs) {
+        powered_timing.record(slot, deadline_ns, woke_ns, woke_ns, woke_ns, woke_ns);
+        throw std::runtime_error("500 Hz active slot expired; no catch-up commands sent");
+      }
       if (slot % 4 == 0) {
         const double lateness_ms =
             std::max(0.0, static_cast<double>(woke_ns - deadline_ns) / 1.0e6);
@@ -1722,7 +1759,15 @@ int run_native_protected_policy(
         deadline_misses += static_cast<std::size_t>(lateness_ms >= 2.0);
       }
 
-      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, woke_ns);
+      drain_target_packets(ipc, options.policy_joint_hash, joint_safety, woke_ns,
+                           options.xbox_500hz_actuation ? 32 : 0);
+      if (options.xbox_500hz_actuation && slot >= 200) {
+        for (const auto& motor : motors) {
+          if (woke_ns - motor.last_feedback_read_ns > 20'000'000LL) {
+            throw std::runtime_error("500 Hz feedback read gap exceeded 20 ms for " + motor.name);
+          }
+        }
+      }
       if (!ipc.has_target || woke_ns - ipc.last_target_ns > kTargetTimeoutNs) {
         throw std::runtime_error("protected-policy target watchdog expired");
       }
@@ -1730,15 +1775,19 @@ int run_native_protected_policy(
         preview_final_motor_commands(
             motors, ipc, kinematics, options.saturate_policy_torque);
       }
+      const auto preview_end_ns = options.xbox_500hz_actuation ? monotonic_ns() : 0;
       for (auto& motor : motors) {
         if (!due(motor, slot)) continue;
         const auto payload = protected_policy_payload(motor, options.saturate_policy_torque);
         send_payload(sockets[socket_index.at(motor.interface)], motor, payload);
       }
+      const auto tx_end_ns = options.xbox_500hz_actuation ? monotonic_ns() : 0;
       // Permit only the short enable transition; require all endpoints enabled
       // after 100 ms and throughout the remaining active interval.
       drain_policy_feedback(
-          sockets, motors, feedback_map, slot < 200 ? -1 : 1, true);
+          sockets, motors, feedback_map, slot < 200 ? -1 : 1, true,
+          options.xbox_500hz_actuation ? 64 : 0);
+      const auto rx_end_ns = options.xbox_500hz_actuation ? monotonic_ns() : 0;
       if (slot == 200) {
         for (const auto& motor : motors) {
           if (motor.last_status_code != 1) {
@@ -1750,9 +1799,20 @@ int run_native_protected_policy(
       if (slot % 40 == 39 && all_seen()) {
         send_state_packet(ipc, motors, motor_hash, monotonic_ns());
       }
+      if (options.xbox_500hz_actuation) {
+        const auto end_ns = monotonic_ns();
+        // Active-loop order is IPC/preview, TX, RX, state publication.
+        powered_timing.record_sample({slot, std::max<std::int64_t>(0, woke_ns-deadline_ns),
+            tx_end_ns-preview_end_ns, rx_end_ns-tx_end_ns,
+            preview_end_ns-woke_ns+end_ns-rx_end_ns, end_ns-deadline_ns});
+        if (end_ns-deadline_ns >= kTransportPeriodNs) {
+          throw std::runtime_error("500 Hz full active slot exceeded 0.5 ms");
+        }
+      }
     }
     usleep(2000);
-    drain_policy_feedback(sockets, motors, feedback_map, 1, true);
+    drain_policy_feedback(sockets, motors, feedback_map, 1, true,
+                          options.xbox_500hz_actuation ? 64 : 0);
     for (std::size_t index = 0; index < motors.size(); ++index) {
       active_tx[index] = motors[index].tx_count;
       active_rx[index] = motors[index].rx_count;
@@ -1791,10 +1851,12 @@ int run_native_protected_policy(
       for (auto& motor : motors) {
         if (due(motor, slot)) send_poll(sockets[socket_index.at(motor.interface)], motor);
       }
-      drain_policy_feedback(sockets, motors, feedback_map, -1, false);
+      drain_policy_feedback(sockets, motors, feedback_map, -1, false,
+                            options.xbox_500hz_actuation ? 64 : 0);
     }
     usleep(2000);
-    drain_policy_feedback(sockets, motors, feedback_map, -1, false);
+    drain_policy_feedback(sockets, motors, feedback_map, -1, false,
+                          options.xbox_500hz_actuation ? 64 : 0);
     for (const auto& motor : motors) {
       if (!motor.final_disabled) {
         throw std::runtime_error("final disabled verification failed for " + motor.name);
@@ -1806,8 +1868,17 @@ int run_native_protected_policy(
   }
 
   std::ostringstream report;
+  std::ostringstream powered_timing_fields;
+  if (options.xbox_500hz_actuation) {
+    powered_timing_fields << std::fixed << std::setprecision(6);
+    powered_timing.json_fields(powered_timing_fields);
+  }
   report << std::fixed << std::setprecision(6)
       << "{\n  \"mode\": \"native_suspended_protected_policy_actuation\",\n"
+      << "  \"all_motors_requested_hz\": " << (options.xbox_500hz_actuation ? "500" : "null") << ",\n"
+      << "  \"transport_slot_overruns\": " << powered_timing.count << ",\n"
+      << "  \"transport_slot_max_wall_ms\": " << powered_timing.maximum.total_ns/1e6 << ",\n"
+      << powered_timing_fields.str()
       << "  \"duration_s\": " << options.duration_s << ",\n"
       << "  \"memory_locked\": " << (memory_locked ? "true" : "false") << ",\n"
       << "  \"deadline_misses\": " << deadline_misses << ",\n"
@@ -2037,7 +2108,7 @@ int main(int argc, char** argv) {
   try {
     const Options options = parse_options(argc, argv);
     auto motors = load_motors(options.config);
-    if (options.xbox_500hz_shadow) configure_xbox_500hz_schedule(motors);
+    if (options.xbox_500hz_shadow || options.xbox_500hz_actuation) configure_xbox_500hz_schedule(motors);
     const auto joint_safety = options.joint_safety_config.empty()
         ? std::vector<JointSafety>{}
         : load_joint_safety(options.joint_safety_config);

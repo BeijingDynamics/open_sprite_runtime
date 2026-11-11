@@ -157,3 +157,51 @@ Receive-count equality also does not prove uniform wire intervals or fresh
 individual motor feedback. Before powered deployment, qualify actual
 feedback freshness, bounded receive/IPC work, unchanged ankle torque
 mapping, target hold, fault shutdown and the separate powered entry/seal.
+
+## Isolated powered candidate (not yet physically qualified)
+
+`tools/prepare_xbox500_powered.py` runs only offline checks and builds
+`candidates/xbox_500hz_powered_20261111`. It verifies the actual stable
+120 s source/seals and the passed full-chain shadow evidence before deriving
+new entry scripts. It copies parameter/deployment files, redirects all
+generated tables/reports to the experiment, and reuses the stable actor and
+ICM reader without rebuilding them. Its independent seal verifies the new
+CAN executable, scripts, input evidence and parameter copies; the original
+powered seal is not changed or reused as proof of 500 Hz hardware success.
+
+The new controller requires both `--xbox-500hz-actuation` and its independent
+acknowledgement. The shadow flag still rejects all actuation modes. Policy
+commands remain forward/turn only, with LT permission, 10 s initial stand,
+stop at 110 s, disable at 120 s, and the existing LB+RB three-second disable.
+All protected policy gains, caps and maps remain unchanged. Temperature
+filtering and RMS windows use the new 500 Hz motor rate so their time scales
+remain unchanged. The four ankle torque calculations remain at 500 Hz;
+non-ankle targets remain zero-order held at the existing 50 Hz preview rate.
+
+Additional experimental scheduling guards reject an expired active 0.5 ms
+slot rather than catching up, measure the complete active-loop workload,
+bound CAN and IPC drain work (64 frames/bus and 32 target packets), and stop
+if an individual motor has no valid feedback consumed for 20 ms after the
+initial 100 ms enable transition. This is a host-consumption watchdog, not
+a hardware timestamp/latency claim. Guards use the existing whole-body
+disable and feedback-verification path. These stricter guards may abort a
+powered comparison; do not loosen them without diagnosing the evidence.
+
+On 253, after preparation and before any powered test:
+
+```bash
+cd /home/tony/open_sprite_runtime_xbox_500hz
+bash run_xbox_500hz_powered_120s_on_253.sh --check
+sudo setcap cap_sys_nice+ep candidates/xbox_500hz_powered_20261111/sprite_can_xbox500
+# Mechanical support, motors powered but disabled, stationary first15s:
+sudo bash run_xbox_500hz_powered_120s_on_253.sh --preflight-only
+```
+
+`--check` is offline. `--preflight-only` configures/reads the ICM and performs
+the retained 8 s zero-gain startup readiness test on the new CAN schedule;
+it never enables motors. It preserves the existing Python readiness client;
+the subsequent powered actor is still native ONNX, not Python inference.
+Only after fresh onsite approval, battery supply, fall arrest, clear arm and
+walking space, and an independent power safety operator are ready, the
+separate powered acknowledgement is `ENABLE_XBOX_500HZ_TURN120`. Rebuilding
+this candidate requires reinstalling its capability, never the stable one.

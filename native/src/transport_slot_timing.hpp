@@ -22,6 +22,10 @@ struct TransportSlotTiming {
               std::int64_t tx_end, std::int64_t rx_end, std::int64_t end) {
     const Sample value{slot, std::max<std::int64_t>(0, wake-deadline),
                        tx_end-wake, rx_end-tx_end, end-rx_end, end-deadline};
+    record_sample(value);
+  }
+
+  void record_sample(const Sample& value) {
     max_wake_ns = std::max(max_wake_ns, value.wake_ns);
     max_tx_ns = std::max(max_tx_ns, value.tx_ns);
     max_rx_ns = std::max(max_rx_ns, value.rx_ns);
