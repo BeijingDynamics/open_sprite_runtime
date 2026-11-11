@@ -111,6 +111,7 @@ def main():
     files = [*source_paths, CAN, C/'test_powered', C/'test_shutdown', evidence,
              E/'native/src/sprite_can_shadow.cpp', E/'native/src/transport_slot_timing.hpp',
              E/'native/src/first_slot_wait.hpp', E/'native/tests/test_first_slot_wait.cpp', C/'test_first_slot_wait',
+             E/'native/src/disabled_startup.hpp', E/'native/tests/test_disabled_startup.cpp',
              E/'native/src/fixed_rms_window.hpp', E/'native/src/receive_timing.hpp',
              E/'native/tests/test_xbox_500hz_feedback.cpp', C/'test_feedback',
              E/'tools/prepare_xbox500_powered.py', E/'tools/check_xbox500_powered.py',

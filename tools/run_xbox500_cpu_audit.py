@@ -236,6 +236,7 @@ def phase(name, out, qos):
         # A completed timing rejection remains FAILED, but may be compared with B.
         if (can.get('automatic_enable_attempts') != 0 or can.get('nonzero_gain_or_torque_tx_attempts') != 0
                 or report.get('frames') != 6000 or not report.get('feedback_workload_passed')
+                or not report.get('disabled_startup_passed')
                 or not report.get('exactly_60000_tx_per_motor') or report.get('actor_exit') != 0
                 or report.get('imu_exit') != 0 or can.get('elapsed_s', 0) < 120
                 or not report.get('offline_byte_exact') or report.get('minimum_motor_rx_coverage',0) < 0.99

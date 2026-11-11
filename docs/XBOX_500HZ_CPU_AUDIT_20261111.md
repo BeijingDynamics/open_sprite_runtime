@@ -105,7 +105,53 @@ attribution rather than an invented result.
 No CAN binary rebuild or new capability grant is required for this diagnostic.
 No motor enable, nonzero gains, policy actuation, or automatic powered test.
 
-## References
+## Completed A/B: 684mln8q
+
+Source: `reports/xbox500_cpu_ab_684mln8q`, collected2026-11-11.
+Both120s phases completed, with6000 actor frames,60000 TX and RX per motor,
+byte-exact actor replay, and zero CAN errors, enable attempts or nonzero
+gain/torque attempts. Both traces have zero buffer overruns/drops and export
+errors. The full evidence directory was copied to the Windows project under
+`work/xbox_500hz_review_20261111/`.
+
+| Metric | A current | B temporary QoS0 |
+| --- | ---: | ---: |
+| Qualification | FAILED | PASSED |
+| Overrun count | 1 (slot0) | 0 |
+| Worst complete slot, ms | 0.524556 | 0.472623 |
+| First-slot TX, ms | 0.484008 | 0.436049 |
+| First-slot wake, ms | 0.000100 | 0.000128 |
+| Maximum wake across120s, ms | 0.050251 | 0.186956 |
+| Maximum RX across120s, ms | 0.149634 | 0.108925 |
+| Matched timer cycles in trace | 40267 | 40215 |
+
+The A failure is first-slot TX dominated, not delayed wakeup. B passing is
+not proof that deep idle caused the failure: B's maximum wake delay was larger.
+There was no C7 entry in either captured20s window; both show only WFI.
+The wider before/after snapshots include IMU calibration and report processing:
+C7 usage rose601 in A and0 in B. This verifies a change in idle behavior over
+the broader phase, not causation at the failing slot. Fixed A-then-B ordering
+also does not control kernel/device/cache warm-state effects.
+
+The worst captured B wake had a timer callback158.628us late, followed by
+only4us from scheduler wakeup to switch-in. The callback occurred in
+`kworker/u12:15` context. These events locate delay before the wakeup, but do
+not prove why the callback was late (no IRQ-off duration trace was taken).
+The historical0.408909ms wake outlier did not recur in this pair.
+
+Important coverage limit: CAN PID detection happens after process launch, so
+the tracing window cannot be assumed to contain slot0. This trace does not
+explain the internals of first-slot TX. The native aggregate timing does.
+
+Next diagnostic priority is first-slot preparation versus individual send
+system-call wall/CPU time, plus preemption/page-fault evidence. Instrument only
+the independent candidate, preserve the complete first-slot budget, and use
+offline then zero-gain validation. A reversed-order/repeated QoS comparison
+would be needed before recommending QoS. No production QoS change, powered
+qualification, threshold relaxation, or stable-runtime change follows from
+this single pair. The temporary request was released by the wrapper.
+
+## Reference Links
 
 - [Linux CPUIdle and PM QoS](https://www.kernel.org/doc/html/v6.8/admin-guide/pm/cpuidle.html):
   the descriptor controls the lifetime of the latency request.

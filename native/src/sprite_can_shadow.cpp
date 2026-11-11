@@ -31,6 +31,7 @@
 #include <unistd.h>
 #include "transport_slot_timing.hpp"
 #include "first_slot_wait.hpp"
+#include "disabled_startup.hpp"
 #include "fixed_rms_window.hpp"
 #include "receive_timing.hpp"
 
@@ -1430,6 +1431,76 @@ void drain_policy_feedback(
   if (timing) timing->finish();
 }
 
+void prepare_disabled_xbox500(
+    const Options& options, std::vector<Socket>& sockets, std::vector<Motor>& motors,
+    const std::map<std::string, std::size_t>& socket_index,
+    const std::map<std::pair<std::string, int>, std::size_t>& feedback_map) {
+  DisabledStartup startup;
+  auto sleep = [](std::int64_t ns) {
+    const auto deadline = from_ns(ns);
+    int status;
+    do status = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &deadline, nullptr);
+    while (status == EINTR && !g_shutdown_requested);
+    if (status != 0) throw std::runtime_error("disabled startup sleep interrupted/failed");
+  };
+  auto fresh = [&](std::int64_t ns) {
+    return std::all_of(motors.begin(), motors.end(), [&](const Motor& m) {
+      return m.seen && m.last_status_code == 0 && ns-m.last_feedback_read_ns < 20'000'000;
+    });
+  };
+  auto complete = [&]() {
+    return std::all_of(motors.begin(), motors.end(), [](const Motor& m) {
+      return m.tx_count > 0 && m.rx_count == m.tx_count;
+    });
+  };
+  auto report = [&]() {
+    std::ofstream out(options.output + ".startup.json");
+    if (!out) throw std::runtime_error("cannot save disabled startup evidence");
+    out << "{\"mode\":\"disabled_zero_gain_startup\",\"enable_attempts\":0,"
+        << "\"nonzero_gain_or_torque_tx_attempts\":0,\"phase_budget_ms\":2000,"
+        << "\"startup_slot_budget_ms\":2,\"strict_slot_budget_ms\":0.5,"
+        << "\"slots\":" << startup.slots << ",\"clean_slots\":" << startup.clean_slots
+        << ",\"required_clean_slots\":200,\"elapsed_ms\":" << startup.elapsed_ns/1e6
+        << ",\"startup_strict_budget_exceedances\":" << startup.timing.count << ',';
+    startup.timing.json_fields(out);
+    out << "\"motors\":[";
+    for (std::size_t i=0;i<motors.size();++i) {
+      if (i) out << ',';
+      const auto& m = motors[i];
+      out << "{\"index\":" << i << ",\"tx\":" << m.tx_count << ",\"rx\":" << m.rx_count
+          << ",\"status\":" << m.last_status_code << '}';
+    }
+    out << "],\"passed\":" << (startup.passed ? "true" : "false") << "}\n";
+    out.flush();
+    if (!out) throw std::runtime_error("cannot flush disabled startup evidence");
+  };
+  try {
+    startup.run(monotonic_ns, sleep,
+        [&](std::size_t slot, std::int64_t& tx_end, std::int64_t& rx_end) {
+          for (auto& m : motors)
+            if (poll_due(m, slot)) send_poll(sockets[socket_index.at(m.interface)], m);
+          tx_end = monotonic_ns();
+          drain_policy_feedback(sockets, motors, feedback_map, 0, true, 64, true);
+          rx_end = monotonic_ns();
+        }, fresh, [] { return g_shutdown_requested != 0; });
+    const auto finish_deadline = monotonic_ns()+20'000'000;
+    while (!complete()) {
+      if (g_shutdown_requested || monotonic_ns() >= finish_deadline)
+        throw std::runtime_error("disabled startup final feedback incomplete");
+      sleep(monotonic_ns()+500'000);
+      drain_policy_feedback(sockets, motors, feedback_map, 0, true, 64, true);
+    }
+    if (!fresh(monotonic_ns())) throw std::runtime_error("disabled startup feedback stale");
+    startup.passed = true;
+  } catch (...) {
+    report();
+    throw;
+  }
+  report();
+  // Separate startup counts, without discarding thermal/RMS state or evidence.
+  for (auto& m : motors) { m.tx_count = 0; m.rx_count = 0; m.seen = false; }
+}
+
 int run_native_measured_pose_hold(
     const Options& options, std::vector<Socket>& sockets, std::vector<Motor>& motors,
     const std::map<std::string, std::size_t>& socket_index,
@@ -1514,6 +1585,8 @@ int run_native_measured_pose_hold(
         static_cast<std::size_t>(std::llround(options.duration_s * kTransportRateHz));
     const std::int64_t start_ns = monotonic_ns() + 20'000'000LL;
     for (std::size_t slot = 0; slot < transport_slots; ++slot) {
+      if (options.xbox_500hz_shadow && g_shutdown_requested)
+        throw std::runtime_error("500 Hz shadow cancelled");
       const std::int64_t deadline_ns =
           start_ns + static_cast<std::int64_t>(slot) * kTransportPeriodNs;
       sleep_until(deadline_ns);
@@ -2199,6 +2272,11 @@ int main(int argc, char** argv) {
     apply_affinity(options.cpu);
     apply_realtime_priority(options.realtime_priority);
     const bool memory_locked = mlockall(MCL_CURRENT | MCL_FUTURE) == 0;
+    if (options.xbox_500hz_shadow || options.xbox_500hz_actuation) {
+      std::signal(SIGINT, request_shutdown);
+      std::signal(SIGTERM, request_shutdown);
+      prepare_disabled_xbox500(options, sockets, motors, socket_index, feedback_map);
+    }
     if (options.measured_pose_hold) {
       const int result = run_native_measured_pose_hold(
           options, sockets, motors, socket_index, feedback_map, kinematics,

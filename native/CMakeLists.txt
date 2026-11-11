@@ -14,6 +14,9 @@ target_compile_options(sprite_can_shadow PRIVATE -Wall -Wextra -Wpedantic -Werro
 target_link_libraries(sprite_can_shadow PRIVATE pthread)
 
 enable_testing()
+add_executable(test_disabled_startup tests/test_disabled_startup.cpp)
+target_compile_options(test_disabled_startup PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_test(NAME disabled_startup COMMAND test_disabled_startup)
 add_executable(test_first_slot_wait tests/test_first_slot_wait.cpp)
 target_compile_options(test_first_slot_wait PRIVATE -Wall -Wextra -Wpedantic -Werror)
 add_test(NAME first_slot_wait COMMAND test_first_slot_wait)

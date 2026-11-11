@@ -346,9 +346,24 @@ def main():
         can_report.get('shadow_feedback_processing') == 'shared_powered_guards_fixed_rms_disabled_status'
         and can_report.get('receive_diagnostics', {}).get('total_rms_updates', 0)
             >= args.duration * 500 * 31 * 0.99)
-    passed = passed and feedback_workload_passed
+    startup = None
+    startup_passed = not args.feedback_candidate
+    if args.feedback_candidate:
+        startup_path = out/'can.json.startup.json'
+        if startup_path.exists():
+            startup = json.loads(startup_path.read_text())
+            startup_motors = startup.get('motors', [])
+            startup_passed = (startup.get('passed') is True
+                and startup.get('enable_attempts') == 0
+                and startup.get('nonzero_gain_or_torque_tx_attempts') == 0
+                and startup.get('slots', 0) >= 400 and startup.get('clean_slots', 0) >= 200
+                and len(startup_motors) == 31
+                and {m['index'] for m in startup_motors} == set(range(31))
+                and all(m['status'] == 0 and m['tx'] > 0 and m['tx'] == m['rx'] for m in startup_motors))
+    passed = passed and feedback_workload_passed and startup_passed
     result=dict(mode='native_policy_real_feedback_zero_gain_shadow',passed=bool(passed),frames=int(n),
         feedback_workload_passed=feedback_workload_passed,
+        disabled_startup_passed=startup_passed, disabled_startup=startup,
         **can_diagnostics(out/'can.json'),
         command_profile=args.command_profile,
         actor_exit=actor_rc,can_exit=can_rc,imu_exit=imu_rc,offline_byte_exact=parity,
