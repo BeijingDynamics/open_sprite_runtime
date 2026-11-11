@@ -53,3 +53,23 @@ sudo bash run_xbox_500hz_full_shadow_120s_on_253.sh ZERO_GAIN_XBOX_500HZ_FULL_31
 Robot supported, all31 motors powered but disabled, stationary for the initial
 15s IMU calibration. This command does not enable motors or transmit nonzero
 gain/torque. Keep the powered entry unused until this candidate is evaluated.
+
+## First hardware zero-gain result
+
+`xbox_500hz_full_shadow_120s_e8f_16ug` passed on2026-11-11 after the operator
+ran the command above. Startup completed400 slots in200.108ms, with396
+consecutive clean slots and100 TX/RX per motor; all31 remained disabled.
+Startup maximum was0.251460ms, so this run did not even need the relaxed
+startup-only2ms allowance. No startup samples were discarded.
+
+The subsequent120s strict interval passed with zero overrun/skipped slots,
+60000 TX/RX per motor and no CAN error-counter increments. Its first slot
+was0.153159ms; worst slot was0.386835ms (slot86444), below the unchanged0.5ms
+budget. Maximum wake delay was0.088803ms; maximum RX stage0.110684ms.
+All6000 actor frames completed, offline replay was byte-exact, and maximum
+inference time was1.56394ms. Enable and nonzero-command attempts were zero.
+
+This is one successful full-chain zero-gain run, not powered qualification or
+a guarantee against rare future scheduling outliers. No powered test was
+automatically started. Startup, CAN, summary and manifest reports were copied
+to the Windows project's `work/xbox_500hz_review_20261111/qualified_e8f_16ug`.

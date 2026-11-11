@@ -2,8 +2,12 @@
 
 Branch `xbox_500hz` starts from the G74 model3000 / ICM45686 / Xbox snapshot
 `4515206`. The published walking entry and its qualification seals are
-unchanged. The first stage exercises the new schedule at zero gain only;
-it cannot run powered policy or measured-pose hold.
+unchanged. The initial stage exercised the new schedule at zero gain only;
+its shadow flag still cannot run powered policy or measured-pose hold.
+An isolated powered entry was subsequently added and tested. The all-motor
+500 Hz system can walk, but the operator's comparison found no clear gait
+improvement; the mixed-rate baseline had a more decisive walking onset.
+See the [November 11 hardware results](XBOX_500HZ_HARDWARE_RESULTS_20261111.md).
 
 ## What changes
 
@@ -15,8 +19,8 @@ it cannot run powered policy or measured-pose hold.
 | Policy and Xbox target generation | 50 Hz | 50 Hz (unchanged) |
 | ICM45686 | 800 Hz | 800 Hz (unchanged) |
 
-The eventual powered comparison would resend the held policy target every
-2 ms instead of every 20 ms; it would not generate new policy actions at
+The powered comparison resends the held policy target every
+2 ms instead of every 20 ms; it does not generate new policy actions at
 500 Hz or change embedded PD. The ankle PD and existing ankle slot phases
 stay unchanged. Gains, limits, CAN IDs, controller mapping, and motor
 firmware are not changed.
@@ -158,7 +162,12 @@ individual motor feedback. Before powered deployment, qualify actual
 feedback freshness, bounded receive/IPC work, unchanged ankle torque
 mapping, target hold, fault shutdown and the separate powered entry/seal.
 
-## Isolated powered candidate (not yet physically qualified)
+## Isolated powered candidate
+
+The preparation and preflight steps below describe how the isolated candidate
+was built. A successful supervised trial does not waive these checks on another
+installation. The builder's `not_hardware_qualified` seal describes its offline
+provenance, not the outcome of subsequent trials; see the results record above.
 
 `tools/prepare_xbox500_powered.py` runs only offline checks and builds
 `candidates/xbox_500hz_powered_20261111`. It verifies the actual stable

@@ -1,5 +1,34 @@
 # Open Sprite Runtime
 
+## Branch status: `xbox_500hz`
+
+**The all-motor 500 Hz runtime runs on hardware and can walk, but the operator's
+comparison found no clear improvement over the stable mixed-rate baseline.**
+After returning to the baseline, the operator also found its gait satisfactory
+and its walking onset more decisive. Keep this branch as an experiment, not a
+recommended replacement for the stable walking runtime.
+
+| Layer | Stable baseline (`4515206`) | This experimental entry |
+| --- | --- | --- |
+| Four ankle motors / host ankle PD | 500 Hz | 500 Hz, unchanged |
+| Other 27 motors: CAN command / feedback polling | 50 Hz | 500 Hz |
+| Native policy inference | 50 Hz | 50 Hz, unchanged |
+| ICM45686 raw IMU | 800 Hz | 800 Hz, unchanged |
+| CAN scheduling loop | 2 kHz | 2 kHz, unchanged |
+
+The model, deployed gains, torque caps and joint mappings were held unchanged.
+Increasing host traffic does not increase the policy inference rate or the
+motor's internal PD rate. A supervised 120-second powered run passed with no
+transport-slot overruns and all 31 motors verified disabled at exit. This
+demonstrates feasibility, not a measured gait-quality benefit or unrestricted
+hardware qualification; earlier attempts also hit protection gates.
+
+See [hardware results and comparison](docs/XBOX_500HZ_HARDWARE_RESULTS_20261111.md)
+for the operator observations, successful and failed trials, timing evidence,
+deployment limitations and the unchanged baseline. Existing non-experimental
+entry points retain their original mixed-rate behavior. The timing description
+below documents that stable baseline, not the all-motor experimental entry.
+
 Safety-gated Sim2Real runtime work for Sprite0825. The current deployment
 candidate is the native-50 Hz G74 `model3000`, qualified after the proximal
 shoulder pitch/roll motors were changed to J4340P. Its frozen actor, contract,
@@ -30,9 +59,9 @@ calibrations, watchdogs, and integrated standing gates are recorded as completed
 commissioning milestones. Active scripts remain fail-closed and require their
 exact acknowledgement token; receive-only inspection tools remain available.
 
-## Timing contract
+## Stable baseline timing contract
 
-The current candidate uses native ONNX Runtime CPU inference at **50 Hz**,
+The stable mixed-rate baseline uses native ONNX Runtime CPU inference at **50 Hz**,
 an independent native ICM45686 raw-six-axis reader/software estimator at nominal
 **800 Hz** over **1 MHz SPI** (about 792 Hz measured),
 and a native CAN controller with a **2 kHz scheduling loop**. That scheduler
